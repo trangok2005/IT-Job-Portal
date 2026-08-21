@@ -1,0 +1,138 @@
+import json
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+
+from apps.accounts.models import User
+from apps.candidates.models import CandidateProfile, Education, Resume
+from apps.candidates.tasks import (
+    _normalize_parsed_data,
+    generate_candidate_embedding,
+    parse_resume,
+)
+
+
+class CandidateEmbeddingTaskTests(TestCase):
+    def setUp(self):
+        user = User.objects.create_user(
+            username="embedding-user",
+            email="embedding@example.com",
+            password="password123",
+            role=User.Role.CANDIDATE,
+        )
+        self.profile = CandidateProfile.objects.create(
+            user=user,
+            full_name="Embedding User",
+            headline="Python Developer",
+        )
+
+    @patch("apps.candidates.tasks.embed_document", return_value=[0.1] * 768)
+    def test_embedding_is_saved_for_current_version(self, generate):
+
+        result = generate_candidate_embedding(
+            str(self.profile.id),
+            self.profile.profile_version,
+        )
+
+        self.assertTrue(result)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.embedding_version, self.profile.profile_version)
+        self.assertFalse(self.profile.embedding_is_stale)
+        self.assertEqual(
+            generate.call_args.args[0],
+            "Headline: Python Developer",
+        )
+
+    @patch("apps.candidates.tasks.embed_document")
+    def test_stale_task_does_not_call_gemini(self, generate):
+        result = generate_candidate_embedding(str(self.profile.id), 999)
+
+        self.assertFalse(result)
+        generate.assert_not_called()
+
+
+class ResumeParseTaskTests(TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.override = override_settings(MEDIA_ROOT=Path(self.temp_dir.name))
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+
+        user = User.objects.create_user(
+            username="parse-user",
+            email="parse@example.com",
+            password="password123",
+            role=User.Role.CANDIDATE,
+        )
+        self.profile = CandidateProfile.objects.create(user=user, full_name="Before Parse")
+        self.resume = Resume.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile(
+                "cv.pdf",
+                b"%PDF-1.4 test",
+                content_type="application/pdf",
+            ),
+            original_filename="cv.pdf",
+            is_primary=True,
+        )
+
+    @patch("apps.candidates.tasks._get_client")
+    def test_parse_resume_stores_review_preview_without_mutating_profile(self, get_client):
+        raw_data = {
+            "full_name": "After Parse",
+            "phone": "0901234567",
+            "headline": "Backend Developer",
+            "summary": "Python developer",
+            "educations": [
+                {
+                    "school_name": "HUST",
+                    "major": "Software Engineering",
+                    "degree": "Engineer",
+                    "start_date": "2020-01-01",
+                    "end_date": "2024-01-01",
+                    "description": "",
+                }
+            ],
+            "experiences": [],
+            "skills": ["Python"],
+        }
+        models = Mock()
+        models.generate_content.return_value = SimpleNamespace(
+            text=json.dumps(raw_data)
+        )
+        get_client.return_value = SimpleNamespace(models=models)
+
+        result = parse_resume(str(self.resume.id))
+
+        self.assertEqual(result, raw_data)
+        self.resume.refresh_from_db()
+        self.profile.refresh_from_db()
+        self.assertEqual(self.resume.parse_status, Resume.ParseStatus.SUCCESS)
+        self.assertEqual(self.resume.parsed_data["full_name"], "After Parse")
+        self.assertEqual(self.resume.parsed_data["educations"][0]["school_name"], "HUST")
+        self.assertEqual(self.profile.full_name, "Before Parse")
+        self.assertFalse(Education.objects.filter(candidate=self.profile).exists())
+
+    def test_normalize_parsed_data_converts_nullable_text_fields(self):
+        normalized = _normalize_parsed_data({
+            "headline": None,
+            "educations": [{"school_name": "HUST", "degree": None}],
+            "experiences": [{
+                "company_name": "TechCorp",
+                "position": "Developer",
+                "description": None,
+                "is_current": None,
+            }],
+            "skills": [" Python ", None, ""],
+        })
+
+        self.assertEqual(normalized["headline"], "")
+        self.assertEqual(normalized["educations"][0]["degree"], "")
+        self.assertEqual(normalized["experiences"][0]["description"], "")
+        self.assertFalse(normalized["experiences"][0]["is_current"])
+        self.assertEqual(normalized["skills"], ["Python"])

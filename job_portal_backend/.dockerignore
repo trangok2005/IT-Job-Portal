@@ -1,0 +1,9 @@
+.venv
+.env
+media
+staticfiles
+__pycache__
+*.pyc
+.git
+deploy/docker/docker-compose.yml
+requirements/dev.txt

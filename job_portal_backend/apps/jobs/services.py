@@ -1,0 +1,237 @@
+"""Write operations và business rules của UC-02 đăng tin tuyển dụng."""
+from datetime import timedelta
+from pathlib import Path
+
+from django.db import transaction
+from django.db.models import F
+from django.utils import timezone
+
+from apps.companies.models import Company
+from apps.jobs.models import JDImport, JobPost, JobSkill
+
+
+def _enqueue_embedding(job: JobPost) -> None:
+    """Enqueue embedding đúng content version sau khi transaction commit."""
+
+    def enqueue():
+        from django_q.tasks import async_task
+
+        async_task(
+            "apps.jobs.tasks.generate_job_embedding",
+            str(job.pk),
+            job.content_version,
+        )
+
+    transaction.on_commit(enqueue)
+
+
+def _enqueue_jd_parse(jd_import: JDImport) -> None:
+    def enqueue():
+        try:
+            from django_q.tasks import async_task
+
+            async_task("apps.jobs.tasks.parse_jd_import", str(jd_import.pk))
+        except Exception:
+            JDImport.objects.filter(
+                pk=jd_import.pk, status=JDImport.Status.PENDING
+            ).update(
+                status=JDImport.Status.FAILED,
+                error_message="Không thể đưa JD vào hàng đợi xử lý.",
+                updated_at=timezone.now(),
+            )
+
+    transaction.on_commit(enqueue)
+
+
+@transaction.atomic
+def create_jd_import(user, company: Company, file) -> JDImport:
+    if not user.is_employer or company.owner_id != user.pk:
+        raise ValueError("Bạn không có quyền import JD cho công ty này.")
+    if company.status != Company.Status.APPROVED:
+        raise ValueError("Công ty chưa được duyệt, không thể import JD.")
+    jd_import = JDImport.objects.create(
+        company=company,
+        created_by=user,
+        file=file,
+        original_filename=Path(file.name).name,
+        file_size_bytes=getattr(file, "size", None),
+        status=JDImport.Status.PENDING,
+        expires_at=timezone.now() + timedelta(hours=24),
+    )
+    _enqueue_jd_parse(jd_import)
+    return jd_import
+
+
+@transaction.atomic
+def cancel_jd_import(jd_import: JDImport) -> None:
+    locked = JDImport.objects.select_for_update().get(pk=jd_import.pk)
+    if locked.status == JDImport.Status.CONSUMED:
+        raise ValueError("JD import đã được dùng để tạo tin.")
+    storage = locked.file.storage
+    stored_name = locked.file.name
+    locked.delete()
+    if stored_name:
+        transaction.on_commit(lambda: storage.delete(stored_name))
+
+
+def enqueue_job_embedding_robust(job: JobPost) -> None:
+    """Best-effort enqueue for recommendation reads without failing the API."""
+    try:
+        from django_q.tasks import async_task
+
+        async_task(
+            "apps.jobs.tasks.generate_job_embedding",
+            str(job.pk),
+            job.content_version,
+        )
+    except Exception:
+        return
+
+
+def enqueue_candidate_embedding_robust(profile) -> None:
+    """Best-effort enqueue of a missing or stale candidate embedding."""
+    try:
+        from django_q.tasks import async_task
+
+        async_task(
+            "apps.candidates.tasks.generate_candidate_embedding",
+            str(profile.pk),
+            profile.profile_version,
+        )
+    except Exception:
+        return
+
+
+def _bump_content_version(job: JobPost) -> None:
+    """Tăng version nguyên tử; chỉ tin ACTIVE mới cần sinh embedding ngay."""
+    JobPost.objects.filter(pk=job.pk).update(
+        content_version=F("content_version") + 1,
+        updated_at=timezone.now(),
+    )
+    job.refresh_from_db(fields=["content_version", "updated_at"])
+    if job.status == JobPost.Status.ACTIVE:
+        _enqueue_embedding(job)
+
+
+def _replace_job_skills(job: JobPost, skills: list) -> None:
+    """Thay danh sách skill trong cùng transaction của thao tác tạo/cập nhật."""
+    job.job_skills.all().delete()
+    JobSkill.objects.bulk_create(
+        JobSkill(job=job, skill=skill, weight=1.00)
+        for skill in skills
+    )
+
+
+@transaction.atomic
+def create_job(
+    user,
+    company: Company,
+    data: dict,
+    required_skills: list | None = None,
+    publish_immediately: bool = False,
+    jd_import_id=None,
+) -> JobPost:
+    """Tạo DRAFT hoặc ACTIVE theo lựa chọn xác nhận trong UC-02."""
+    if not user.is_employer or company.owner_id != user.pk:
+        raise ValueError("Bạn không có quyền tạo tin cho công ty này.")
+    if company.status != Company.Status.APPROVED:
+        raise ValueError("Công ty chưa được duyệt, không thể tạo tin.")
+    expires_at = data.get("expires_at")
+    if publish_immediately and expires_at is not None and expires_at <= timezone.now():
+        raise ValueError("Thời hạn nhận hồ sơ phải ở tương lai.")
+
+    jd_import = None
+    if jd_import_id:
+        jd_import = JDImport.objects.select_for_update().filter(
+            pk=jd_import_id,
+            created_by=user,
+            company=company,
+            status=JDImport.Status.SUCCESS,
+            expires_at__gt=timezone.now(),
+        ).first()
+        if jd_import is None:
+            raise ValueError("Kết quả trích xuất JD không hợp lệ hoặc đã hết hạn.")
+        data.setdefault("raw_jd_file", jd_import.file.name)
+        data.setdefault("raw_extracted_json", jd_import.raw_extracted_json)
+
+    job = JobPost.objects.create(
+        company=company,
+        created_by=user,
+        status=(JobPost.Status.ACTIVE if publish_immediately else JobPost.Status.DRAFT),
+        published_at=timezone.now() if publish_immediately else None,
+        **data,
+    )
+    if required_skills:
+        _replace_job_skills(job, required_skills)
+    if publish_immediately:
+        _enqueue_embedding(job)
+    if jd_import is not None:
+        jd_import.status = JDImport.Status.CONSUMED
+        jd_import.consumed_job = job
+        jd_import.save(update_fields=["status", "consumed_job", "updated_at"])
+    return job
+
+
+@transaction.atomic
+def update_job(
+    job: JobPost,
+    data: dict,
+    required_skills: list | None = None,
+) -> JobPost:
+    """Cập nhật nội dung; tin ACTIVE sẽ tự enqueue embedding version mới."""
+    if not data and required_skills is None:
+        return job
+    for field, value in data.items():
+        setattr(job, field, value)
+    if data:
+        job.save(update_fields=[*data.keys(), "updated_at"])
+    if required_skills is not None:
+        _replace_job_skills(job, required_skills)
+    _bump_content_version(job)
+    return job
+
+
+@transaction.atomic
+def publish_job(job: JobPost) -> JobPost:
+    """Chỉ chuyển DRAFT sang ACTIVE khi công ty và thời hạn còn hợp lệ."""
+    if job.company.status != Company.Status.APPROVED:
+        raise ValueError("Công ty chưa được duyệt, không thể đăng tin.")
+    if job.status == JobPost.Status.ACTIVE:
+        if job.embedding_is_stale:
+            _enqueue_embedding(job)
+        return job
+    if job.status != JobPost.Status.DRAFT:
+        raise ValueError("Chỉ tin nháp mới được đăng.")
+    if job.expires_at is not None and job.expires_at <= timezone.now():
+        raise ValueError("Thời hạn nhận hồ sơ phải ở tương lai.")
+
+    job.status = JobPost.Status.ACTIVE
+    job.published_at = timezone.now()
+    job.save(update_fields=["status", "published_at", "updated_at"])
+    _enqueue_embedding(job)
+    return job
+
+
+@transaction.atomic
+def close_job(job: JobPost) -> JobPost:
+    """Đóng vĩnh viễn tin đang tuyển; không cho chuyển ngược sang ACTIVE."""
+    if job.status != JobPost.Status.ACTIVE:
+        raise ValueError("Chỉ có thể đóng tin đang tuyển.")
+    job.status = JobPost.Status.CLOSED
+    job.save(update_fields=["status", "updated_at"])
+    return job
+
+
+def increment_view_count(job: JobPost) -> JobPost:
+    """Tăng lượt xem nguyên tử để tránh mất dữ liệu khi nhiều request đồng thời."""
+    JobPost.objects.filter(pk=job.pk).update(view_count=F("view_count") + 1)
+    job.refresh_from_db(fields=["view_count"])
+    return job
+
+
+def expire_jobs() -> int:
+    """Đánh dấu EXPIRED cho các tin ACTIVE đã qua hạn; dùng bởi lịch Django-Q."""
+    return JobPost.objects.filter(
+        status=JobPost.Status.ACTIVE,
+        expires_at__lte=timezone.now(),
+    ).update(status=JobPost.Status.EXPIRED, updated_at=timezone.now())

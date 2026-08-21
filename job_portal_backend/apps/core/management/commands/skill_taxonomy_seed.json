@@ -1,0 +1,1693 @@
+{
+  "meta": {
+    "source": "Biên soạn thủ công dựa trên Stack Overflow Developer Survey 2025/2026, tài liệu chính thức từng công nghệ. Dùng làm seed data ban đầu cho bảng Skill/SkillAlias — Admin có thể bổ sung thêm qua UC Quan tri Skill Taxonomy.",
+    "total_skills": 243,
+    "total_categories": 16
+  },
+  "skills": [
+    {
+      "id": 1,
+      "name": "JavaScript",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "JS"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "TypeScript",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "TS"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Python",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 4,
+      "name": "Java",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 5,
+      "name": "C#",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "C Sharp",
+        "CSharp"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "C++",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "Cpp",
+        "C Plus Plus"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "C",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 8,
+      "name": "Go",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "Golang"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Rust",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 10,
+      "name": "PHP",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 11,
+      "name": "Ruby",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 12,
+      "name": "Swift",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 13,
+      "name": "Kotlin",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 14,
+      "name": "Dart",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 15,
+      "name": "Scala",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 16,
+      "name": "R",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 17,
+      "name": "MATLAB",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 18,
+      "name": "Perl",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 19,
+      "name": "Objective-C",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 20,
+      "name": "Elixir",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 21,
+      "name": "Haskell",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 22,
+      "name": "Lua",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 23,
+      "name": "Bash/Shell Scripting",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "Bash",
+        "Shell Script",
+        "Shell"
+      ]
+    },
+    {
+      "id": 24,
+      "name": "PowerShell",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 25,
+      "name": "SQL",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "Structured Query Language"
+      ]
+    },
+    {
+      "id": 26,
+      "name": "HTML",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "HTML5"
+      ]
+    },
+    {
+      "id": 27,
+      "name": "CSS",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "CSS3"
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Groovy",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": []
+    },
+    {
+      "id": 29,
+      "name": "Visual Basic .NET",
+      "category": "Ngôn ngữ lập trình",
+      "aliases": [
+        "VB.NET"
+      ]
+    },
+    {
+      "id": 30,
+      "name": "React",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "ReactJS",
+        "React.js"
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Next.js",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "NextJS"
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Vue.js",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "Vue",
+        "VueJS"
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Nuxt.js",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "NuxtJS"
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Angular",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "AngularJS"
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Svelte",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 36,
+      "name": "SvelteKit",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 37,
+      "name": "jQuery",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 38,
+      "name": "Redux",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "Redux Toolkit"
+      ]
+    },
+    {
+      "id": 39,
+      "name": "Zustand",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 40,
+      "name": "TanStack Query",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "React Query"
+      ]
+    },
+    {
+      "id": 41,
+      "name": "Tailwind CSS",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "TailwindCSS",
+        "Tailwind"
+      ]
+    },
+    {
+      "id": 42,
+      "name": "Bootstrap",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 43,
+      "name": "Material UI",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "MUI"
+      ]
+    },
+    {
+      "id": 44,
+      "name": "Ant Design",
+      "category": "Frontend Framework/Library",
+      "aliases": [
+        "AntD"
+      ]
+    },
+    {
+      "id": 45,
+      "name": "shadcn/ui",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 46,
+      "name": "Webpack",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 47,
+      "name": "Vite",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 48,
+      "name": "Gatsby",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 49,
+      "name": "Remix",
+      "category": "Frontend Framework/Library",
+      "aliases": []
+    },
+    {
+      "id": 50,
+      "name": "Django",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 51,
+      "name": "Django REST Framework",
+      "category": "Backend Framework",
+      "aliases": [
+        "DRF"
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Flask",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 53,
+      "name": "FastAPI",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 54,
+      "name": "Express.js",
+      "category": "Backend Framework",
+      "aliases": [
+        "ExpressJS",
+        "Express"
+      ]
+    },
+    {
+      "id": 55,
+      "name": "NestJS",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 56,
+      "name": "Spring",
+      "category": "Backend Framework",
+      "aliases": [
+        "Spring Framework"
+      ]
+    },
+    {
+      "id": 57,
+      "name": "Spring Boot",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 58,
+      "name": "ASP.NET Core",
+      "category": "Backend Framework",
+      "aliases": [
+        ".NET Core",
+        "DotNet Core"
+      ]
+    },
+    {
+      "id": 59,
+      "name": "Laravel",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 60,
+      "name": "Ruby on Rails",
+      "category": "Backend Framework",
+      "aliases": [
+        "Rails"
+      ]
+    },
+    {
+      "id": 61,
+      "name": "Symfony",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 62,
+      "name": "Gin",
+      "category": "Backend Framework",
+      "aliases": [
+        "Gin Gonic"
+      ]
+    },
+    {
+      "id": 63,
+      "name": "Fiber",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 64,
+      "name": "Koa.js",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 65,
+      "name": "Phoenix Framework",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 66,
+      "name": "Actix",
+      "category": "Backend Framework",
+      "aliases": [
+        "Actix Web"
+      ]
+    },
+    {
+      "id": 67,
+      "name": "Node.js",
+      "category": "Backend Framework",
+      "aliases": [
+        "NodeJS",
+        "Node"
+      ]
+    },
+    {
+      "id": 68,
+      "name": "GraphQL",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 69,
+      "name": "gRPC",
+      "category": "Backend Framework",
+      "aliases": []
+    },
+    {
+      "id": 70,
+      "name": "React Native",
+      "category": "Phát triển Mobile",
+      "aliases": []
+    },
+    {
+      "id": 71,
+      "name": "Flutter",
+      "category": "Phát triển Mobile",
+      "aliases": []
+    },
+    {
+      "id": 72,
+      "name": "SwiftUI",
+      "category": "Phát triển Mobile",
+      "aliases": []
+    },
+    {
+      "id": 73,
+      "name": "Android SDK",
+      "category": "Phát triển Mobile",
+      "aliases": []
+    },
+    {
+      "id": 74,
+      "name": "Jetpack Compose",
+      "category": "Phát triển Mobile",
+      "aliases": []
+    },
+    {
+      "id": 75,
+      "name": "Xamarin",
+      "category": "Phát triển Mobile",
+      "aliases": []
+    },
+    {
+      "id": 76,
+      "name": "Ionic",
+      "category": "Phát triển Mobile",
+      "aliases": []
+    },
+    {
+      "id": 77,
+      "name": "Cordova",
+      "category": "Phát triển Mobile",
+      "aliases": [
+        "Apache Cordova"
+      ]
+    },
+    {
+      "id": 78,
+      "name": "iOS Development",
+      "category": "Phát triển Mobile",
+      "aliases": []
+    },
+    {
+      "id": 79,
+      "name": "Android Development",
+      "category": "Phát triển Mobile",
+      "aliases": []
+    },
+    {
+      "id": 80,
+      "name": "Kotlin Multiplatform",
+      "category": "Phát triển Mobile",
+      "aliases": [
+        "KMP"
+      ]
+    },
+    {
+      "id": 81,
+      "name": ".NET MAUI",
+      "category": "Phát triển Mobile",
+      "aliases": [
+        "MAUI"
+      ]
+    },
+    {
+      "id": 82,
+      "name": "PostgreSQL",
+      "category": "Cơ sở dữ liệu",
+      "aliases": [
+        "Postgres",
+        "PSQL"
+      ]
+    },
+    {
+      "id": 83,
+      "name": "MySQL",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 84,
+      "name": "MariaDB",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 85,
+      "name": "SQLite",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 86,
+      "name": "Microsoft SQL Server",
+      "category": "Cơ sở dữ liệu",
+      "aliases": [
+        "MSSQL",
+        "SQL Server"
+      ]
+    },
+    {
+      "id": 87,
+      "name": "Oracle Database",
+      "category": "Cơ sở dữ liệu",
+      "aliases": [
+        "Oracle DB"
+      ]
+    },
+    {
+      "id": 88,
+      "name": "MongoDB",
+      "category": "Cơ sở dữ liệu",
+      "aliases": [
+        "Mongo"
+      ]
+    },
+    {
+      "id": 89,
+      "name": "Redis",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 90,
+      "name": "Cassandra",
+      "category": "Cơ sở dữ liệu",
+      "aliases": [
+        "Apache Cassandra"
+      ]
+    },
+    {
+      "id": 91,
+      "name": "Amazon DynamoDB",
+      "category": "Cơ sở dữ liệu",
+      "aliases": [
+        "DynamoDB"
+      ]
+    },
+    {
+      "id": 92,
+      "name": "Elasticsearch",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 93,
+      "name": "Firebase Firestore",
+      "category": "Cơ sở dữ liệu",
+      "aliases": [
+        "Firestore"
+      ]
+    },
+    {
+      "id": 94,
+      "name": "Neo4j",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 95,
+      "name": "CouchDB",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 96,
+      "name": "InfluxDB",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 97,
+      "name": "pgvector",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 98,
+      "name": "Supabase",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 99,
+      "name": "Google BigQuery",
+      "category": "Cơ sở dữ liệu",
+      "aliases": [
+        "BigQuery"
+      ]
+    },
+    {
+      "id": 100,
+      "name": "Prisma ORM",
+      "category": "Cơ sở dữ liệu",
+      "aliases": [
+        "Prisma"
+      ]
+    },
+    {
+      "id": 101,
+      "name": "SQLAlchemy",
+      "category": "Cơ sở dữ liệu",
+      "aliases": []
+    },
+    {
+      "id": 102,
+      "name": "Amazon Web Services",
+      "category": "Cloud Platform",
+      "aliases": [
+        "AWS"
+      ]
+    },
+    {
+      "id": 103,
+      "name": "Amazon EC2",
+      "category": "Cloud Platform",
+      "aliases": [
+        "EC2"
+      ]
+    },
+    {
+      "id": 104,
+      "name": "Amazon S3",
+      "category": "Cloud Platform",
+      "aliases": [
+        "S3"
+      ]
+    },
+    {
+      "id": 105,
+      "name": "Amazon RDS",
+      "category": "Cloud Platform",
+      "aliases": [
+        "RDS"
+      ]
+    },
+    {
+      "id": 106,
+      "name": "AWS Lambda",
+      "category": "Cloud Platform",
+      "aliases": []
+    },
+    {
+      "id": 107,
+      "name": "Google Cloud Platform",
+      "category": "Cloud Platform",
+      "aliases": [
+        "GCP",
+        "Google Cloud"
+      ]
+    },
+    {
+      "id": 108,
+      "name": "Microsoft Azure",
+      "category": "Cloud Platform",
+      "aliases": [
+        "Azure"
+      ]
+    },
+    {
+      "id": 109,
+      "name": "DigitalOcean",
+      "category": "Cloud Platform",
+      "aliases": []
+    },
+    {
+      "id": 110,
+      "name": "Heroku",
+      "category": "Cloud Platform",
+      "aliases": []
+    },
+    {
+      "id": 111,
+      "name": "Vercel",
+      "category": "Cloud Platform",
+      "aliases": []
+    },
+    {
+      "id": 112,
+      "name": "Netlify",
+      "category": "Cloud Platform",
+      "aliases": []
+    },
+    {
+      "id": 113,
+      "name": "Cloudflare",
+      "category": "Cloud Platform",
+      "aliases": []
+    },
+    {
+      "id": 114,
+      "name": "Firebase",
+      "category": "Cloud Platform",
+      "aliases": []
+    },
+    {
+      "id": 115,
+      "name": "Oracle Cloud",
+      "category": "Cloud Platform",
+      "aliases": [
+        "OCI"
+      ]
+    },
+    {
+      "id": 116,
+      "name": "Docker",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 117,
+      "name": "Docker Compose",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 118,
+      "name": "Kubernetes",
+      "category": "DevOps & CI/CD",
+      "aliases": [
+        "K8s"
+      ]
+    },
+    {
+      "id": 119,
+      "name": "Jenkins",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 120,
+      "name": "GitHub Actions",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 121,
+      "name": "GitLab CI/CD",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 122,
+      "name": "CircleCI",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 123,
+      "name": "Terraform",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 124,
+      "name": "Ansible",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 125,
+      "name": "Puppet",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 126,
+      "name": "Chef",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 127,
+      "name": "Prometheus",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 128,
+      "name": "Grafana",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 129,
+      "name": "ELK Stack",
+      "category": "DevOps & CI/CD",
+      "aliases": [
+        "Elastic Stack"
+      ]
+    },
+    {
+      "id": 130,
+      "name": "Nginx",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 131,
+      "name": "Apache HTTP Server",
+      "category": "DevOps & CI/CD",
+      "aliases": [
+        "Apache"
+      ]
+    },
+    {
+      "id": 132,
+      "name": "Helm",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 133,
+      "name": "ArgoCD",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 134,
+      "name": "Vagrant",
+      "category": "DevOps & CI/CD",
+      "aliases": []
+    },
+    {
+      "id": 135,
+      "name": "Linux System Administration",
+      "category": "DevOps & CI/CD",
+      "aliases": [
+        "Linux Admin"
+      ]
+    },
+    {
+      "id": 136,
+      "name": "Git",
+      "category": "Version Control & Cộng tác",
+      "aliases": []
+    },
+    {
+      "id": 137,
+      "name": "GitHub",
+      "category": "Version Control & Cộng tác",
+      "aliases": []
+    },
+    {
+      "id": 138,
+      "name": "GitLab",
+      "category": "Version Control & Cộng tác",
+      "aliases": []
+    },
+    {
+      "id": 139,
+      "name": "Bitbucket",
+      "category": "Version Control & Cộng tác",
+      "aliases": []
+    },
+    {
+      "id": 140,
+      "name": "SVN",
+      "category": "Version Control & Cộng tác",
+      "aliases": [
+        "Subversion"
+      ]
+    },
+    {
+      "id": 141,
+      "name": "Jira",
+      "category": "Version Control & Cộng tác",
+      "aliases": []
+    },
+    {
+      "id": 142,
+      "name": "Confluence",
+      "category": "Version Control & Cộng tác",
+      "aliases": []
+    },
+    {
+      "id": 143,
+      "name": "Trello",
+      "category": "Version Control & Cộng tác",
+      "aliases": []
+    },
+    {
+      "id": 144,
+      "name": "Unit Testing",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 145,
+      "name": "Integration Testing",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 146,
+      "name": "pytest",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 147,
+      "name": "Jest",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 148,
+      "name": "Mocha",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 149,
+      "name": "Cypress",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 150,
+      "name": "Playwright",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 151,
+      "name": "Selenium",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 152,
+      "name": "JUnit",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 153,
+      "name": "TestNG",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 154,
+      "name": "Postman",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 155,
+      "name": "Manual Testing",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 156,
+      "name": "Test Automation",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 157,
+      "name": "JMeter",
+      "category": "Testing & QA",
+      "aliases": [
+        "Load Testing"
+      ]
+    },
+    {
+      "id": 158,
+      "name": "API Testing",
+      "category": "Testing & QA",
+      "aliases": []
+    },
+    {
+      "id": 159,
+      "name": "Machine Learning",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "ML"
+      ]
+    },
+    {
+      "id": 160,
+      "name": "Deep Learning",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "DL"
+      ]
+    },
+    {
+      "id": 161,
+      "name": "Data Analysis",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 162,
+      "name": "Data Engineering",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 163,
+      "name": "Pandas",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 164,
+      "name": "NumPy",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 165,
+      "name": "Scikit-learn",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "sklearn"
+      ]
+    },
+    {
+      "id": 166,
+      "name": "TensorFlow",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 167,
+      "name": "PyTorch",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 168,
+      "name": "Keras",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 169,
+      "name": "Natural Language Processing",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "NLP"
+      ]
+    },
+    {
+      "id": 170,
+      "name": "Computer Vision",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "CV"
+      ]
+    },
+    {
+      "id": 171,
+      "name": "Large Language Models",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "LLM",
+        "LLMs"
+      ]
+    },
+    {
+      "id": 172,
+      "name": "Prompt Engineering",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 173,
+      "name": "Gemini API",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 174,
+      "name": "OpenAI API",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 175,
+      "name": "Vector Embedding",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "Embedding"
+      ]
+    },
+    {
+      "id": 176,
+      "name": "ETL",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "Extract Transform Load"
+      ]
+    },
+    {
+      "id": 177,
+      "name": "Apache Spark",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "Spark"
+      ]
+    },
+    {
+      "id": 178,
+      "name": "Apache Kafka",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "Kafka"
+      ]
+    },
+    {
+      "id": 179,
+      "name": "Power BI",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 180,
+      "name": "Tableau",
+      "category": "Data / AI / Machine Learning",
+      "aliases": []
+    },
+    {
+      "id": 181,
+      "name": "Artificial Intelligence",
+      "category": "Data / AI / Machine Learning",
+      "aliases": [
+        "AI"
+      ]
+    },
+    {
+      "id": 182,
+      "name": "RESTful API Design",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": [
+        "REST API",
+        "REST"
+      ]
+    },
+    {
+      "id": 183,
+      "name": "Microservices Architecture",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": [
+        "Microservices"
+      ]
+    },
+    {
+      "id": 184,
+      "name": "Monolithic Architecture",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": []
+    },
+    {
+      "id": 185,
+      "name": "Event-Driven Architecture",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": []
+    },
+    {
+      "id": 186,
+      "name": "Domain-Driven Design",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": [
+        "DDD"
+      ]
+    },
+    {
+      "id": 187,
+      "name": "Clean Architecture",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": []
+    },
+    {
+      "id": 188,
+      "name": "Design Patterns",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": []
+    },
+    {
+      "id": 189,
+      "name": "System Design",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": []
+    },
+    {
+      "id": 190,
+      "name": "Object-Oriented Programming",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": [
+        "OOP"
+      ]
+    },
+    {
+      "id": 191,
+      "name": "Functional Programming",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": [
+        "FP"
+      ]
+    },
+    {
+      "id": 192,
+      "name": "Message Queue",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": [
+        "RabbitMQ"
+      ]
+    },
+    {
+      "id": 193,
+      "name": "Serverless Architecture",
+      "category": "Kiến trúc & Thiết kế hệ thống",
+      "aliases": [
+        "Serverless"
+      ]
+    },
+    {
+      "id": 194,
+      "name": "Application Security",
+      "category": "Bảo mật",
+      "aliases": [
+        "AppSec"
+      ]
+    },
+    {
+      "id": 195,
+      "name": "OWASP",
+      "category": "Bảo mật",
+      "aliases": []
+    },
+    {
+      "id": 196,
+      "name": "Penetration Testing",
+      "category": "Bảo mật",
+      "aliases": [
+        "Pentest"
+      ]
+    },
+    {
+      "id": 197,
+      "name": "OAuth2",
+      "category": "Bảo mật",
+      "aliases": [
+        "OAuth"
+      ]
+    },
+    {
+      "id": 198,
+      "name": "JWT",
+      "category": "Bảo mật",
+      "aliases": [
+        "JSON Web Token"
+      ]
+    },
+    {
+      "id": 199,
+      "name": "SSL/TLS",
+      "category": "Bảo mật",
+      "aliases": []
+    },
+    {
+      "id": 200,
+      "name": "Network Security",
+      "category": "Bảo mật",
+      "aliases": []
+    },
+    {
+      "id": 201,
+      "name": "Cybersecurity",
+      "category": "Bảo mật",
+      "aliases": []
+    },
+    {
+      "id": 202,
+      "name": "Data Encryption",
+      "category": "Bảo mật",
+      "aliases": []
+    },
+    {
+      "id": 203,
+      "name": "Identity and Access Management",
+      "category": "Bảo mật",
+      "aliases": [
+        "IAM"
+      ]
+    },
+    {
+      "id": 204,
+      "name": "Figma",
+      "category": "Thiết kế UI/UX",
+      "aliases": []
+    },
+    {
+      "id": 205,
+      "name": "Adobe XD",
+      "category": "Thiết kế UI/UX",
+      "aliases": []
+    },
+    {
+      "id": 206,
+      "name": "Sketch",
+      "category": "Thiết kế UI/UX",
+      "aliases": []
+    },
+    {
+      "id": 207,
+      "name": "UI Design",
+      "category": "Thiết kế UI/UX",
+      "aliases": [
+        "User Interface Design"
+      ]
+    },
+    {
+      "id": 208,
+      "name": "UX Design",
+      "category": "Thiết kế UI/UX",
+      "aliases": [
+        "User Experience Design"
+      ]
+    },
+    {
+      "id": 209,
+      "name": "Wireframing",
+      "category": "Thiết kế UI/UX",
+      "aliases": []
+    },
+    {
+      "id": 210,
+      "name": "Prototyping",
+      "category": "Thiết kế UI/UX",
+      "aliases": []
+    },
+    {
+      "id": 211,
+      "name": "Adobe Photoshop",
+      "category": "Thiết kế UI/UX",
+      "aliases": [
+        "Photoshop"
+      ]
+    },
+    {
+      "id": 212,
+      "name": "Agile",
+      "category": "Phương pháp & Quy trình làm việc",
+      "aliases": [
+        "Agile Methodology"
+      ]
+    },
+    {
+      "id": 213,
+      "name": "Scrum",
+      "category": "Phương pháp & Quy trình làm việc",
+      "aliases": []
+    },
+    {
+      "id": 214,
+      "name": "Kanban",
+      "category": "Phương pháp & Quy trình làm việc",
+      "aliases": []
+    },
+    {
+      "id": 215,
+      "name": "Waterfall",
+      "category": "Phương pháp & Quy trình làm việc",
+      "aliases": []
+    },
+    {
+      "id": 216,
+      "name": "CI/CD",
+      "category": "Phương pháp & Quy trình làm việc",
+      "aliases": [
+        "Continuous Integration/Continuous Deployment",
+        "CI",
+        "CD"
+      ]
+    },
+    {
+      "id": 217,
+      "name": "Test-Driven Development",
+      "category": "Phương pháp & Quy trình làm việc",
+      "aliases": [
+        "TDD"
+      ]
+    },
+    {
+      "id": 218,
+      "name": "Extreme Programming",
+      "category": "Phương pháp & Quy trình làm việc",
+      "aliases": [
+        "XP"
+      ]
+    },
+    {
+      "id": 219,
+      "name": "Giao tiếp",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Communication",
+        "Communication Skill"
+      ]
+    },
+    {
+      "id": 220,
+      "name": "Làm việc nhóm",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Teamwork",
+        "Team Work"
+      ]
+    },
+    {
+      "id": 221,
+      "name": "Giải quyết vấn đề",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Problem Solving"
+      ]
+    },
+    {
+      "id": 222,
+      "name": "Tư duy phản biện",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Critical Thinking"
+      ]
+    },
+    {
+      "id": 223,
+      "name": "Quản lý thời gian",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Time Management"
+      ]
+    },
+    {
+      "id": 224,
+      "name": "Lãnh đạo",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Leadership"
+      ]
+    },
+    {
+      "id": 225,
+      "name": "Thuyết trình",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Presentation Skill"
+      ]
+    },
+    {
+      "id": 226,
+      "name": "Tiếng Anh",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "English Proficiency",
+        "English"
+      ]
+    },
+    {
+      "id": 227,
+      "name": "Chịu áp lực công việc",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Work Under Pressure"
+      ]
+    },
+    {
+      "id": 228,
+      "name": "Tự học",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Self-Learning"
+      ]
+    },
+    {
+      "id": 229,
+      "name": "Quản lý dự án",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Project Management"
+      ]
+    },
+    {
+      "id": 230,
+      "name": "Tư duy phân tích",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Analytical Thinking"
+      ]
+    },
+    {
+      "id": 231,
+      "name": "Sáng tạo",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Creativity"
+      ]
+    },
+    {
+      "id": 232,
+      "name": "Chăm sóc khách hàng",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Customer Service"
+      ]
+    },
+    {
+      "id": 233,
+      "name": "Đàm phán",
+      "category": "Kỹ năng mềm",
+      "aliases": [
+        "Negotiation"
+      ]
+    },
+    {
+      "id": 234,
+      "name": "AWS Certified Solutions Architect",
+      "category": "Chứng chỉ IT",
+      "aliases": []
+    },
+    {
+      "id": 235,
+      "name": "AWS Certified Developer",
+      "category": "Chứng chỉ IT",
+      "aliases": []
+    },
+    {
+      "id": 236,
+      "name": "Microsoft Certified: Azure Fundamentals",
+      "category": "Chứng chỉ IT",
+      "aliases": [
+        "AZ-900"
+      ]
+    },
+    {
+      "id": 237,
+      "name": "Google Cloud Professional Cloud Architect",
+      "category": "Chứng chỉ IT",
+      "aliases": []
+    },
+    {
+      "id": 238,
+      "name": "Project Management Professional",
+      "category": "Chứng chỉ IT",
+      "aliases": [
+        "PMP"
+      ]
+    },
+    {
+      "id": 239,
+      "name": "CompTIA Security+",
+      "category": "Chứng chỉ IT",
+      "aliases": []
+    },
+    {
+      "id": 240,
+      "name": "Certified Kubernetes Administrator",
+      "category": "Chứng chỉ IT",
+      "aliases": [
+        "CKA"
+      ]
+    },
+    {
+      "id": 241,
+      "name": "Oracle Certified Professional Java",
+      "category": "Chứng chỉ IT",
+      "aliases": [
+        "OCP Java"
+      ]
+    },
+    {
+      "id": 242,
+      "name": "CISSP",
+      "category": "Chứng chỉ IT",
+      "aliases": []
+    },
+    {
+      "id": 243,
+      "name": "Certified Scrum Master",
+      "category": "Chứng chỉ IT",
+      "aliases": [
+        "CSM"
+      ]
+    }
+  ]
+}

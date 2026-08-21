@@ -1,0 +1,298 @@
+import tempfile
+from datetime import date
+from pathlib import Path
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APITestCase
+
+from apps.accounts.models import User
+from apps.candidates.models import CandidateProfile, Education, Resume
+from apps.skills.models import Skill, SkillAlias
+
+
+class CandidateApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="candidate",
+            email="candidate@example.com",
+            password="password123",
+            role=User.Role.CANDIDATE,
+        )
+        self.profile = CandidateProfile.objects.create(
+            user=self.user,
+            full_name="Nguyen Van A",
+        )
+        self.employer = User.objects.create_user(
+            username="employer-candidate-test",
+            email="employer-candidate@example.com",
+            password="password123",
+            role=User.Role.EMPLOYER,
+        )
+
+    def test_candidate_can_update_own_profile(self):
+        self.client.force_authenticate(self.user)
+
+        response = self.client.patch(
+            reverse("candidate-me"),
+            {"desired_position": "Backend Developer"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.desired_position, "Backend Developer")
+        self.assertEqual(self.profile.profile_version, 2)
+        self.assertEqual(response.data["embedding_version"], 0)
+        self.assertTrue(response.data["embedding_is_stale"])
+        self.assertIsNone(response.data["embedding_updated_at"])
+
+    def test_candidate_can_save_one_reviewed_profile_snapshot(self):
+        skill = Skill.objects.create(name="Python", slug="api-save-python")
+        self.client.force_authenticate(self.user)
+
+        response = self.client.put(
+            reverse("candidate-me"),
+            {
+                "full_name": "Reviewed Candidate",
+                "phone": "0901234567",
+                "dob": None,
+                "gender": "",
+                "address": "Hà Nội",
+                "avatar_url": "",
+                "headline": "Backend Developer",
+                "summary": "Python APIs",
+                "desired_position": "Backend Developer",
+                "desired_salary_min": 20000000,
+                "is_public": True,
+                "educations": [{"school_name": "HUST", "major": "IT"}],
+                "experiences": [{
+                    "company_name": "Tech",
+                    "position": "Developer",
+                    "is_current": True,
+                }],
+                "skills": [{"skill": str(skill.id), "level": "ADVANCED"}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.profile_version, 2)
+        self.assertEqual(self.profile.full_name, "Reviewed Candidate")
+        self.assertEqual(self.profile.educations.count(), 1)
+        self.assertEqual(self.profile.experiences.count(), 1)
+        self.assertEqual(self.profile.candidate_skills.count(), 1)
+
+    def test_save_profile_normalizes_new_skill_name(self):
+        self.client.force_authenticate(self.user)
+
+        response = self.client.put(
+            reverse("candidate-me"),
+            {
+                "full_name": "Skill Normalizer",
+                "phone": "",
+                "dob": None,
+                "gender": "",
+                "address": "",
+                "avatar_url": "",
+                "headline": "",
+                "summary": "",
+                "desired_position": "",
+                "desired_salary_min": None,
+                "is_public": True,
+                "educations": [],
+                "experiences": [],
+                "skills": [{"skill": "  Python  "}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.profile.refresh_from_db()
+        candidate_skill = self.profile.candidate_skills.get()
+        skill = candidate_skill.skill
+        self.assertEqual(skill.name, "Python")
+        self.assertEqual(skill.source, Skill.Source.CV_PARSING)
+        self.assertEqual(candidate_skill.source, "MANUAL")
+
+    def test_save_profile_dedupes_skills_resolving_to_same_skill(self):
+        self.client.force_authenticate(self.user)
+        python = Skill.objects.create(
+            name="Python",
+            slug="dedupe-python",
+            status=Skill.Status.APPROVED,
+            source=Skill.Source.ADMIN_MANUAL,
+            is_active=True,
+        )
+        SkillAlias.objects.create(
+            skill=python,
+            alias_text="Python Developer",
+            normalized_text="python developer",
+        )
+
+        response = self.client.put(
+            reverse("candidate-me"),
+            {
+                "full_name": "Dedupe Candidate",
+                "phone": "",
+                "dob": None,
+                "gender": "",
+                "address": "",
+                "avatar_url": "",
+                "headline": "",
+                "summary": "",
+                "desired_position": "",
+                "desired_salary_min": None,
+                "is_public": True,
+                "educations": [],
+                "experiences": [],
+                "skills": [
+                    {"skill": str(python.id)},
+                    {"skill": "Python Developer"},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.candidate_skills.count(), 1)
+        self.assertEqual(self.profile.candidate_skills.get().skill, python)
+
+    def test_save_profile_allows_pending_skill_until_admin_reviews(self):
+        self.client.force_authenticate(self.user)
+        pending = Skill.objects.create(
+            name="Rust",
+            slug="pending-rust",
+            status=Skill.Status.PENDING,
+            source=Skill.Source.CV_PARSING,
+        )
+
+        response = self.client.put(
+            reverse("candidate-me"),
+            {
+                "full_name": "Pending Skill Candidate",
+                "phone": "",
+                "dob": None,
+                "gender": "",
+                "address": "",
+                "avatar_url": "",
+                "headline": "",
+                "summary": "",
+                "desired_position": "",
+                "desired_salary_min": None,
+                "is_public": True,
+                "educations": [],
+                "experiences": [],
+                "skills": [{"skill": str(pending.id)}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.profile.refresh_from_db()
+        candidate_skill = self.profile.candidate_skills.get()
+        self.assertEqual(candidate_skill.skill, pending)
+        self.assertEqual(candidate_skill.skill.status, Skill.Status.PENDING)
+
+    def test_employer_cannot_manage_candidate_profile(self):
+        self.client.force_authenticate(self.employer)
+
+        response = self.client.get(reverse("candidate-me"))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_candidate_cannot_update_another_candidates_education(self):
+        other_user = User.objects.create_user(
+            username="other-candidate",
+            email="other-candidate@example.com",
+            password="password123",
+            role=User.Role.CANDIDATE,
+        )
+        other_profile = CandidateProfile.objects.create(
+            user=other_user,
+            full_name="Other",
+        )
+        education = Education.objects.create(
+            candidate=other_profile,
+            school_name="Other School",
+        )
+        self.client.force_authenticate(self.user)
+
+        response = self.client.patch(
+            reverse("candidate-education-detail", args=[education.id]),
+            {"school_name": "Changed"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_education_partial_update_validates_existing_start_date(self):
+        education = Education.objects.create(
+            candidate=self.profile,
+            school_name="HUST",
+            start_date=date(2024, 1, 1),
+        )
+        self.client.force_authenticate(self.user)
+
+        response = self.client.patch(
+            reverse("candidate-education-detail", args=[education.id]),
+            {"end_date": "2023-01-01"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class CandidateResumeApiTests(APITestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.override = override_settings(MEDIA_ROOT=Path(self.temp_dir.name))
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+
+        self.user = User.objects.create_user(
+            username="candidate-upload",
+            email="candidate-upload@example.com",
+            password="password123",
+            role=User.Role.CANDIDATE,
+        )
+        self.profile = CandidateProfile.objects.create(
+            user=self.user,
+            full_name="Upload User",
+        )
+        self.client.force_authenticate(self.user)
+
+    def test_upload_resume(self):
+        file = SimpleUploadedFile(
+            "cv.pdf",
+            b"%PDF-1.4 test",
+            content_type="application/pdf",
+        )
+
+        response = self.client.post(
+            reverse("candidate-resume-list-create"),
+            {"file": file},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        resume = Resume.objects.get(candidate=self.profile)
+        self.assertTrue(resume.is_primary)
+        self.assertEqual(resume.parse_status, Resume.ParseStatus.PENDING)
+
+    def test_upload_rejects_unsupported_file(self):
+        file = SimpleUploadedFile("cv.exe", b"invalid")
+
+        response = self.client.post(
+            reverse("candidate-resume-list-create"),
+            {"file": file},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Resume.objects.filter(candidate=self.profile).exists())
