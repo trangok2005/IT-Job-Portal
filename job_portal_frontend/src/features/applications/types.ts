@@ -6,6 +6,8 @@ export type ApplicationTransitionStatus =
   components["schemas"]["ApplicationTransitionStatusEnum"];
 export type ApplicationTransitionPayload =
   components["schemas"]["ApplicationTransitionRequest"];
+export type ApplicationCreatePayload =
+  components["schemas"]["ApplicationCreateRequest"];
 export type StatusHistoryDto = components["schemas"]["ApplicationStatusHistory"];
 export type SubmittedResumeDto = components["schemas"]["Resume"];
 export type CandidateApplicationDto = components["schemas"]["CandidateApplicationRead"];

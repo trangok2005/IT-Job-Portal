@@ -25,7 +25,7 @@ import type { RunProfileMutation } from "@/features/candidates/components/profil
 import { cancelResumeImport } from "@/features/candidates/api";
 import { useCandidateResumeImport } from "@/features/candidates/candidate-resume-import-provider";
 import { useCandidateProfile } from "@/features/candidates/hooks";
-import type { CandidateProfileDto, ResumeDto } from "@/features/candidates/types";
+import type { CandidateProfileDto } from "@/features/candidates/types";
 
 const sectionLinks = [
   { href: "#basic-info", label: "Cá nhân", icon: CircleUserRound },
@@ -79,10 +79,10 @@ function LoadingProfile() {
 
 export function CandidateProfilePage() {
   const { profile, setProfile, isLoading, error, setError, refresh } = useCandidateProfile();
-  const { resumeImport, clearImport } = useCandidateResumeImport();
+  const { resumeImport, stalled: resumeImportStalled, clearImport } = useCandidateResumeImport();
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [previewResume, setPreviewResume] = useState<ResumeDto | null>(null);
+  const [cancelTick, setCancelTick] = useState(0);
 
   const previewImport =
     resumeImport?.parse_status === "SUCCESS" ? resumeImport : null;
@@ -160,7 +160,7 @@ export function CandidateProfilePage() {
                 <Link href="/candidate/applications">Đơn ứng tuyển</Link>
               </Button>
               <Button asChild variant="accent" className="flex-1 sm:flex-none">
-                <Link href="/jobs">Tìm việc phù hợp</Link>
+                <Link href="/candidate/jobs/recommended">Tìm việc phù hợp</Link>
               </Button>
             </div>
           </div>
@@ -179,20 +179,13 @@ export function CandidateProfilePage() {
 
       <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         {(() => {
-          const readyResume = profile.resumes.find(
-            (resume) =>
-              resume.parse_status === "SUCCESS" &&
-              resume.applied_at === null &&
-              resume.id !== previewResume?.id,
-          );
-          if (!readyResume && !previewImport) return null;
-          const filename = previewImport?.original_filename ?? readyResume!.original_filename;
+          if (!previewImport) return null;
           return (
             <div className="mb-5 flex flex-col gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-900 sm:flex-row sm:items-center">
               <span className="flex items-center gap-2">
                 <FileText className="size-4 shrink-0 text-primary" />
                 <span>
-                  CV <strong>{filename}</strong> đã phân tích xong. Bấm để điền dữ liệu vào hồ sơ.
+                  CV <strong>{previewImport.original_filename}</strong> đã phân tích xong. Bấm để điền dữ liệu vào hồ sơ.
                 </span>
               </span>
               <span className="flex gap-2 sm:ml-auto">
@@ -200,21 +193,11 @@ export function CandidateProfilePage() {
                   type="button"
                   size="sm"
                   onClick={() => {
-                    if (previewImport) setNotice("Dữ liệu CV đã được điền vào bản nháp bên dưới.");
-                    else setPreviewResume(readyResume!);
+                    setNotice("Dữ liệu CV đã được điền vào bản nháp bên dưới.");
                   }}
                 >
                   <WandSparkles />
                   Điền dữ liệu từ CV
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setPreviewResume(readyResume ?? null)}
-                  disabled={!readyResume}
-                >
-                  Xem
                 </Button>
               </span>
             </div>
@@ -224,7 +207,10 @@ export function CandidateProfilePage() {
         {resumeImport?.parse_status === "PENDING" && (
           <div className="mb-5 flex items-center gap-3 rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-zinc-700">
             <LoaderCircle className="size-4 shrink-0 animate-spin text-accent" />
-            Đang phân tích CV <strong>{resumeImport.original_filename}</strong> bằng AI. Bạn vẫn có thể nhập tay trong lúc chờ.
+            <span>
+              Đang phân tích CV <strong>{resumeImport.original_filename}</strong> bằng AI. Bạn vẫn có thể nhập tay trong lúc chờ.
+              {resumeImportStalled && " Hệ thống đã ngừng tự động kiểm tra — tải lại trang để cập nhật trạng thái."}
+            </span>
           </div>
         )}
         {resumeImport?.parse_status === "FAILED" && (
@@ -283,27 +269,24 @@ export function CandidateProfilePage() {
               runMutation={runMutation}
               onLocalError={(message) => { setNotice(null); setError(message || null); }}
               onNotice={(message) => { setError(null); setNotice(message); }}
-              onUsePreview={setPreviewResume}
-              activePreviewId={previewResume?.id}
-              onDeleted={(resumeId) => {
-                if (previewResume?.id === resumeId) setPreviewResume(null);
-              }}
             />
             <CandidateProfileEditor
-              key={`${profile.updated_at}:${previewResume?.id ?? "profile"}:${previewImport?.id ?? "no-import"}`}
+              key={`${profile.updated_at}:${previewImport?.id ?? "no-import"}:${cancelTick}`}
               profile={profile}
-              previewResume={previewResume}
               previewImport={previewImport}
               onCancel={() => {
                 if (previewImport) {
                   void cancelResumeImport(previewImport.id).then(clearImport);
                 }
-                setPreviewResume(null);
-                setNotice("Đã hủy bản nháp. Dữ liệu hồ sơ trở về như trước, không có gì được lưu.");
+                setCancelTick((tick) => tick + 1);
+                setNotice(
+                  previewImport
+                    ? "Đã hủy bản nháp. Dữ liệu hồ sơ trở về như trước, không có gì được lưu."
+                    : "Đã hủy các thay đổi chưa được lưu.",
+                );
               }}
               onSaved={(saved) => {
                 setProfile(saved);
-                setPreviewResume(null);
                 clearImport();
                 setNotice("Hồ sơ đã được lưu từ bản nháp đã duyệt.");
               }}

@@ -68,6 +68,7 @@ class ApplicationViewSet(
                 request.user,
                 serializer.validated_data["job"],
                 serializer.validated_data.get("cover_letter", ""),
+                serializer.validated_data["attach_current_resume"],
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -124,6 +125,6 @@ class ApplicationViewSet(
             "candidate_embedding_version": None,
             "job_embedding_version": None,
             "computed_at": None,
-            "inputs_are_stale": None,
+            "snapshot_created_at": application.snapshot_created_at,
         }
         return Response(serializers.EmptyApplicationAnalysisSerializer(empty).data)

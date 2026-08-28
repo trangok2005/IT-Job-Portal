@@ -3,6 +3,8 @@
 Mọi thay đổi status / gộp skill / trọng số đều đi qua đây, KHÔNG gọi save()
 tuỳ tiện trong views.
 """
+from uuid import UUID
+
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
@@ -25,6 +27,45 @@ WEIGHT_FIELDS = (
 )
 FUZZY_SKILL_THRESHOLD = 90
 FUZZY_SKILL_MIN_LENGTH = 4
+
+
+def is_savable_skill(skill: Skill) -> bool:
+    """Skill gắn được vào hồ sơ/tin: APPROVED hoặc PENDING (chờ duyệt),
+    đang hoạt động. Một quy tắc duy nhất cho toàn hệ thống."""
+    return (
+        skill.status in (Skill.Status.APPROVED, Skill.Status.PENDING)
+        and skill.is_active
+    )
+
+
+def resolve_savable_skill(value, source: str) -> Skill:
+    """Hàm resolve DUY NHẤT cho mọi luồng trích xuất (UC-01/UC-02).
+
+    Nhận Skill instance | UUID string | tên thô — ngữ cảnh chỉ khác tham số
+    ``source`` (CV_PARSING / JD_PARSING). Tên lạ chưa có trong danh mục sẽ
+    được tạo mới ở trạng thái PENDING chờ Admin duyệt (hậu điều kiện UC-03).
+    Raise ValueError nếu tham chiếu không hợp lệ hoặc skill bị cấm lưu.
+    """
+    if isinstance(value, Skill):
+        skill = value.effective_skill
+    else:
+        raw = str(value).strip()
+        try:
+            skill_id = UUID(raw)
+        except (ValueError, TypeError):
+            skill_id = None
+
+        if skill_id is not None:
+            found = Skill.objects.filter(pk=skill_id).select_related("merged_into").first()
+            if found is None:
+                raise ValueError("Kỹ năng không hợp lệ hoặc chưa được duyệt.")
+            skill = found.effective_skill
+        else:
+            skill = resolve_extracted_skill(raw, source)
+
+    if not is_savable_skill(skill):
+        raise ValueError("Kỹ năng không hợp lệ hoặc chưa được duyệt.")
+    return skill
 
 
 def _invalidate_linked_embeddings(candidate_ids, job_ids) -> None:
@@ -291,13 +332,21 @@ def create_category(name: str) -> SkillCategory:
     return category
 
 
+@transaction.atomic
 def update_weight_config(config: MatchingWeightConfig, user, data: dict) -> MatchingWeightConfig:
+    configs = list(
+        MatchingWeightConfig.objects.select_for_update().order_by("pk")
+    )
+    config = next(item for item in configs if item.pk == config.pk)
     for field in (*WEIGHT_FIELDS, "name", "is_active"):
         if field in data:
             setattr(config, field, data[field])
     config.updated_by = user
     if config.is_active:
         # Chỉ 1 config active tại một thời điểm.
-        MatchingWeightConfig.objects.exclude(pk=config.pk).update(is_active=False)
+        for other in configs:
+            if other.pk != config.pk and other.is_active:
+                other.is_active = False
+                other.save(update_fields=["is_active", "updated_at"])
     config.save()
     return config

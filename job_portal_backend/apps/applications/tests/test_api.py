@@ -15,6 +15,7 @@ from apps.ai_analysis.models import AIAnalysis
 from apps.candidates.models import CandidateProfile, Resume
 from apps.companies.models import Company
 from apps.jobs.models import JobPost
+from apps.skills.models import CandidateSkill, Skill
 
 
 class ApplicationApiTests(APITestCase):
@@ -62,13 +63,23 @@ class ApplicationApiTests(APITestCase):
             original_filename="cv.pdf",
             is_primary=True,
         )
+        self.skill = Skill.objects.create(
+            name="Django",
+            slug="api-application-django",
+            status=Skill.Status.APPROVED,
+        )
+        CandidateSkill.objects.create(candidate=self.profile, skill=self.skill)
 
     def test_candidate_can_apply_and_list_own_applications(self):
         self.client.force_authenticate(self.candidate)
 
         create_response = self.client.post(
             reverse("applications-list"),
-            {"job": str(self.job.id), "cover_letter": "Please consider me"},
+            {
+                "job": str(self.job.id),
+                "cover_letter": "Please consider me",
+                "attach_current_resume": True,
+            },
             format="json",
         )
         list_response = self.client.get(reverse("applications-list"))
@@ -76,8 +87,25 @@ class ApplicationApiTests(APITestCase):
         self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(create_response.data["status"], JobApplication.Status.APPLIED)
         self.assertNotIn("match_score", create_response.data)
+        self.assertEqual(create_response.data["submitted_resume"]["id"], str(self.resume.id))
         self.assertEqual(list_response.status_code, status.HTTP_200_OK)
         self.assertEqual(list_response.data["count"], 1)
+
+    def test_candidate_can_apply_without_a_resume(self):
+        self.resume.delete()
+        self.client.force_authenticate(self.candidate)
+
+        response = self.client.post(
+            reverse("applications-list"),
+            {
+                "job": str(self.job.id),
+                "attach_current_resume": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data["submitted_resume"])
 
     def test_employer_cannot_apply(self):
         self.client.force_authenticate(self.employer)
@@ -179,10 +207,12 @@ class ApplicationApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(set(response.data), {
             "match_score", "semantic_similarity_score", "skill_overlap_score",
-            "experience_score", "education_score", "matched_skills", "missing_skills",
-            "weight_config_id", "weight_config_name", "embedding_model_version",
+            "experience_score", "education_score",
+            "matched_skills", "missing_skills",
+            "weight_config_id", "weight_config_name",
+            "embedding_model_version",
             "candidate_embedding_version", "job_embedding_version", "computed_at",
-            "inputs_are_stale",
+            "snapshot_created_at",
         })
         self.assertIsNone(response.data["match_score"])
         self.assertEqual(response.data["matched_skills"], [])
@@ -196,7 +226,6 @@ class ApplicationApiTests(APITestCase):
         analysis = AIAnalysis.objects.create(
             application=application,
             match_score="82.50",
-            semantic_similarity_score="82.50",
             matched_skills=["Django"],
             missing_skills=["PostgreSQL"],
             embedding_model_version="test-model",
@@ -210,7 +239,7 @@ class ApplicationApiTests(APITestCase):
         self.assertEqual(owner_response.status_code, status.HTTP_200_OK)
         self.assertEqual(owner_response.data["match_score"], "82.50")
         self.assertEqual(owner_response.data["matched_skills"], ["Django"])
-        self.assertFalse(owner_response.data["inputs_are_stale"])
+        self.assertIn("snapshot_created_at", owner_response.data)
 
         self.client.force_authenticate(self.candidate)
         self.assertEqual(self.client.get(url).status_code, status.HTTP_403_FORBIDDEN)

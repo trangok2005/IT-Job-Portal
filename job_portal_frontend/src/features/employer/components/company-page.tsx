@@ -44,7 +44,6 @@ export function CompanyPage() {
       industry: String(data.get("industry") ?? "").trim(),
       company_size: String(data.get("company_size") ?? "").trim(),
       website: String(data.get("website") ?? "").trim(),
-      logo_url: String(data.get("logo_url") ?? "").trim(),
       address: String(data.get("address") ?? "").trim(),
       description: String(data.get("description") ?? "").trim(),
     };
@@ -108,7 +107,6 @@ export function CompanyPage() {
           <CompanyField name="industry" label="Lĩnh vực" value={company.industry} />
           <CompanyField name="company_size" label="Quy mô" value={company.company_size} />
           <CompanyField name="website" label="Website" value={company.website} />
-          <CompanyField name="logo_url" label="Logo URL" value={company.logo_url} />
           <div className="sm:col-span-2"><CompanyField name="address" label="Địa chỉ" value={company.address} /></div>
         </div>
         <label className="block"><span className="text-sm font-medium text-zinc-700">Giới thiệu</span><textarea name="description" defaultValue={company.description} className="mt-1.5 min-h-36 w-full rounded-xl border border-zinc-300 p-3.5 text-sm outline-none focus:border-primary" /></label>

@@ -1,10 +1,8 @@
-from datetime import timedelta
-import tempfile
+﻿from datetime import timedelta
 from unittest.mock import patch
 
 from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -131,9 +129,61 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["results"][0]["id"], str(expected.id))
         self.assertIsNone(response.data["results"][0]["match_score"])
         embed_query.assert_called_once_with("Desired job: Python")
-        self.assertEqual(response["X-Search-Mode"], "FALLBACK_SQL")
+        self.assertEqual(response["X-Search-Mode"], "FALLBACK_FTS")
         self.assertEqual(response["X-Search-Fallback"], "true")
         self.assertTrue(response.data["search_fallback"])
+
+    @patch("apps.jobs.job_search_service.embed_query")
+    def test_keyword_search_uses_fts_when_job_embeddings_are_unavailable(self, embed_query):
+        embed_query.return_value = [1.0] + [0.0] * 767
+        expected = self._job(requirements="Python PostgreSQL")
+
+        response = self.client.get(reverse("jobs-list"), {"keyword": "Python"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["results"][0]["id"], str(expected.id))
+        self.assertEqual(response["X-Search-Mode"], "FALLBACK_FTS")
+        self.assertTrue(response.data["search_fallback"])
+
+    def test_authenticated_search_throttled_after_ten_requests_per_minute(self):
+        self.client.force_authenticate(user=self.candidate)
+        self._job()
+
+        for _ in range(10):
+            response = self.client.get(reverse("jobs-list"), {"keyword": "Django"})
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get(reverse("jobs-list"), {"keyword": "Django"})
+
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    @patch("apps.jobs.jd_parser.parse_job_description")
+    def test_parse_jd_throttled_after_two_uploads_per_minute(self, parse_jd):
+        parse_jd.return_value = (
+            {"title": "Python Developer", "skills": []},
+            {"title": "Python Developer"},
+        )
+        self.client.force_authenticate(user=self.employer)
+
+        first = self.client.post(
+            reverse("jobs-parse-jd"),
+            {"file": SimpleUploadedFile("jd1.pdf", b"%PDF-1.4")},
+            format="multipart",
+        )
+        second = self.client.post(
+            reverse("jobs-parse-jd"),
+            {"file": SimpleUploadedFile("jd2.pdf", b"%PDF-1.4")},
+            format="multipart",
+        )
+        third = self.client.post(
+            reverse("jobs-parse-jd"),
+            {"file": SimpleUploadedFile("jd3.pdf", b"%PDF-1.4")},
+            format="multipart",
+        )
+
+        self.assertEqual(first.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(second.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(third.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
     def test_anon_search_throttled_after_five_requests_per_minute(self):
         self._job()
@@ -164,6 +214,43 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["count"], 1)
         embed_query.assert_not_called()
         self.assertEqual(response["X-Search-Mode"], "FILTER_ONLY")
+
+    def test_five_hard_filters_can_be_combined(self):
+        expected = self._job(
+            workplace_type=JobPost.WorkplaceType.HYBRID,
+            job_type=JobPost.JobType.CONTRACT,
+            experience_level=JobPost.ExperienceLevel.MID_SENIOR,
+            salary_max=40_000_000,
+            location=JobPost.Location.HO_CHI_MINH,
+        )
+        self._job(title="Wrong workplace", workplace_type=JobPost.WorkplaceType.ONSITE)
+        self._job(title="Wrong type", workplace_type=JobPost.WorkplaceType.HYBRID)
+        self._job(
+            title="Wrong experience",
+            workplace_type=JobPost.WorkplaceType.HYBRID,
+            job_type=JobPost.JobType.CONTRACT,
+            experience_level=JobPost.ExperienceLevel.JUNIOR,
+        )
+        self._job(
+            title="Wrong salary",
+            workplace_type=JobPost.WorkplaceType.HYBRID,
+            job_type=JobPost.JobType.CONTRACT,
+            experience_level=JobPost.ExperienceLevel.MID_SENIOR,
+            salary_max=20_000_000,
+            location=JobPost.Location.HO_CHI_MINH,
+        )
+
+        response = self.client.get(reverse("jobs-list"), {
+            "workplace_type": JobPost.WorkplaceType.HYBRID,
+            "job_type": JobPost.JobType.CONTRACT,
+            "experience_level": JobPost.ExperienceLevel.MID_SENIOR,
+            "salary_min": 30_000_000,
+            "location": JobPost.Location.HO_CHI_MINH,
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(expected.id))
 
     def test_recommended_jobs_rank_current_embeddings_and_exclude_ineligible(self):
         profile = self.candidate.candidate_profile
@@ -332,18 +419,6 @@ class JobApiTests(APITestCase):
 
         self.assertEqual(public_response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertEqual(owner_response.status_code, status.HTTP_200_OK)
-        draft.refresh_from_db()
-        self.assertEqual(draft.view_count, 0)
-
-    def test_public_retrieve_increments_view_count(self):
-        job = self._job()
-
-        response = self.client.get(reverse("jobs-detail", args=[job.id]))
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["view_count"], 1)
-        job.refresh_from_db()
-        self.assertEqual(job.view_count, 1)
 
     def test_approved_employer_can_create_draft(self):
         self.client.force_authenticate(self.employer)
@@ -353,7 +428,7 @@ class JobApiTests(APITestCase):
             {
                 "title": "Python Developer",
                 "description": "Build APIs",
-                "required_skills": [str(self.skill.id)],
+                "required_skills": [{"skill": str(self.skill.id)}],
                 "expires_at": (timezone.now() + timedelta(days=10)).isoformat(),
             },
             format="json",
@@ -364,6 +439,59 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["company_name"], self.company.name)
         self.assertEqual(len(response.data["skills"]), 1)
 
+    def test_create_job_accepts_pending_skill_with_min_years(self):
+        pending = Skill.objects.create(
+            name="PostgresX", slug="job-postgresx", status=Skill.Status.PENDING
+        )
+        self.client.force_authenticate(self.employer)
+
+        response = self.client.post(
+            reverse("jobs-list"),
+            {
+                "title": "Python Developer",
+                "description": "Build APIs",
+                "required_skills": [
+                    {"skill": str(self.skill.id), "min_years": "3.0"},
+                    {"skill": str(pending.id), "is_required": False},
+                ],
+                "expires_at": (timezone.now() + timedelta(days=10)).isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        job_skill_by_name = {
+            item["skill_name"]: item for item in response.data["skills"]
+        }
+        self.assertEqual(job_skill_by_name[self.skill.name]["min_years"], "3.0")
+        self.assertTrue(job_skill_by_name[self.skill.name]["is_required"])
+        self.assertIsNone(job_skill_by_name[pending.name]["min_years"])
+        self.assertFalse(job_skill_by_name[pending.name]["is_required"])
+
+    def test_create_job_with_raw_unknown_skill_creates_pending(self):
+        self.client.force_authenticate(self.employer)
+
+        response = self.client.post(
+            reverse("jobs-list"),
+            {
+                "title": "Python Developer",
+                "description": "Build APIs",
+                "required_skills": [
+                    {"skill": str(self.skill.id)},
+                    {"skill": "Thần chú AI Cấp 9"},
+                ],
+                "expires_at": (timezone.now() + timedelta(days=10)).isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        pending = Skill.objects.get(name="Thần chú AI Cấp 9")
+        self.assertEqual(pending.status, Skill.Status.PENDING)
+        self.assertEqual(pending.source, Skill.Source.JD_PARSING)
+        job_skill_names = {item["skill_name"] for item in response.data["skills"]}
+        self.assertIn(pending.name, job_skill_names)
+
     @patch("apps.jobs.services._enqueue_embedding")
     def test_approved_employer_can_publish_immediately(self, enqueue_embedding):
         self.client.force_authenticate(self.employer)
@@ -373,7 +501,7 @@ class JobApiTests(APITestCase):
             {
                 "title": "Python Developer",
                 "description": "Build APIs",
-                "required_skills": [str(self.skill.id)],
+                "required_skills": [{"skill": str(self.skill.id)}],
                 "expires_at": (timezone.now() + timedelta(days=10)).isoformat(),
                 "publish_immediately": True,
             },
@@ -384,26 +512,6 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["status"], JobPost.Status.ACTIVE)
         self.assertIsNotNone(response.data["published_at"])
         enqueue_embedding.assert_called_once()
-
-    def test_create_draft_can_store_original_jd_file(self):
-        self.client.force_authenticate(self.employer)
-        with tempfile.TemporaryDirectory() as media_root:
-            with override_settings(MEDIA_ROOT=media_root):
-                response = self.client.post(
-                    reverse("jobs-list"),
-                    {
-                        "title": "Python Developer",
-                        "description": "Build APIs",
-                        "raw_jd_file": SimpleUploadedFile(
-                            "python-jd.pdf", b"%PDF-1.4"
-                        ),
-                    },
-                    format="multipart",
-                )
-
-                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-                job = JobPost.objects.get(pk=response.data["id"])
-                self.assertTrue(job.raw_jd_file.name.endswith("python-jd.pdf"))
 
     @patch("apps.jobs.jd_parser.parse_job_description")
     def test_approved_employer_can_parse_jd_without_creating_draft(self, parse_jd):
@@ -474,9 +582,47 @@ class JobApiTests(APITestCase):
         self.assertEqual(my_jobs_response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_invalid_filter_returns_400(self):
-        response = self.client.get(reverse("jobs-list"), {"salary_min": "invalid"})
+        invalid_filters = (
+            {"salary_min": "invalid"},
+            {"workplace_type": "FLEXIBLE"},
+            {"job_type": "REMOTE"},
+            {"experience_level": "SENIOR"},
+            {"location": "Hải Phòng"},
+        )
+        for params in invalid_filters:
+            with self.subTest(params=params):
+                response = self.client.get(reverse("jobs-list"), params)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    def test_search_keyword_e4_validation(self):
+        # UC-03 E4: từ khóa chứa ký tự đặc biệt hoặc quá dài -> 400.
+        invalid_keywords = (
+            "<script>alert(1)</script>",
+            "python; DROP TABLE jobs",
+            "job@#$%",
+            "a" * 101,
+            # Chuỗi vô nghĩa toàn ký tự kỹ thuật cũng bị loại.
+            "+++",
+            "---",
+            "###...",
+            "&/()'",
+        )
+        for keyword in invalid_keywords:
+            cache.clear()
+            with self.subTest(keyword=keyword):
+                response = self.client.get(
+                    reverse("jobs-list"), {"keyword": keyword}
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn("keyword", response.data["errors"])
+
+        # Ký tự kỹ thuật hợp lệ của tên skill vẫn được nhận (C++, C#, .NET).
+        valid_keywords = ("C++ developer", "C#", "ASP.NET", "Node.js", "HTML/CSS")
+        for keyword in valid_keywords:
+            cache.clear()
+            with self.subTest(keyword=keyword):
+                response = self.client.get(reverse("jobs-list"), {"keyword": keyword})
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_pending_skill_cannot_be_added_to_job(self):
         pending_skill = Skill.objects.create(

@@ -2,14 +2,14 @@
 jobs/models.py
 UC-02 "Đăng tin tuyển dụng" + UC-03 "Tìm kiếm công việc".
 JobPost giữ embedding (pgvector) sinh từ JD, dùng để so khớp semantic với
-CandidateProfile.embedding. JobSkill là bảng trung gian có trọng số, phục
-vụ Business Rule Ranking (kết hợp semantic similarity + skill overlap).
+CandidateProfile.embedding. JobSkill là bảng trung gian cho các kỹ năng
+yêu cầu của tin tuyển dụng.
 """
 from django.conf import settings
 from django.db import models
 from pgvector.django import VectorField, HnswIndex
 
-from apps.core.models import BaseModel
+from apps.core.models import BaseModel, TimeStampedModel, UUIDModel
 from integrations.gemini.embeddings import (
     EMBEDDING_DIMENSIONS,
     current_job_embedding_signature,
@@ -28,17 +28,23 @@ class JobPost(BaseModel):
     class JobType(models.TextChoices):
         FULL_TIME = "FULL_TIME", "Toàn thời gian"
         PART_TIME = "PART_TIME", "Bán thời gian"
-        INTERNSHIP = "INTERNSHIP", "Thực tập"
-        CONTRACT = "CONTRACT", "Hợp đồng"
-        REMOTE = "REMOTE", "Từ xa"
+        CONTRACT = "CONTRACT", "Hợp đồng / Freelance"
+
+    class WorkplaceType(models.TextChoices):
+        ONSITE = "ONSITE", "Tại văn phòng"
+        HYBRID = "HYBRID", "Linh hoạt (Hybrid)"
+        REMOTE = "REMOTE", "Từ xa (Remote)"
 
     class ExperienceLevel(models.TextChoices):
-        INTERN = "INTERN", "Thực tập sinh"
-        FRESHER = "FRESHER", "Mới tốt nghiệp"
-        JUNIOR = "JUNIOR", "Junior"
-        MIDDLE = "MIDDLE", "Middle"
-        SENIOR = "SENIOR", "Senior"
-        LEAD = "LEAD", "Lead / Manager"
+        ENTRY = "ENTRY", "Mới đi làm (Intern / Fresher)"
+        JUNIOR = "JUNIOR", "Junior (1 - 2 năm)"
+        MID_SENIOR = "MID_SENIOR", "Middle - Senior (3+ năm)"
+        LEAD = "LEAD", "Trưởng nhóm / Quản lý"
+
+    class Location(models.TextChoices):
+        HO_CHI_MINH = "Hồ Chí Minh", "Hồ Chí Minh"
+        HANOI = "Hà Nội", "Hà Nội"
+        DA_NANG = "Đà Nẵng", "Đà Nẵng"
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="job_posts")
     created_by = models.ForeignKey(
@@ -51,7 +57,12 @@ class JobPost(BaseModel):
     requirements = models.TextField(blank=True)
     benefits = models.TextField(blank=True)
 
-    location = models.CharField(max_length=255, blank=True)
+    location = models.CharField(max_length=20, choices=Location.choices, blank=True)
+    workplace_type = models.CharField(
+        max_length=20,
+        choices=WorkplaceType.choices,
+        default=WorkplaceType.ONSITE,
+    )
     job_type = models.CharField(max_length=20, choices=JobType.choices, default=JobType.FULL_TIME)
     experience_level = models.CharField(max_length=20, choices=ExperienceLevel.choices, blank=True)
     salary_min = models.PositiveIntegerField(null=True, blank=True)
@@ -62,10 +73,6 @@ class JobPost(BaseModel):
     published_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
 
-    # --- Nguồn JD gốc + kết quả AI parse (giống Resume ở candidates app) ---
-    raw_jd_file = models.FileField(upload_to="job_descriptions/%Y/%m/", null=True, blank=True)
-    raw_extracted_json = models.JSONField(null=True, blank=True)
-
     required_skills = models.ManyToManyField(Skill, through="JobSkill", related_name="job_posts")
 
     # --- Embedding cho semantic search / matching ---
@@ -75,13 +82,15 @@ class JobPost(BaseModel):
     embedding_updated_at = models.DateTimeField(null=True, blank=True)
     embedding_signature = models.CharField(max_length=255, blank=True)
 
-    view_count = models.PositiveIntegerField(default=0)
-
     class Meta:
         db_table = "job_posts"
         indexes = [
             models.Index(fields=["status"]),
             models.Index(fields=["job_type"]),
+            models.Index(fields=["workplace_type"], name="job_workplace_idx"),
+            models.Index(fields=["experience_level"], name="job_experience_idx"),
+            models.Index(fields=["location"], name="job_location_idx"),
+            models.Index(fields=["salary_max"], name="job_salary_max_idx"),
             HnswIndex(
                 name="job_embedding_hnsw",
                 fields=["embedding"],
@@ -108,7 +117,7 @@ class JobPost(BaseModel):
         )
 
 
-class JDImport(BaseModel):
+class JDImport(UUIDModel, TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "PENDING", "Đang chờ"
         PROCESSING = "PROCESSING", "Đang phân tích"
@@ -126,21 +135,14 @@ class JDImport(BaseModel):
     )
     file = models.FileField(upload_to="job_description_imports/%Y/%m/")
     original_filename = models.CharField(max_length=255)
-    file_size_bytes = models.PositiveBigIntegerField(null=True, blank=True)
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDING
     )
-    raw_extracted_json = models.JSONField(null=True, blank=True)
+    # Giới hạn số lần Gemini parse lại bản ghi này (chống retry vô hạn của broker).
+    parse_attempts = models.PositiveSmallIntegerField(default=0)
     parsed_data = models.JSONField(null=True, blank=True)
     error_message = models.TextField(blank=True)
     expires_at = models.DateTimeField()
-    consumed_job = models.OneToOneField(
-        JobPost,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="source_jd_import",
-    )
 
     class Meta:
         db_table = "jd_imports"
@@ -152,14 +154,12 @@ class JDImport(BaseModel):
         ]
 
 
-class JobSkill(BaseModel):
-    """Trọng số từng skill trong 1 tin tuyển dụng, dùng cho skill-overlap
-    score ở Business Rule Ranking (kết hợp với semantic similarity)."""
+class JobSkill(UUIDModel, TimeStampedModel):
+    """Kỹ năng bắt buộc hoặc ưu tiên của một tin tuyển dụng."""
 
     job = models.ForeignKey(JobPost, on_delete=models.CASCADE, related_name="job_skills")
     skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name="job_links")
     is_required = models.BooleanField(default=True, help_text="False = 'nice to have'")
-    weight = models.DecimalField(max_digits=3, decimal_places=2, default=1.00)
     min_years = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
 
     class Meta:

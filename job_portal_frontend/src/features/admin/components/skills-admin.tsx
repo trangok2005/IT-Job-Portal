@@ -34,6 +34,7 @@ const fieldClass =
 export function SkillsAdmin() {
   const [tab, setTab] = useState<Tab>("taxonomy");
   const [skills, setSkills] = useState<AdminSkillDto[]>([]);
+  const [approvedSkills, setApprovedSkills] = useState<AdminSkillDto[]>([]);
   const [categories, setCategories] = useState<SkillCategoryDto[]>([]);
   const [configs, setConfigs] = useState<WeightConfigDto[]>([]);
   const [status, setStatus] = useState<AdminSkillQuery["status"] | "">("");
@@ -45,11 +46,13 @@ export function SkillsAdmin() {
   useEffect(() => {
     Promise.all([
       getAdminSkills(),
+      getAdminSkills({ status: "APPROVED" }),
       getSkillCategories(),
       getWeightConfigs(),
     ])
-      .then(([skillResponse, categoryResponse, configResponse]) => {
+      .then(([skillResponse, approvedResponse, categoryResponse, configResponse]) => {
         setSkills(skillResponse.results);
+        setApprovedSkills(approvedResponse.results);
         setCategories(categoryResponse.results);
         setConfigs(configResponse.results);
       })
@@ -62,6 +65,11 @@ export function SkillsAdmin() {
   const refreshSkills = async (nextStatus = status) => {
     const response = await getAdminSkills({ status: nextStatus || undefined });
     setSkills(response.results);
+  };
+
+  const refreshApprovedSkills = async () => {
+    const response = await getAdminSkills({ status: "APPROVED" });
+    setApprovedSkills(response.results);
   };
 
   const refreshConfigs = async () => {
@@ -129,7 +137,7 @@ export function SkillsAdmin() {
     await run("merge", "Đã gộp skill trùng.", async () => {
       await mergeSkills({ source_ids: [sourceId], target_id: targetId });
       form.reset();
-      await refreshSkills();
+      await Promise.all([refreshSkills(), refreshApprovedSkills()]);
     });
   };
 
@@ -209,7 +217,7 @@ export function SkillsAdmin() {
             <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto] sm:items-center">
               <select name="source_id" className={fieldClass} required><option value="">Skill nguồn</option>{skills.filter((skill) => skill.status !== "MERGED").map((skill) => <option key={skill.id} value={skill.id}>{skill.name}</option>)}</select>
               <span className="hidden text-zinc-400 sm:block">→</span>
-              <select name="target_id" className={fieldClass} required><option value="">Skill đích</option>{skills.filter((skill) => skill.status === "APPROVED").map((skill) => <option key={skill.id} value={skill.id}>{skill.name}</option>)}</select>
+              <select name="target_id" className={fieldClass} required><option value="">Skill đích</option>{approvedSkills.map((skill) => <option key={skill.id} value={skill.id}>{skill.name}</option>)}</select>
               <Button variant="outline" disabled={busy === "merge"}>Merge</Button>
             </div>
           </form>
@@ -225,7 +233,7 @@ export function SkillsAdmin() {
                 <div key={skill.id} className="flex flex-col gap-3 border-b border-zinc-100 p-4 last:border-0 sm:flex-row sm:items-center">
                   <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-zinc-900">{skill.name}</p><Badge variant={skill.status === "APPROVED" ? "success" : "outline"}>{skill.status}</Badge>{!skill.is_active && <Badge variant="outline">Ẩn</Badge>}</div><p className="mt-1 text-xs text-zinc-500">{skill.category_name || "Chưa phân nhóm"} · {skill.source}{skill.aliases.length > 0 && ` · Alias: ${skill.aliases.map((alias) => alias.alias_text).join(", ")}`}</p>{skill.merged_into_name && <p className="mt-1 text-xs text-amber-700">Đã gộp vào {skill.merged_into_name}</p>}</div>
                   <div className="flex flex-wrap gap-2">
-                    {skill.status === "PENDING" && <><Button size="sm" variant="outline" disabled={busy === skill.id} onClick={() => void run(skill.id, "Đã từ chối skill.", async () => { await reviewSkill(skill.id, "reject"); await refreshSkills(); })}>Từ chối</Button><Button size="sm" disabled={busy === skill.id} onClick={() => void run(skill.id, "Đã duyệt skill.", async () => { await reviewSkill(skill.id, "approve"); await refreshSkills(); })}>Duyệt</Button></>}
+                    {skill.status === "PENDING" && <><Button size="sm" variant="outline" disabled={busy === skill.id} onClick={() => void run(skill.id, "Đã từ chối skill.", async () => { await reviewSkill(skill.id, "reject"); await refreshSkills(); })}>Từ chối</Button><Button size="sm" disabled={busy === skill.id} onClick={() => void run(skill.id, "Đã duyệt skill.", async () => { await reviewSkill(skill.id, "approve"); await Promise.all([refreshSkills(), refreshApprovedSkills()]); })}>Duyệt</Button></>}
                     {skill.status === "APPROVED" && <Button size="sm" variant="outline" disabled={busy === skill.id} onClick={() => void run(skill.id, skill.is_active ? "Đã ẩn skill." : "Đã kích hoạt skill.", async () => { await updateAdminSkill(skill.id, { is_active: !skill.is_active }); await refreshSkills(); })}>{skill.is_active ? "Ẩn" : "Kích hoạt"}</Button>}
                   </div>
                 </div>

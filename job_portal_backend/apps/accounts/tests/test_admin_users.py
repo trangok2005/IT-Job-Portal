@@ -55,6 +55,14 @@ class AdminUserApiTests(APITestCase):
             response.data["results"][0]["id"], str(self.inactive_candidate.id)
         )
 
+    def test_admin_user_list_without_active_filter_returns_all_users(self):
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.get(reverse("admin-users"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 5)
+
     def test_admin_can_lock_and_unlock_non_admin_user(self):
         self.client.force_authenticate(self.admin)
 

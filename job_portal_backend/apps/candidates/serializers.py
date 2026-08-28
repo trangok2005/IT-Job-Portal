@@ -61,11 +61,11 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
         model = CandidateSkill
         fields = [
             "id", "skill", "skill_name", "skill_status", "level",
-            "years_of_experience", "source", "ai_confidence",
+            "years_of_experience", "source",
             "created_at", "updated_at",
         ]
         read_only_fields = [
-            "id", "skill_name", "skill_status", "source", "ai_confidence",
+            "id", "skill_name", "skill_status", "source",
             "created_at", "updated_at",
         ]
 
@@ -146,14 +146,12 @@ class ResumeSerializer(serializers.ModelSerializer):
         model = Resume
         fields = [
             "id", "original_filename", "file_size_bytes",
-            "parse_status", "parse_error_message", "parsed_data",
-            "applied_at", "applied_profile_version", "is_primary", "file_url",
+            "parse_status", "parsed_data", "is_primary", "file_url",
             "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "original_filename", "file_size_bytes",
-            "parse_status", "parse_error_message", "parsed_data",
-            "applied_at", "applied_profile_version", "is_primary", "file_url",
+            "parse_status", "parsed_data", "is_primary", "file_url",
             "created_at", "updated_at",
         ]
 
@@ -165,26 +163,6 @@ class ResumeSerializer(serializers.ModelSerializer):
         if request is not None:
             return request.build_absolute_uri(url)
         return url
-
-
-class ResumeUploadSerializer(serializers.Serializer):
-    file = serializers.FileField(write_only=True)
-    is_primary = serializers.BooleanField(required=False, default=False)
-
-    def validate_file(self, file):
-        """Chỉ nhận định dạng CV hỗ trợ và chặn file vượt giới hạn cấu hình."""
-        suffix = Path(file.name).suffix.lower()
-        allowed_extensions = {".pdf", ".doc", ".docx"}
-        if suffix not in allowed_extensions:
-            raise serializers.ValidationError("CV chỉ hỗ trợ file PDF, DOC hoặc DOCX.")
-
-        max_size = settings.MAX_RESUME_SIZE_BYTES
-        if file.size > max_size:
-            max_size_mb = max_size // (1024 * 1024)
-            raise serializers.ValidationError(
-                f"Dung lượng CV không được vượt quá {max_size_mb} MB."
-            )
-        return file
 
 
 class CandidateProfileReadSerializer(serializers.ModelSerializer):

@@ -89,7 +89,7 @@ def get_admin_dashboard():
     return {
         **user_counts,
         "pending_companies": Company.objects.filter(
-            status=Company.Status.PENDING, is_active=True
+            status=Company.Status.PENDING
         ).count(),
         "active_jobs": JobPost.objects.filter(
             status=JobPost.Status.ACTIVE,

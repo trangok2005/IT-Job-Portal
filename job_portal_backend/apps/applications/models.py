@@ -10,10 +10,12 @@ hired/rejected là trạng thái cuối (terminal), không cho chuyển tiếp
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from pgvector.django import VectorField
 
-from apps.core.models import BaseModel
+from apps.core.models import BaseModel, UUIDModel
 from apps.candidates.models import CandidateProfile, Resume
 from apps.jobs.models import JobPost
+from integrations.gemini.embeddings import EMBEDDING_DIMENSIONS
 
 
 class JobApplication(BaseModel):
@@ -36,8 +38,8 @@ class JobApplication(BaseModel):
 
     job = models.ForeignKey(JobPost, on_delete=models.CASCADE, related_name="applications")
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="applications")
-    # Snapshot CV dùng để ứng tuyển tại thời điểm nộp — nếu ứng viên sửa/xóa
-    # CV sau đó, hồ sơ ứng tuyển này vẫn tham chiếu đúng bản đã nộp.
+    # CV chính tại thời điểm nộp nếu candidate chọn đính kèm. RESTRICT giữ
+    # file đã nộp tồn tại dù candidate đổi CV chính sau đó.
     resume = models.ForeignKey(
         Resume,
         on_delete=models.RESTRICT,
@@ -47,7 +49,19 @@ class JobApplication(BaseModel):
 
     cover_letter = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.APPLIED)
-    status_updated_at = models.DateTimeField(auto_now_add=True)
+
+    # Immutable scoring inputs captured atomically with the application. Queue
+    # payloads contain only the application ID; workers read these snapshots.
+    profile_snapshot = models.JSONField(null=True, blank=True, editable=False)
+    job_snapshot = models.JSONField(null=True, blank=True, editable=False)
+    matching_weight_snapshot = models.JSONField(null=True, blank=True, editable=False)
+    candidate_embedding_snapshot = VectorField(
+        dimensions=EMBEDDING_DIMENSIONS, null=True, blank=True, editable=False,
+    )
+    job_embedding_snapshot = VectorField(
+        dimensions=EMBEDDING_DIMENSIONS, null=True, blank=True, editable=False,
+    )
+    snapshot_created_at = models.DateTimeField(null=True, blank=True, editable=False)
 
     class Meta:
         db_table = "job_applications"
@@ -82,7 +96,7 @@ class JobApplication(BaseModel):
                 )
 
 
-class ApplicationStatusHistory(BaseModel):
+class ApplicationStatusHistory(UUIDModel):
     """Audit trail cho mỗi lần đổi trạng thái — phục vụ UC "Theo dõi trạng
     thái ứng tuyển" (ứng viên xem lịch sử) và truy vết cho Admin/NTD.
     """
@@ -95,6 +109,7 @@ class ApplicationStatusHistory(BaseModel):
         related_name="application_status_changes",
     )
     note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "application_status_history"

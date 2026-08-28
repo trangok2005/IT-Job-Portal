@@ -63,10 +63,10 @@ export function SkillsSection({
         id: crypto.randomUUID(),
         skill: option.id,
         skill_name: option.name,
+        skill_status: (option as { status?: string }).status ?? "APPROVED",
         level: "",
         years_of_experience: null,
         source: "AI_EXTRACTED",
-        ai_confidence: null,
         created_at: now,
         updated_at: now,
       }));
@@ -74,10 +74,10 @@ export function SkillsSection({
       id: crypto.randomUUID(),
       skill: name.trim(),
       skill_name: name.trim(),
+      skill_status: "PENDING",
       level: "",
       years_of_experience: null,
       source: "AI_EXTRACTED",
-      ai_confidence: null,
       created_at: now,
       updated_at: now,
     }));
@@ -134,8 +134,10 @@ export function SkillsSection({
       id: editing?.id ?? crypto.randomUUID(),
       ...payload,
       skill_name: option?.name ?? editing?.skill_name ?? "",
+      skill_status: (option as { status?: string } | undefined)?.status
+        ?? editing?.skill_status
+        ?? "APPROVED",
       source: editing?.source ?? "MANUAL",
-      ai_confidence: editing?.ai_confidence ?? null,
       created_at: editing?.created_at ?? now,
       updated_at: now,
     };

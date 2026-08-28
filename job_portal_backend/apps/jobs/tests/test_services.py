@@ -38,7 +38,7 @@ class JobServiceTests(TestCase):
             self.employer,
             self.company,
             data,
-            required_skills=[self.skill],
+            required_skills=[{"skill": self.skill}],
         )
 
     def test_create_job_always_creates_draft(self):
@@ -55,7 +55,6 @@ class JobServiceTests(TestCase):
             file=SimpleUploadedFile("job.pdf", b"%PDF-1.4"),
             original_filename="job.pdf",
             status=JDImport.Status.SUCCESS,
-            raw_extracted_json={"title": "Backend Developer"},
             parsed_data={"title": "Backend Developer"},
             expires_at=timezone.now() + timedelta(hours=1),
         )
@@ -69,9 +68,8 @@ class JobServiceTests(TestCase):
 
         jd_import.refresh_from_db()
         self.assertEqual(jd_import.status, JDImport.Status.CONSUMED)
-        self.assertEqual(jd_import.consumed_job, job)
-        self.assertEqual(job.raw_extracted_json, jd_import.raw_extracted_json)
-        self.assertEqual(job.raw_jd_file.name, jd_import.file.name)
+        self.assertTrue(JobPost.objects.filter(pk=job.pk).exists())
+        self.assertTrue(jd_import.file.name)
 
     def test_cancel_jd_import_deletes_unconsumed_import(self):
         jd_import = JDImport.objects.create(
@@ -117,20 +115,27 @@ class JobServiceTests(TestCase):
         with self.assertRaisesMessage(ValueError, "tin nháp"):
             services.publish_job(job)
 
-    def test_active_update_bumps_version_and_enqueues_embedding(self):
+    def test_draft_update_bumps_version_and_enqueues_embedding(self):
         job = self._create_job()
-        services.publish_job(job)
 
         with patch("django_q.tasks.async_task") as async_task:
             with self.captureOnCommitCallbacks(execute=True):
                 services.update_job(job, {"description": "Updated APIs"})
 
         self.assertEqual(job.content_version, 2)
-        async_task.assert_called_once_with(
-            "apps.jobs.tasks.generate_job_embedding",
-            str(job.pk),
-            2,
-        )
+        # Tin DRAFT không tốn quota Gemini — chỉ ACTIVE mới sinh embedding.
+        async_task.assert_not_called()
+
+    def test_non_draft_job_cannot_be_updated(self):
+        job = self._create_job()
+        services.publish_job(job)
+
+        with self.assertRaisesMessage(ValueError, "tin nháp"):
+            services.update_job(job, {"description": "Sneaky edit"})
+
+        job.refresh_from_db()
+        self.assertEqual(job.description, "Build APIs")
+        self.assertEqual(job.content_version, 1)
 
     def test_expire_jobs_marks_only_past_active_jobs(self):
         expired = JobPost.objects.create(

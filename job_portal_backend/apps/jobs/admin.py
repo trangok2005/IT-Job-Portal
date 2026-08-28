@@ -10,8 +10,13 @@ class JobSkillInline(admin.TabularInline):
 
 @admin.register(JobPost)
 class JobPostAdmin(admin.ModelAdmin):
-    list_display = ("title", "company", "status", "job_type", "experience_level", "published_at")
-    list_filter = ("status", "job_type", "experience_level")
+    list_display = (
+        "title", "company", "status", "workplace_type", "job_type",
+        "experience_level", "location", "published_at",
+    )
+    list_filter = (
+        "status", "workplace_type", "job_type", "experience_level", "location",
+    )
     search_fields = ("title", "company__name")
     inlines = [JobSkillInline]
     exclude = ("embedding",)

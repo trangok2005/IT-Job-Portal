@@ -68,7 +68,7 @@ export function EmployerJobs() {
               <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold text-zinc-900">{job.title}</h2><Badge variant={job.status === "ACTIVE" ? "success" : "outline"}>{job.status}</Badge></div><p className="mt-1 text-sm text-zinc-500">{job.location || "Không giới hạn địa điểm"} · {job.application_count} ứng viên</p></div>
               <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm" variant="outline"><Link href={`/employer/jobs/${job.id}/applications`}><UsersRound />Ứng viên</Link></Button>
-                {job.status !== "CLOSED" && job.status !== "EXPIRED" && <Button asChild size="sm" variant="ghost"><Link href={`/employer/jobs/${job.id}/edit`}>Sửa</Link></Button>}
+                {job.status === "DRAFT" && <Button asChild size="sm" variant="ghost"><Link href={`/employer/jobs/${job.id}/edit`}>Sửa</Link></Button>}
                 {job.status === "DRAFT" && companyStatus === "APPROVED" && <Button size="sm" disabled={busyId === job.id} onClick={() => void act(job, "publish")}>{busyId === job.id ? "Đang đăng..." : "Đăng tin"}</Button>}
                 {job.status === "ACTIVE" && <Button size="sm" variant="outline" disabled={busyId === job.id} onClick={() => void act(job, "close")}>{busyId === job.id ? "Đang đóng..." : "Đóng tin"}</Button>}
               </div>

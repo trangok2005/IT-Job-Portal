@@ -6,13 +6,19 @@ export type EducationUpdatePayload = components["schemas"]["PatchedEducationRequ
 export type ExperienceDto = components["schemas"]["Experience"];
 export type ExperiencePayload = components["schemas"]["ExperienceRequest"];
 export type ExperienceUpdatePayload = components["schemas"]["PatchedExperienceRequest"];
-export type CandidateSkillDto = components["schemas"]["CandidateSkill"] & {
+export type CandidateSkillDto = Omit<
+  components["schemas"]["CandidateSkill"],
+  "ai_confidence"
+> & {
   skill_status?: string;
 };
 export type CandidateSkillPayload = components["schemas"]["CandidateSkillRequest"];
 export type CandidateSkillUpdatePayload =
   components["schemas"]["PatchedCandidateSkillRequest"];
-export type ResumeDto = components["schemas"]["Resume"];
+export type ResumeDto = Omit<
+  components["schemas"]["Resume"],
+  "parse_error_message" | "applied_at" | "applied_profile_version"
+>;
 export type CandidateProfileDto = components["schemas"]["CandidateProfileRead"];
 export type ProfileUpdatePayload =
   components["schemas"]["PatchedCandidateProfileUpdateRequest"];

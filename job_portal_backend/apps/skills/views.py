@@ -7,6 +7,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view
 
 from apps.skills import perms, selectors, serializers, services
@@ -172,13 +173,18 @@ class MatchingWeightConfigViewSet(
             )
         return Response(serializers.MatchingWeightConfigSerializer(config).data)
 
+    @transaction.atomic
     def perform_create(self, serializer):
-        config = serializer.save()
-        if config.is_active:
-            MatchingWeightConfig.objects.exclude(pk=config.pk).update(is_active=False)
-        config.updated_by = self.request.user
-        config.save(update_fields=["updated_by"])
-        return config
+        configs = list(
+            MatchingWeightConfig.objects.select_for_update().order_by("pk")
+        )
+        will_be_active = serializer.validated_data.get("is_active", False)
+        if will_be_active:
+            for other in configs:
+                if other.is_active:
+                    other.is_active = False
+                    other.save(update_fields=["is_active", "updated_at"])
+        return serializer.save(updated_by=self.request.user)
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)

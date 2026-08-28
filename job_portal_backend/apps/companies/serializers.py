@@ -11,7 +11,7 @@ class CompanyReadSerializer(serializers.ModelSerializer):
         model = Company
         fields = [
             "id", "name", "tax_code", "description", "website",
-            "logo_url", "address", "company_size", "industry",
+            "address", "company_size", "industry",
             "status", "rejection_reason", "reviewed_at",
             "owner_email", "created_at", "updated_at",
         ]
@@ -25,7 +25,7 @@ class CompanyWriteSerializer(serializers.ModelSerializer):
         model = Company
         fields = [
             "name", "tax_code", "description", "website",
-            "logo_url", "address", "company_size", "industry",
+            "address", "company_size", "industry",
         ]
 
     def validate_name(self, value):

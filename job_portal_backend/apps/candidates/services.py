@@ -8,6 +8,8 @@ from django.utils import timezone
 
 from apps.candidates.models import CandidateProfile, Education, Experience, Resume, ResumeImport
 from apps.skills.models import CandidateSkill, Skill
+from apps.skills.services import is_savable_skill as _is_savable_skill
+from apps.skills.services import resolve_savable_skill
 
 
 def _enqueue_task(task_name: str, *args) -> None:
@@ -21,43 +23,10 @@ def _enqueue_task(task_name: str, *args) -> None:
     transaction.on_commit(enqueue)
 
 
-def _is_savable_skill(skill: Skill) -> bool:
-    """Skill lưu được vào hồ sơ: APPROVED (vào vector ngay) hoặc PENDING
-    (chờ admin duyệt; lưu + hiển thị FE bình thường nhưng chưa vào text)."""
-    return (
-        skill.status in (Skill.Status.APPROVED, Skill.Status.PENDING)
-        and skill.is_active
-    )
-
-
 def _resolve_candidate_skill(value) -> Skill:
-    """Resolve an approved skill id or normalize a new raw name via taxonomy."""
-    from uuid import UUID
-
-    from apps.skills.services import resolve_extracted_skill
-
-    if isinstance(value, Skill):
-        skill = value.effective_skill
-        if _is_savable_skill(skill):
-            return skill
-        raise ValueError("Skill không hợp lệ hoặc chưa được duyệt.")
-
-    raw = value.strip()
-    try:
-        skill_id = UUID(raw)
-    except (ValueError, TypeError):
-        skill_id = None
-
-    if skill_id is not None:
-        skill = Skill.objects.filter(pk=skill_id).select_related("merged_into").first()
-        if skill is None:
-            raise ValueError("Skill không hợp lệ hoặc chưa được duyệt.")
-        effective = skill.effective_skill
-        if _is_savable_skill(effective):
-            return effective
-        raise ValueError("Skill không hợp lệ hoặc chưa được duyệt.")
-
-    return resolve_extracted_skill(raw, Skill.Source.CV_PARSING)
+    """Resolve skill cho hồ sơ ứng viên — uỷ quyền cho hàm chung của app
+    skills, cố định nguồn CV_PARSING (tên lạ → tự tạo PENDING chờ duyệt)."""
+    return resolve_savable_skill(value, Skill.Source.CV_PARSING)
 
 
 def _bump_profile_version(profile: CandidateProfile) -> None:
@@ -155,9 +124,13 @@ def create_candidate_skill(
     level: str = "",
     years_of_experience=None,
 ) -> CandidateSkill:
-    """Thêm một skill hợp lệ, không cho trùng skill đã có trong hồ sơ."""
-    if not (skill.status == Skill.Status.APPROVED and skill.is_active):
-        raise ValueError("Chỉ chọn được skill đã được duyệt và đang hoạt động.")
+    """Thêm một skill hợp lệ, không cho trùng skill đã có trong hồ sơ.
+    Nhất quán với save_full_profile: nhận cả APPROVED lẫn PENDING
+    (PENDING hiển thị "Chờ duyệt", chưa vào bộ lọc cứng)."""
+    if not _is_savable_skill(skill):
+        raise ValueError(
+            "Kỹ năng phải đang hoạt động (đã duyệt hoặc chờ duyệt)."
+        )
     if CandidateSkill.objects.filter(candidate=profile, skill=skill).exists():
         raise ValueError("Kỹ năng này đã có trong hồ sơ.")
     candidate_skill = CandidateSkill.objects.create(
@@ -181,8 +154,10 @@ def update_candidate_skill(
         return candidate_skill
     for field, value in data.items():
         if field == "skill":
-            if not (value.status == Skill.Status.APPROVED and value.is_active):
-                raise ValueError("Chỉ chọn được skill đã được duyệt và đang hoạt động.")
+            if not _is_savable_skill(value):
+                raise ValueError(
+                    "Kỹ năng phải đang hoạt động (đã duyệt hoặc chờ duyệt)."
+                )
             if (
                 value.pk != candidate_skill.skill_id
                 and CandidateSkill.objects.filter(
@@ -206,39 +181,18 @@ def delete_candidate_skill(candidate_skill: CandidateSkill) -> None:
 
 
 @transaction.atomic
-def upload_resume(
-    profile: CandidateProfile,
-    file,
-    is_primary: bool = False,
-) -> Resume:
-    """Lưu CV, duy trì duy nhất một CV chính và enqueue parse bất đồng bộ."""
-    CandidateProfile.objects.select_for_update().get(pk=profile.pk)
-    is_primary = is_primary or not profile.resumes.exists()
-    if is_primary:
-        profile.resumes.filter(is_primary=True).update(is_primary=False)
-
-    resume = Resume.objects.create(
-        candidate=profile,
-        file=file,
-        original_filename=Path(file.name).name,
-        file_size_bytes=getattr(file, "size", None),
-        parse_status=Resume.ParseStatus.PENDING,
-        is_primary=is_primary,
-    )
-    _enqueue_task("apps.candidates.tasks.parse_resume", str(resume.pk))
-    return resume
-
-
-@transaction.atomic
 def delete_resume(resume: Resume) -> None:
     """Xóa CV/file lưu trữ và tự chọn CV mới nếu CV vừa xóa là CV chính."""
-    if resume.applications.exists():
+    candidate = CandidateProfile.objects.select_for_update().get(
+        pk=resume.candidate_id,
+    )
+    locked = Resume.objects.select_for_update().get(pk=resume.pk)
+    if locked.applications.exists():
         raise ValueError("Không thể xóa CV đã được dùng để ứng tuyển.")
-    candidate = resume.candidate
-    was_primary = resume.is_primary
-    storage = resume.file.storage
-    stored_name = resume.file.name
-    resume.delete()
+    was_primary = locked.is_primary
+    storage = locked.file.storage
+    stored_name = locked.file.name
+    locked.delete()
 
     if was_primary:
         replacement = candidate.resumes.order_by("-created_at").first()
@@ -263,32 +217,6 @@ def set_primary_resume(resume: Resume) -> Resume:
 
 
 @transaction.atomic
-def mark_resume_parsed(
-    resume: Resume,
-    raw_data: dict,
-    parsed_data: dict | None = None,
-) -> Resume:
-    """Lưu preview đã validate mà không thay đổi hồ sơ chính thức."""
-    if parsed_data is None:
-        parsed_data = raw_data
-
-    resume.raw_extracted_json = raw_data
-    resume.parsed_data = parsed_data
-    resume.parse_status = Resume.ParseStatus.SUCCESS
-    resume.parse_error_message = ""
-    resume.save(
-        update_fields=[
-            "raw_extracted_json",
-            "parsed_data",
-            "parse_status",
-            "parse_error_message",
-            "updated_at",
-        ]
-    )
-    return resume
-
-
-@transaction.atomic
 def save_full_profile(profile: CandidateProfile, data: dict) -> CandidateProfile:
     """Replace one reviewed profile snapshot and enqueue one embedding."""
     locked = CandidateProfile.objects.select_for_update().get(pk=profile.pk)
@@ -296,7 +224,6 @@ def save_full_profile(profile: CandidateProfile, data: dict) -> CandidateProfile
     experiences = data.pop("experiences")
     skills = data.pop("skills")
     resume_import_id = data.pop("resume_import_id", None)
-    resume = None
     if resume_import_id is not None:
         from apps.candidates.models import ResumeImport
         resume_import = ResumeImport.objects.select_for_update().filter(
@@ -306,7 +233,7 @@ def save_full_profile(profile: CandidateProfile, data: dict) -> CandidateProfile
         ).first()
         if resume_import is None:
             raise ValueError("CV preview không hợp lệ hoặc chưa phân tích xong.")
-        resume = consume_resume_import(resume_import)
+        consume_resume_import(resume_import)
 
     for field, value in data.items():
         setattr(locked, field, value)
@@ -342,23 +269,7 @@ def save_full_profile(profile: CandidateProfile, data: dict) -> CandidateProfile
     CandidateSkill.objects.bulk_create(candidate_skills)
 
     _bump_profile_version(locked)
-    if resume is not None:
-        resume.applied_at = timezone.now()
-        resume.applied_profile_version = locked.profile_version
-        resume.save(
-            update_fields=["applied_at", "applied_profile_version", "updated_at"]
-        )
     return locked
-
-
-def mark_resume_parse_failed(resume: Resume, error_message: str) -> Resume:
-    """Ghi nhận lỗi parse để ứng viên biết CV cần xử lý hoặc upload lại."""
-    resume.parse_status = Resume.ParseStatus.FAILED
-    resume.parse_error_message = error_message[:2000]
-    resume.save(
-        update_fields=["parse_status", "parse_error_message", "updated_at"]
-    )
-    return resume
 
 
 # --- ResumeImport services (UC-01: CV upload -> AI parse -> preview -> confirm) ---
@@ -390,13 +301,11 @@ def mark_resume_import_parsed(
     if parsed_data is None:
         parsed_data = raw_data
 
-    resume_import.raw_extracted_json = raw_data
     resume_import.parsed_data = parsed_data
     resume_import.parse_status = ResumeImport.ParseStatus.SUCCESS
     resume_import.parse_error_message = ""
     resume_import.save(
         update_fields=[
-            "raw_extracted_json",
             "parsed_data",
             "parse_status",
             "parse_error_message",
@@ -438,7 +347,6 @@ def consume_resume_import(resume_import: ResumeImport) -> Resume:
             original_filename=resume_import.original_filename,
             file_size_bytes=resume_import.file_size_bytes,
             parse_status=Resume.ParseStatus.SUCCESS,
-            raw_extracted_json=resume_import.raw_extracted_json,
             parsed_data=resume_import.parsed_data,
             is_primary=True,
         )

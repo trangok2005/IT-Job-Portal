@@ -40,6 +40,7 @@ class JobDescriptionParserTests(TestCase):
                     "requirements": "2 years experience",
                     "benefits": "Remote work",
                     "location": "Ho Chi Minh City",
+                    "workplace_type": "REMOTE",
                     "job_type": "FULL_TIME",
                     "experience_level": "JUNIOR",
                     "salary_min": 20000000,
@@ -59,9 +60,15 @@ class JobDescriptionParserTests(TestCase):
         )
 
         self.assertEqual(parsed["title"], "Backend Developer")
-        self.assertEqual(parsed["required_skills"], [str(python.id)])
-        self.assertEqual(parsed["unmatched_skills"], ["New Framework"])
+        self.assertEqual(parsed["location"], "Hồ Chí Minh")
+        self.assertEqual(parsed["workplace_type"], "REMOTE")
         pending = Skill.objects.get(name="New Framework")
         self.assertEqual(pending.status, Skill.Status.PENDING)
         self.assertEqual(pending.source, Skill.Source.JD_PARSING)
+        # Kỹ năng lạ đã được tự tạo PENDING và nằm luôn trong matched
+        # (nhất quán với luồng CV) thay vì bị bỏ vào unmatched.
+        self.assertEqual(
+            parsed["required_skills"], [str(python.id), str(pending.id)]
+        )
+        self.assertEqual(parsed["unmatched_skills"], [])
         client.models.generate_content.assert_called_once()

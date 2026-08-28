@@ -14,6 +14,12 @@ from drf_spectacular.utils import extend_schema
 from apps.candidates import perms, selectors, serializers, services
 from apps.candidates.models import CandidateProfile, Education, Experience, Resume, ResumeImport
 from apps.skills.models import CandidateSkill
+from common.throttling import UploadParseDailyThrottle, UploadParseMinuteThrottle
+
+
+def _upload_throttles():
+    """UC-01: giới hạn spam upload CV cho Gemini parse (2/phút, 10/ngày/user)."""
+    return [UploadParseMinuteThrottle(), UploadParseDailyThrottle()]
 
 
 def _get_my_profile(user) -> CandidateProfile:
@@ -226,40 +232,6 @@ class CandidateSkillDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class CandidateResumeView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
-
-    @extend_schema(responses=serializers.ResumeSerializer(many=True))
-    def get(self, request):
-        profile = _get_my_profile(request.user)
-        resumes = selectors.get_resumes(profile)
-        return Response(
-            serializers.ResumeSerializer(
-                resumes, many=True, context={"request": request}
-            ).data
-        )
-
-    @extend_schema(
-        request=serializers.ResumeUploadSerializer,
-        responses={201: serializers.ResumeSerializer},
-    )
-    def post(self, request):
-        profile = _get_my_profile(request.user)
-        serializer = serializers.ResumeUploadSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        resume = services.upload_resume(
-            profile,
-            serializer.validated_data["file"],
-            is_primary=serializer.validated_data["is_primary"],
-        )
-        return Response(
-            serializers.ResumeSerializer(
-                resume, context={"request": request}
-            ).data,
-            status=status.HTTP_201_CREATED,
-        )
-
-
 class CandidateResumeDetailView(APIView):
     permission_classes = [IsAuthenticated, perms.IsCandidate]
 
@@ -293,6 +265,12 @@ class CandidateResumeImportView(APIView):
     """Upload CV để AI parse bất đồng bộ (không block UI). Trả về import_id để polling."""
 
     permission_classes = [IsAuthenticated, perms.IsCandidate]
+
+    def get_throttles(self):
+        # Chỉ throttle POST upload; GET polling mỗi 2s không bị chặn.
+        if self.request.method == "POST":
+            return _upload_throttles()
+        return super().get_throttles()
 
     @extend_schema(
         request=serializers.ResumeImportUploadSerializer,

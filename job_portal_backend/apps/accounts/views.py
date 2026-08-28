@@ -67,7 +67,11 @@ class AdminUserListView(ListAPIView):
         return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
-        query = serializers.AdminUserListQuerySerializer(data=self.request.query_params)
+        # A missing BooleanField in a QueryDict is interpreted like an unchecked
+        # HTML checkbox (False). A plain dict preserves "filter not supplied".
+        query = serializers.AdminUserListQuerySerializer(
+            data=self.request.query_params.dict()
+        )
         query.is_valid(raise_exception=True)
         return selectors.get_users(**query.validated_data)
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Download, History, Loader2 } from "lucide-react";
+import { Download, History, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,15 @@ const nextStatuses: Record<ApplicationStatus, ApplicationTransitionStatus[]> = {
   HIRED: [],
   REJECTED: [],
 };
+
+function formatSnapshotDate(value: string) {
+  const date = new Date(value);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date).replaceAll("/", "-");
+}
 
 export function EmployerApplicationDetail({ id, jobId }: { id: string; jobId: string }) {
   const [item, setItem] = useState<EmployerApplicationDto | null>(null);
@@ -79,6 +88,9 @@ export function EmployerApplicationDetail({ id, jobId }: { id: string; jobId: st
   if (loading) return <div className="mx-auto mt-8 h-72 max-w-5xl animate-pulse rounded-xl bg-zinc-100" />;
   if (!item) return <div className="mx-auto max-w-3xl px-4 py-12"><p className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error ?? "Không tìm thấy hồ sơ ứng tuyển."}</p></div>;
 
+  const matchScore = analysis?.match_score ?? item.match_score;
+  const snapshotDate = analysis?.snapshot_created_at ?? item.created_at;
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-7 sm:px-6 lg:px-8">
       {error && <p className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</p>}
@@ -103,10 +115,14 @@ export function EmployerApplicationDetail({ id, jobId }: { id: string; jobId: st
         <aside className="space-y-4">
           <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
             <p className="text-sm font-medium text-zinc-500">AI match score</p>
-            <p className="mt-2 text-4xl font-bold text-accent">{analysis?.match_score ?? item.match_score ?? "--"}<span className="text-lg">%</span></p>
+            {matchScore === null ? (
+              <p className="mt-2 text-base font-semibold text-zinc-600">Chưa có điểm phù hợp</p>
+            ) : (
+              <p className="mt-2 text-4xl font-bold text-accent">{matchScore}<span className="text-lg">%</span></p>
+            )}
+            <p className="mt-3 text-xs leading-5 text-zinc-500">Dựa trên hồ sơ tại thời điểm ứng tuyển ngày {formatSnapshotDate(snapshotDate)}</p>
             {analysisError && <p className="mt-3 text-xs text-amber-700">Không thể tải chi tiết phân tích.</p>}
-            {analysis?.inputs_are_stale && <p className="mt-3 flex gap-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-800"><AlertTriangle className="size-4 shrink-0" />Kết quả này đã cũ do hồ sơ hoặc tin tuyển dụng thay đổi.</p>}
-            {analysis && <div className="mt-4"><p className="text-xs font-medium text-emerald-700">Kỹ năng phù hợp</p><div className="mt-2 flex flex-wrap gap-1">{analysis.matched_skills.map((skill) => <Badge key={skill} variant="success">{skill}</Badge>)}</div><p className="mt-3 text-xs font-medium text-red-600">Kỹ năng còn thiếu</p><div className="mt-2 flex flex-wrap gap-1">{analysis.missing_skills.map((skill) => <Badge key={skill} variant="outline">{skill}</Badge>)}</div></div>}
+            {analysis && analysis.match_score !== null && <div className="mt-4"><p className="text-xs font-medium text-emerald-700">Kỹ năng phù hợp</p><div className="mt-2 flex flex-wrap gap-1">{analysis.matched_skills.map((skill) => <Badge key={skill} variant="success">{skill}</Badge>)}</div><p className="mt-3 text-xs font-medium text-red-600">Kỹ năng còn thiếu</p><div className="mt-2 flex flex-wrap gap-1">{analysis.missing_skills.map((skill) => <Badge key={skill} variant="outline">{skill}</Badge>)}</div></div>}
           </section>
 
           {nextStatuses[item.status].length > 0 && <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm"><h2 className="font-semibold text-zinc-900">Cập nhật trạng thái</h2><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ghi chú nội bộ hoặc nội dung thông báo..." className="mt-3 min-h-24 w-full rounded-xl border border-zinc-300 p-3 text-sm outline-none focus:border-primary" /><div className="mt-3 grid gap-2">{nextStatuses[item.status].map((status) => <Button key={status} variant={status === "REJECTED" ? "outline" : "default"} disabled={busy} onClick={() => void move(status)}>{busy && <Loader2 className="animate-spin" />}{status}</Button>)}</div></section>}

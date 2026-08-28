@@ -1,0 +1,417 @@
+﻿<html xmlns:o="urn:schemas-microsoft-com:office:office"><head><meta charset="utf-8"><title>Bao cao Chuong 1-2</title><style>body{font-family:"Times New Roman",serif;font-size:13pt;line-height:1.5}h1{font-size:16pt;text-align:center;text-transform:uppercase}h2{font-size:14pt}h3{font-size:13pt;font-style:italic}</style></head><body>
+<h1>CHƯƠNG 1. TỔNG QUAN ĐỀ TÀI</h1>
+<h2>1.1. GIỚI THIỆU ĐỀ TÀI</h2>
+<p>Thị trường tuyển dụng công nghệ thông tin tại Việt Nam tăng trưởng nhanh, nhưng quy trình kết nối ứng viên - nhà tuyển dụng vẫn còn nhiều điểm nghẽn: ứng viên phải nhập lại thông tin hồ sơ theo từng mẫu form khác nhau của mỗi nền tảng; tìm kiếm việc làm dựa trên từ khóa chính xác nên bỏ sót các vị trí phù hợp về bản chất nhưng dùng cách diễn đạt khác (ví dụ gõ "làm backend API" không ra tin "Backend Developer"); nhà tuyển dụng mất nhiều giờ sàng lọc hàng trăm hồ sơ thủ công.</p>
+<p>IT Job Portal là cổng thông tin tuyển dụng CNTT tích hợp AI nhằm giải quyết ba vấn đề trên. Hệ thống cho phép trích xuất tự động nội dung CV và bản mô tả công việc bằng mô hình ngôn ngữ lớn (Gemini), chuẩn hóa kỹ năng theo từ điển kỹ năng (Skill Taxonomy), biểu diễn ngữ nghĩa hồ sơ/tin tuyển dụng dưới dạng vector nhúng (embedding) và tính điểm phù hợp (Match Score) bằng tìm kiếm ngữ nghĩa trên cơ sở dữ liệu vector. Nguyên tắc xuyên suốt của hệ thống: AI CHỈ hỗ trợ phân tích và xếp hạng, mọi quyết định tuyển hay loại cuối cùng thuộc về con người.</p>
+<h2>1.2. LÝ DO CHỌN ĐỀ TÀI</h2>
+<p><b>Lý do thực tiễn:</b></p>
+<p>- Nhu cầu nhân lực CNTT Việt Nam tăng cao trong khi công cụ tuyển dụng phổ biến vẫn chủ yếu khớp từ khóa, dẫn đến độ phủ ứng viên - việc làm thấp và chi phí sàng lọc lớn cho doanh nghiệp.</p>
+<p>- Ứng viên phải lặp lại công việc nhập liệu ở mỗi nền tảng; việc cho phép tải CV lên và hệ thống tự điền form giảm đáng kể rào cản gia nhập thị trường lao động.</p>
+<p>- Doanh nghiệp nhỏ thiếu công cụ xếp hạng hồ sơ tự động với chi phí hợp lý.</p>
+<p><b>Lý do học thuật - kỹ thuật:</b></p>
+<p>- Đề tài cho phép vận hành trọn vẹn chuỗi kỹ thuật AI ứng dụng thực tế: trích xuất thông tin phi cấu trúc (NLP Information Extraction), chuẩn hóa thực thể (Skill Normalization), biểu diễn ngữ nghĩa (Text Embedding), tìm kiếm tương đồng hiệu quả (ANN trên pgvector/HNSW).</p>
+<p>- Kết hợp AI sinh tạo vào kiến trúc web truyền thống đặt ra các bài toán kỹ thuật có giá trị học tập: xử lý bất đồng bộ, kiểm soát chi phí gọi API, giới hạn tần suất (rate limiting), chống race condition khi tái sinh vector, thiết kế luồng dự phòng khi dịch vụ bên ngoài lỗi.</p>
+<p>- Vấn đề person-job fit là hướng nghiên cứu đang được quan tâm trong cộng đồng hệ thống gợi ý, phù hợp để vận dụng và mở rộng.</p>
+<h2>1.3. PHÁT BIỂU BÀI TOÁN</h2>
+<p>Xây dựng hệ thống cổng thông tin tuyển dụng trực tuyến hỗ trợ ba nhóm người dùng (Ứng viên, Nhà tuyển dụng, Quản trị viên) trong đó thành phần AI đảm nhiệm: (1) trích xuất dữ liệu có cấu trúc từ CV/JD, (2) chuẩn hóa kỹ năng, (3) tính mức độ phù hợp giữa hồ sơ và tin tuyển dụng.</p>
+<p>Đầu vào: file CV (PDF/DOC/DOCX) hoặc form hồ sơ của ứng viên; file JD hoặc form đăng tin của nhà tuyển dụng; từ khóa và bộ lọc tìm kiếm (địa điểm, mức lương, hình thức, kinh nghiệm); các thao tác quản trị.</p>
+<p>Đầu ra: hồ sơ ứng viên có cấu trúc kèm vector ngữ nghĩa; tin tuyển dụng chuẩn hóa kỹ năng và vector hóa; danh sách việc làm xếp theo Match Score = (1 - Cosine Distance) x 100%; danh sách ứng viên gợi ý cho từng tin; trạng thái ứng tuyển tuân theo máy trạng thái một chiều applied -> shortlisted/rejected -> interviewed/rejected -> hired/rejected.</p>
+<p>Ràng buộc: AI không bao giờ tự quyết định tuyển/loại; hồ sơ chưa hoàn thiện (thiếu CV) không được ứng tuyển; mỗi cặp ứng viên-tin chỉ tồn tại tối đa một đơn ứng tuyển; tin chỉ đăng được khi công ty đã được phê duyệt.</p>
+<h2>1.4. MỤC TIÊU ĐỀ TÀI</h2>
+<p>Mục tiêu tổng quát: Xây dựng hệ thống cổng thông tin tuyển dụng CNTT tích hợp AI giúp rút ngắn thời gian hoàn thiện hồ sơ của ứng viên, mở rộng độ phủ tìm kiếm việc làm bằng ngữ nghĩa và hỗ trợ nhà tuyển dụng sàng lọc hồ sơ bằng điểm phù hợp tự động.</p>
+<p><b>Mục tiêu cụ thể:</b></p>
+<p>- Quản lý tài khoản và phân quyền ba vai trò (Ứng viên / Nhà tuyển dụng / Quản trị) với xác thực JWT và Google OAuth.</p>
+<p>- Quản lý hồ sơ ứng viên (UC-01): upload CV được AI trích xuất tự động điền form (chế độ không chặn giao diện, xem trước trước khi lưu) hoặc nhập tay; chuẩn hóa kỹ năng theo Skill Taxonomy; sinh vector hồ sơ bất đồng bộ.</p>
+<p>- Đăng tin tuyển dụng (UC-02): import JD được AI trích xuất, soạn - đăng - đóng tin theo vòng đời DRAFT -> ACTIVE -> CLOSED/EXPIRED; chỉ sinh vector khi tin ACTIVE.</p>
+<p>- Tìm kiếm việc làm (UC-03): lọc điều kiện cứng bằng SQL trước, sau đó xếp hạng ngữ nghĩa bằng pgvector (Cosine Distance, chỉ mục HNSW) với query vector sinh bởi Gemini (task_type=RETRIEVAL_QUERY); có chế độ dự phòng full-text khi AI lỗi và giới hạn tần suất chống spam.</p>
+<p>- Ứng tuyển và xử lý ứng tuyển (UC-04, UC-05): chấm điểm Match Score tại thời điểm nộp đơn, lưu snapshot hồ sơ/CV, quản trị luồng trạng thái một chiều.</p>
+<p>- Quản trị hệ thống: phê duyệt công ty, quản trị Skill Taxonomy, thống kê.</p>
+<h2>1.5. PHẠM VI ĐỀ TÀI</h2>
+<p><b>Phạm vi chức năng - làm:</b></p>
+<p>- Toàn bộ luồng UC-01 đến UC-05 chạy end-to-end trên môi trường web.</p>
+<p>- Trích xuất CV/JD bằng Google Gemini API; chuẩn hóa kỹ năng bằng từ điển + so khớp mờ (fuzzy matching).</p>
+<p>- Tìm kiếm ngữ nghĩa trên PostgreSQL + pgvector; điểm phù hợp hiển thị dạng %.</p>
+<p>- Thông báo qua email; xử lý bất đồng bộ qua hàng đợi Django-Q.</p>
+<p><b>Phạm vi chức năng - không làm (theo Charter):</b></p>
+<p>- Phỏng vấn trực tuyến/video call; chấm điểm phỏng vấn bằng AI.</p>
+<p>- Tự động tuyển dụng hoàn toàn; AI tự quyết định tuyển/loại.</p>
+<p>- Bảng lương, hợp đồng lao động; tích hợp HRM/ERP bên ngoài.</p>
+<p>- Thanh toán giữa ứng viên và nhà tuyển dụng; mạng xã hội nghề nghiệp.</p>
+<p><b>Phạm vi kỹ thuật:</b></p>
+<p>- Web application (Next.js + Django REST Framework); không phát triển ứng dụng di động native.</p>
+<p>- Triển khai bằng Docker Compose (PostgreSQL + pgvector, backend Django, worker Django-Q, frontend Next.js).</p>
+<p>- CV lưu trữ kèm cơ chế bảo mật truy cập; dữ liệu demo do hệ thống khởi tạo.</p>
+<p>Phạm vi dữ liệu: sử dụng dữ liệu mẫu (seed data) phục vụ demo và kiểm thử; không khai thác dữ liệu người dùng thật.</p>
+<h2>1.6. PHƯƠNG PHÁP THỰC HIỆN ĐỀ TÀI</h2>
+<p>Khảo sát và thu thập yêu cầu: nghiên cứu quy trình tuyển dụng thực tế trên các nền tảng phổ biến (VietnamWorks, TopCV, LinkedIn), đối chiếu với các "nỗi đau" đã nêu để rút ra yêu cầu nghiệp vụ; yêu cầu được mô hình hóa thành 5 use case chính (UC-01 -> UC-05), mỗi use case mô tả đầy đủ luồng chính, luồng thay thế và luồng ngoại lệ kèm hậu điều kiện kiểm chứng được.</p>
+<p><b>Phân tích và thiết kế hệ thống:</b></p>
+<p>- Mô hình hóa domain bằng sơ đồ thực thể - liên kết (User, CandidateProfile, Company, JobPost, JobApplication, Skill, Resume...), thiết kế máy trạng thái cho đơn ứng tuyển và vòng đời tin tuyển dụng.</p>
+<p>- Thiết kế kiến trúc phân lớp Service Layer: view mỏng (chỉ HTTP) -> service (ghi + nghiệp vụ) -> selector (đọc) -> model; tách biệt Read/Write serializer.</p>
+<p>- Thiết kế kiến trúc AI pipeline: Parsing (Gemini) -> Normalization (Skill Taxonomy) -> Embedding (768 chiều) -> Semantic Search (pgvector/HNSW) -> Ranking (Match Score), với nguyên tắc AI-in-the-loop (con người ra quyết định cuối).</p>
+<p>Phát triển hệ thống: áp dụng quy trình lặp-tăng trưởng theo hướng Agile: phát triển theo use case, mỗi use case hoàn thiện theo thứ tự models -> serializers -> perms -> selectors -> services -> views -> urls ở backend và features/<module>/{api,types,components} ở frontend; mã nguồn quản lý bằng Git.</p>
+<p>Cài đặt và triển khai: container hóa toàn bộ hạ tầng bằng Docker Compose gồm 4 dịch vụ (PostgreSQL 16 + pgvector, Backend Django 5 + DRF, Worker Django-Q2 với ORM broker trên PostgreSQL, Frontend Next.js 16); cache và rate limiting dùng Redis (django-redis) có cơ chế dự phòng; tích hợp AI tập trung tại một module duy nhất (integrations/gemini) để kiểm soát điểm chạm bên ngoài.</p>
+<p><b>Kiểm thử và đánh giá:</b></p>
+<p>- Unit/API test bằng Django TestCase/APITestCase (mock hoàn toàn Gemini API và dịch vụ ngoài), hiện phủ hơn 130 test case bao gồm logic tính điểm, máy trạng thái, chuẩn hóa kỹ năng, throttle và các luồng ngoại lệ.</p>
+<p>- Kiểm thử thủ công luồng end-to-end trên môi trường Docker; đánh giá chất lượng tìm kiếm ngữ nghĩa bằng cách so sánh kết quả semantic search và fallback từ khóa trên bộ dữ liệu demo.</p>
+<h2>1.7. KHẢO SÁT LIÊN QUAN HỆ THỐNG - TỪ KHÓA TRA CỨU NGUỒN CHÍNH THỐNG</h2>
+<p style='margin-left:24pt'>Chủ đề: Thị trường nhân lực CNTT Việt Nam</p>
+<p style='margin-left:24pt'>Từ khóa: TopDev Vietnam IT Market Report | TopCV báo cáo thị trường tuyển dụng | VietnamWorks employment trends report</p>
+<p style='margin-left:24pt'>Nguồn: topdev.vn, topcv.vn, vietnamworks.com</p>
+<p style='margin-left:24pt'>Chủ đề: Hệ thống gợi ý việc làm / person-job fit</p>
+<p style='margin-left:24pt'>Từ khóa: job recommendation system survey | person-job fit neural network | talent matching semantic</p>
+<p style='margin-left:24pt'>Nguồn: Springer, ACM Computing Surveys, arXiv.org</p>
+<p style='margin-left:24pt'>Chủ đề: Tìm kiếm ngữ nghĩa & vector database</p>
+<p style='margin-left:24pt'>Từ khóa: semantic search text embeddings | pgvector cosine similarity HNSW | approximate nearest neighbor search survey</p>
+<p style='margin-left:24pt'>Nguồn: github.com/pgvector, postgresql.org/docs, ACM VLDB</p>
+<p style='margin-left:24pt'>Chủ đề: Text embedding</p>
+<p style='margin-left:24pt'>Từ khóa: sentence embeddings SBERT | MTEB embedding benchmark | Gemini embedding API documentation</p>
+<p style='margin-left:24pt'>Nguồn: ai.google.dev, ACL Anthology</p>
+<p style='margin-left:24pt'>Chủ đề: Trích xuất thông tin từ CV/JD</p>
+<p style='margin-left:24pt'>Từ khóa: resume information extraction NLP survey | CV parsing named entity recognition | LLM structured information extraction</p>
+<p style='margin-left:24pt'>Nguồn: ACL Anthology, arXiv.org, ai.google.dev</p>
+<p style='margin-left:24pt'>Chủ đề: Chuẩn hóa kỹ năng (taxonomy)</p>
+<p style='margin-left:24pt'>Từ khóa: ESCO skills taxonomy | O*NET technology skills | skill normalization job matching</p>
+<p style='margin-left:24pt'>Nguồn: esco.ec.europa.eu, onetcenter.org</p>
+<p style='margin-left:24pt'>Chủ đề: Kiến trúc phần mềm</p>
+<p style='margin-left:24pt'>Từ khóa: service layer pattern Fowler | REST architectural style Fielding | OWASP API security</p>
+<p style='margin-left:24pt'>Nguồn: martinfowler.com, owasp.org</p>
+<p style='margin-left:24pt'>Chủ đề: Quy trình phát triển</p>
+<p style='margin-left:24pt'>Từ khóa: Agile manifesto | Scrum Guide | SWEBOK v4 IEEE</p>
+<p style='margin-left:24pt'>Nguồn: agilemanifesto.org, scrumguides.org, ieee.org</p>
+<h1>CHƯƠNG 2. CƠ SỞ LÝ THUYẾT</h1>
+<h2>2.1. CÁC KHÁI NIỆM NỀN TẢNG LIÊN QUAN BÀI TOÁN</h2>
+<h3>2.1.1. Cổng thông tin tuyển dụng trực tuyến (Job Portal)</h3>
+<p>- LÀ GÌ (WHAT): Nền tảng web trung gian kết nối người tìm việc (Ứng viên)</p>
+<p>  và người tuyển dụng (Nhà tuyển dụng), nơi NTD đăng tin tuyển dụng,</p>
+<p>  ứng viên tạo hồ sơ, tìm kiếm và nộp đơn ứng tuyển.</p>
+<p>- VAI TRÒ (WHY/HOW): Trong đề tài, cổng thông tin là bối cảnh nghiệp vụ</p>
+<p>  chứa ba nhóm đối tượng chính: Ứng viên (Candidate), Nhà tuyển dụng</p>
+<p>  (Employer) và Quản trị viên (Admin - phê duyệt công ty, quản trị từ điển</p>
+<p>  kỹ năng, thống kê hệ thống).</p>
+<h3>2.1.2. CV (Curriculum Vitae) và JD (Job Description)</h3>
+<p>- WHAT: CV là tài liệu trình bày thông tin học vấn, kinh nghiệm, kỹ năng</p>
+<p>  của ứng viên; JD là văn bản mô tả vị trí tuyển dụng gồm tiêu đề, mô tả</p>
+<p>  công việc, yêu cầu, quyền lợi, mức lương.</p>
+<p>- VẤN ĐỀ (WHY): Đây là dữ liệu PHI CẤU TRÚC - mỗi người viết một kiểu,</p>
+<p>  không có mẫu chung. Chính tính phi cấu trúc này khiến máy móc khó so</p>
+<p>  khớp trực tiếp CV với JD, và là lý do cần đến trích xuất tự động (parsing)</p>
+<p>  và chuẩn hóa (normalization).</p>
+<p>- TRONG ĐỀ TÀI (HOW/WHEN): CV được upload ở UC-01 (quản lý hồ sơ), JD được</p>
+<p>  upload ở UC-02 (đăng tin); cả hai đều được AI đọc và chuyển thành dữ liệu</p>
+<p>  có cấu trúc để điền sẵn form, người dùng xem lại trước khi lưu.</p>
+<h3>2.1.3. Tìm kiếm từ khóa và Tìm kiếm ngữ nghĩa</h3>
+<p>- Tìm kiếm từ khóa (Lexical Search): khớp chuỗi ký tự đen trắng (SQL ILIKE,</p>
+<p>  full-text). Nhanh, rẻ nhưng bỏ sót mọi cách diễn đạt khác</p>
+<p>  ("developer backend" ≠ "lập trình viên hệ thống phía server").</p>
+<p>- Tìm kiếm ngữ nghĩa (Semantic Search): so khớp dựa trên Ý NGHĨA của văn</p>
+<p>  bản qua biểu diễn vector, trả về kết quả liên quan dù từ ngữ khác nhau.</p>
+<p>- TRONG ĐỀ TÀI: UC-03 dùng chiến lược LAI - lọc điều kiện cứng bằng SQL</p>
+<p>  trước (trạng thái, địa điểm, lương), rồi xếp hạng ngữ nghĩa bằng vector;</p>
+<p>  khi dịch vụ AI lỗi thì tự động hạ cấp về tìm kiếm từ khóa (fallback).</p>
+<h3>2.1.4. Vector nhúng văn bản (Text Embedding)</h3>
+<p>- WHAT: Vector số thực nhiều chiều (đề tài dùng 768 chiều) biểu diễn nội</p>
+<p>  dung ngữ nghĩa của một đoạn văn bản; hai văn bản có ý nghĩa gần nhau sẽ</p>
+<p>  có vector gần nhau trong không gian đa chiều.</p>
+<p>- WHY: Là cầu nối biến bài toán "đo độ giống nhau về nghĩa" (máy không hiểu)</p>
+<p>  thành bài toán "đo khoảng cách giữa hai điểm trong không gian vector"</p>
+<p>  (giải được bằng toán học thuần túy).</p>
+<p>- TRONG ĐỀ TÀI: Mỗi CandidateProfile và mỗi JobPost ACTIVE đều có một</p>
+<p>  embedding lưu trong PostgreSQL (pgvector); câu truy vấn tìm kiếm cũng</p>
+<p>  được nhúng thành query vector để so khoảng cách.</p>
+<h3>2.1.5. Từ điển kỹ năng và chuẩn hóa kỹ năng (Skill Taxonomy & Normalization)</h3>
+<p>- WHAT: Skill Taxonomy là danh mục kỹ năng chuẩn do Admin quản trị, mỗi</p>
+<p>  kỹ năng có tên chuẩn, bí danh (alias), trạng thái duyệt (APPROVED/PENDING/</p>
+<p>  REJECTED) và khả năng hợp nhất (merged_into).</p>
+<p>- WHY: "JS", "JavaScript", "EcmaScript"... là cùng một kỹ năng nhưng viết</p>
+<p>  nhiều cách; không chuẩn hóa thì không thể so khớp CV với JD chính xác.</p>
+<p>- TRONG ĐỀ TÀI: Kỹ năng trích xuất từ CV/JD được ánh xạ về danh mục chuẩn</p>
+<p>  bằng tra cứu chính xác -> bí danh -> so khớp mờ; kỹ năng lạ được đưa vào</p>
+<p>  hàng chờ duyệt (PENDING) thay vì bị loại.</p>
+<h3>2.1.6. Điểm phù hợp (Match Score) và bài toán Person-Job Fit</h3>
+<p>- WHAT: Person-Job Fit là bài toán lượng hóa mức phù hợp giữa một ứng viên</p>
+<p>  và một vị trí tuyển dụng; Match Score là thước đo đầu ra, biểu diễn %.</p>
+<p>- TRONG ĐỀ TÀI: Match Score = (1 − Cosine Distance) × 100% giữa embedding</p>
+<p>  hồ sơ và embedding tin tuyển dụng; hiển thị cho cả ứng viên (UC-03) lẫn</p>
+<p>  nhà tuyển dụng (UC-05) như MỘT GỢI Ý THAM KHẢO - tuyệt đối không phải</p>
+<p>  quyết định tuyển/loại tự động (ràng buộc cốt lõi của Charter).</p>
+<h3>2.1.7. Xử lý bất đồng bộ (Asynchronous Processing)</h3>
+<p>- WHAT: Tách công việc tốn thời gian (gọi AI, tính vector) khỏi luồng</p>
+<p>  request-response, đẩy vào hàng đợi để worker xử lý ngầm.</p>
+<p>- WHY: Một lần gọi Gemini parse CV có thể mất nhiều giây; nếu chạy đồng bộ,</p>
+<p>  người dùng phải chờ và request dễ timeout.</p>
+<p>- TRONG ĐỀ TÀI: Sinh embedding, parse CV/JD, gửi email thông báo, đóng tin</p>
+<p>  hết hạn đều chạy nền qua Django-Q; giao diện chỉ polling trạng thái.</p>
+<h2>2.2. CÁC PHƯƠNG PHÁP, MÔ HÌNH, THUẬT TOÁN SỬ DỤNG</h2>
+<h3>2.2.1. Mô hình nhúng văn bản của Gemini (gemini-embedding-001)</h3>
+<p>- Nguyên lý: mô hình encoder đọc văn bản, xuất vector 768 chiều mà khoảng</p>
+<p>  cách giữa các vector phản ánh mức tương đồng ngữ nghĩa. Tham số</p>
+<p>  output_dimensionality=768 cố định chiều vector.</p>
+<p>- Tham số task_type phân biệt VAI TRÒ văn bản trong bài toán truy hồi</p>
+<p><b>  (retrieval):</b></p>
+<p>    + RETRIEVAL_DOCUMENT - nhúng nội dung được đánh chỉ mục sẵn (hồ sơ</p>
+<p>      ứng viên, tin tuyển dụng) - chạy ngầm qua worker;</p>
+<p>    + RETRIEVAL_QUERY - nhúng câu truy vấn tức thời của người dùng - chạy</p>
+<p>      tại thời điểm tìm kiếm.</p>
+<p>  Hai loại này tối ưu cho hai "đầu" khác nhau của bài toán truy hồi, giúp</p>
+<p>  tăng chất lượng xếp hạng.</p>
+<p>- Vai trò trong đồ án: cung cấp toàn bộ năng lực "hiểu nghĩa" của hệ thống;</p>
+<p>  là dịch vụ bên ngoài duy nhất chịu trách nhiệm sinh vector.</p>
+<h3>2.2.2. Độ tương đồng Cosine và công thức Match Score</h3>
+<p>- Nguyên lý: độ tương đồng giữa hai vector A, B được đo bằng cosin góc</p>
+<p><b>  giữa chúng, độc lập với độ lớn vector:</b></p>
+<p>        A · B</p>
+<p>  cos(A,B) = ---------------                    (2.1)</p>
+<p>             ||A|| × ||B||</p>
+<p>  giá trị thuộc [-1, 1]; càng gần 1 càng giống nhau về hướng (nghĩa).</p>
+<p>- pgvector trả về COSINE DISTANCE = 1 − cos(A,B). Hệ thống quy đổi thành</p>
+<p><b>  điểm phần trăm trực quan:</b></p>
+<p>  Match Score = (1 − Cosine Distance) × 100 (%)   (2.2)</p>
+<p>- Khi nào dùng: tính điểm cho từng kết quả tìm kiếm (UC-03), điểm hồ sơ -</p>
+<p>  tin tại thời điểm nộp đơn (UC-04) và điểm gợi ý ứng viên (UC-05).</p>
+<h3>2.2.3. Thuật toán HNSW (Hierarchical Navigable Small World)</h3>
+<p>- WHAT: cấu trúc chỉ mục đồ thị nhiều tầng cho bài toán Tìm kiếm láng giềng</p>
+<p>  gần nhất xấp xỉ (Approximate Nearest Neighbor - ANN). Tầng trên chứa ít</p>
+<p>  điểm làm "đường cao tốc", tầng dưới chứa đầy đủ; truy vấn đi từ đỉnh xuống</p>
+<p>  và thu hẹp dần phạm vi.</p>
+<p>- WHY: quét tuyến tính toàn bộ N vector là O(N) - chậm khi dữ liệu lớn;</p>
+<p>  HNSW đổi một chút độ chính xác lấy tốc độ tra cứu xấp xỉ logarithm.</p>
+<p>- HOW (cấu hình thực tế trong đồ án): chỉ mục HNSW trên cột embedding của</p>
+<p>  hai bảng job_posts và candidate_profiles với tham số m=16 (số liên kết</p>
+<p>  mỗi nút), ef_construction=64 (độ sâu lúc dựng), phép so sánh</p>
+<p>  vector_cosine_ops (khoảng cách cosin).</p>
+<p>- WHEN: tự động được Postgres sử dụng cho mọi truy vấn ORDER BY embedding</p>
+<p>  <=> query_vector trong UC-03/04/05.</p>
+<h3>2.2.4. So khớp mờ (Fuzzy String Matching)</h3>
+<p>- Nguyên lý: chấm điểm giống nhau giữa hai chuỗi (0-100) bằng thuật toán</p>
+<p>  kiểu Levenshtein (rapidfuzz.fuzz.ratio); chuỗi được chuẩn hóa trước</p>
+<p>  (viết thường, bỏ dấu).</p>
+<p><b>- Quy trình chuẩn hóa kỹ năng trong đồ án (theo thứ tự):</b></p>
+<p>    (1) tra bí danh chuẩn (alias) khớp tuyệt đối sau chuẩn hóa;</p>
+<p>    (2) tra tên kỹ năng không phân biệt hoa thường;</p>
+<p>    (3) so khớp mờ với ngưỡng cắt (score_cutoff); nếu hai ứng viên đầu</p>
+<p>        điểm gần nhau (<3 điểm chênh lệch) => MƠ HỒ, từ chối để tránh ghép sai;</p>
+<p>    (4) không khớp được => tạo kỹ năng mới trạng thái PENDING chờ Admin duyệt.</p>
+<p>- Vai trò: giải quyết bài toán "cùng một kỹ năng, nghìn cách viết" mà vẫn</p>
+<p>  giữ được sự kiểm soát của con người qua cơ chế duyệt.</p>
+<h3>2.2.5. Máy trạng thái một chiều (One-way State Machine)</h3>
+<p><b>- Nguyên lý: trạng thái đơn ứng tuyển chỉ được chuyển tiếp theo bảng hợp lệ:</b></p>
+<p>    applied → shortlisted/rejected</p>
+<p>    shortlisted → interviewed/rejected</p>
+<p>    interviewed → hired/rejected</p>
+<p>    hired, rejected: trạng thái cuối, không chuyển tiếp.</p>
+<p>- WHY: bảo toàn tính nhất quán của lịch sử tuyển dụng - kể cả khi NTD từ</p>
+<p>  chối nhầm cũng không đảo trạng thái mà liên hệ ứng viên ngoài hệ thống.</p>
+<p>- HOW: mọi endpoint đổi status phải kiểm tra bảng chuyển đổi trước khi ghi</p>
+<p>  DB, vi phạm thì trả lỗi rõ ràng. Tin tuyển dụng cũng áp vòng đời một chiều</p>
+<p>  tương tự: DRAFT → ACTIVE → CLOSED/EXPIRED.</p>
+<h3>2.2.6. Kiểm soát phiên bản chống Race Condition</h3>
+<p>- Vấn đề: người dùng sửa hồ sơ trong khi worker đang gọi Gemini tính vector</p>
+<p>  cho phiên bản cũ -> vector lạc hậu ghi đè lên dữ liệu mới.</p>
+<p><b>- Giải pháp 3 lớp (thực tế trong code):</b></p>
+<p>    (1) Khóa bi quan (SELECT ... FOR UPDATE) khi ghi hồ sơ - chặn ghi đồng thời;</p>
+<p>    (2) profile_version/content_version tăng NGUYÊN TỬ (UPDATE SET version =</p>
+<p>        version + 1); tác vụ nền được enqueue SAU KHI transaction commit;</p>
+<p>    (3) Worker kiểm tra "version lúc nhận task == version hiện tại?" trước</p>
+<p>        khi tốn tiền gọi Gemini, và lưu vector bằng cập nhật có điều kiện</p>
+<p>        UPDATE ... WHERE version = N. Nếu user đã sửa tiếp, task cũ tự hủy</p>
+<p>        (return False) - không bao giờ xảy ra ghi đè lạc hậu.</p>
+<p>- Thuộc tính bổ trợ: embedding_signature ("model:dims:task_type") nhận diện</p>
+<p>  vector sinh bởi cấu hình mô hình nào; đổi cấu hình => toàn bộ vector cũ</p>
+<p>  tự động coi là lỗi thời (stale) và được tái sinh hàng loạt.</p>
+<h3>2.2.7. Giới hạn tần suất (Rate Limiting) theo cửa sổ thời gian</h3>
+<p>- Nguyên lý: mỗi định danh (IP với khách, user pk với thành viên) được đếm</p>
+<p>  số lượt gọi trong cửa sổ thời gian; vượt ngưỡng => HTTP 429 Too Many</p>
+<p>  Requests kèm thời gian chờ.</p>
+<p>- Cấu hình thực tế: tìm kiếm - khách 5 lượt/phút, thành viên 10 lượt/phút;</p>
+<p>  upload CV/JD (tốn chi phí Gemini cao hơn) - 2 lượt/phút và 10 lượt/ngày</p>
+<p>  mỗi user. Lịch sử đếm lưu Redis nên chia sẻ giữa nhiều tiến trình và sống</p>
+<p>  sót qua khởi động lại.</p>
+<p>- Vai trò: bảo vệ chi phí AI và độ ổn định hệ thống khỏi spam/bot.</p>
+<h3>2.2.8. Chiến lược suy giảm uyển chuyển (Graceful Degradation / Fallback)</h3>
+<p>- Nguyên lý: khi phụ thuộc ngoài lỗi, tự động chuyển sang phương án dự phòng</p>
+<p>  đơn giản hơn thay vì báo lỗi cho người dùng.</p>
+<p>- Thực tế: Gemini embedding lỗi/timeout => chuyển Fallback Search bằng SQL</p>
+<p>  ILIKE trên 6 trường dữ liệu, gắn header X-Search-Fallback: true và cờ</p>
+<p>  trong body để frontend hiển thị thông báo nhẹ; parse CV/JD lỗi => người</p>
+<p>  dùng luôn còn lựa chọn nhập tay; gửi email lỗi chỉ ghi log, không chặn</p>
+<p>  luồng chính.</p>
+<h2>2.3. CÔNG NGHỆ SỬ DỤNG</h2>
+<h3>2.3.1. Python & Django 5 & Django REST Framework (Backend framework)</h3>
+<p>- WHAT: Python - ngôn ngữ thông dịch phổ biến trong AI; Django - web</p>
+<p>  framework "batteries included"; DRF - thư viện xây dựng RESTful API trên</p>
+<p>  Django (serializer, viewset, permission, throttling, pagination).</p>
+<p>- Đặc điểm chính: kiến trúc MTV rõ ràng; ORM mạnh; hệ sinh thái phong phú</p>
+<p>  (pgvector-django, django-q2, drf-spectacular sinh tài liệu OpenAPI);</p>
+<p>  security mặc định tốt (CSRF, XSS, SQL injection).</p>
+<p>- Vai trò trong đồ án: backend API toàn bộ nghiệp vụ UC-01..UC-05; tổ chức</p>
+<p>  code theo Service Layer (views mỏng - services ghi - selectors đọc);</p>
+<p>  DRF đảm nhiệm validate input, phân trang, permission, throttle.</p>
+<p>- Lý do chọn: Django là framework Python trưởng thành nhất cho web + dễ</p>
+<p>  tích hợp thư viện AI (google-genai, rapidfuzz) và pgvector-django chính</p>
+<p>  thức; so với FastAPI/Flask, Django có sẵn ORM, migration, admin, auth</p>
+<p>  giúp tập trung thời gian vào bài toán AI thay vì lắp ráp hạ tầng.</p>
+<h3>2.3.2. PostgreSQL 16 + pgvector (CSDL quan hệ + mở rộng vector)</h3>
+<p>- WHAT: PostgreSQL - hệ QLCSDL quan hệ mã nguồn mở hàng đầu; pgvector -</p>
+<p>  extension cho phép lưu cột VECTOR và truy vấn tương đồng ngay trong SQL.</p>
+<p>- Đặc điểm chính: toán tử <=> (cosine distance), chỉ mục HNSW, hỗ trợ JSON,</p>
+<p>  transaction ACID, SELECT FOR UPDATE. Một engine duy nhất phục vụ cả dữ</p>
+<p>  liệu quan hệ LẪN dữ liệu vector.</p>
+<p>- Vai trò: lưu toàn bộ domain model + embedding; thực hiện lọc điều kiện</p>
+<p>  cứng và xếp hạng ngữ nghĩa TRONG CÙNG MỘT truy vấn (rất quan trọng: bộ</p>
+<p>  lọc địa điểm/lương áp trước, vector rank sau); ORM broker của Django-Q</p>
+<p>  cũng chạy trên PostgreSQL (django_q_ormq).</p>
+<p>- Lý do chọn: thay vì vận hành thêm một vector DB riêng biệt (Milvus,</p>
+<p>  Pinecone, Qdrant...) gây tốn kém vận hành + phải đồng bộ dữ liệu hai nơi,</p>
+<p>  pgvector đáp ứng đủ quy mô đồ án với chi phí bằng 0 và dữ liệu luôn</p>
+<p>  nhất quán một nguồn.</p>
+<h3>2.3.3. Google Gemini API (dịch vụ AI)</h3>
+<p><b>- WHAT: dịch vụ AI sinh tạo của Google gồm 2 nhóm dùng trong đồ án:</b></p>
+<p>    + gemini-embedding-001: sinh vector nhúng 768 chiều (task_type=</p>
+<p>      RETRIEVAL_DOCUMENT cho hồ sơ/tin; RETRIEVAL_QUERY cho câu truy vấn);</p>
+<p>    + mô hình flash (gemini-3.6-flash): trích xuất JSON có cấu trúc từ file</p>
+<p>      CV/JD theo prompt tự định nghĩa.</p>
+<p>- Đặc điểm chính: chất lượng embedding cao, hỗ trợ đặt chiều đầu ra, hỗ trợ</p>
+<p>  task_type tối ưu cho retrieval; parser trả JSON khi cấu hình</p>
+<p>  response_mime_type="application/json".</p>
+<p>- Vai trò: "bộ não AI" của hệ thống - parse (UC-01/02) và hiểu ngữ nghĩa</p>
+<p>  (UC-03/04/05). Toàn bộ lời gọi tập trung tại module integrations/gemini</p>
+<p>  duy nhất để dễ mock khi test và kiểm soát chi phí.</p>
+<p>- Lý do chọn: có free tier đủ dùng cho đồ án, tài liệu chính thức tốt,</p>
+<p>  SDK python chính thức (google-genai), chất lượng tiếng Việt tốt.</p>
+<h3>2.3.4. Django-Q2 & Redis (Hàng đợi tác vụ + Cache)</h3>
+<p>- WHAT: Django-Q2 - hàng đợi tác vụ (task queue) cho Django; Redis - kho</p>
+<p>  dữ liệu in-memory. Broker của queue dùng CHÍNH TABLE PostgreSQL (ORM</p>
+<p>  broker) nên không cần thêm hạ tầng; Redis chuyên dụng cho cache throttle</p>
+<p>  (django-redis) với cơ chế dự phòng LocMemCache khi thiếu Redis.</p>
+<p>- Đặc điểm chính: schedule định kỳ (đóng tin hết hạn, dọn bản nháp quá hạn),</p>
+<p>  sync mode cho unit test, retry theo thời gian; django-redis hỗ trợ</p>
+<p>  connection pool keepalive, TLS, ignore-exceptions để Redis chập chờn</p>
+<p>  không làm sập API.</p>
+<p>- Vai trò: mọi tác vụ nặng chạy nền - sinh embedding, parse CV/JD, email,</p>
+<p>  expire jobs, cleanup import quá 24h; throttle history lưu Redis chia sẻ</p>
+<p>  giữa các tiến trình.</p>
+<p>- Lý do chọn Celery?: Celery mạnh hơn nhưng cần RabbitMQ/Redis broker bắt</p>
+<p>  buộc + phức tạp vận hành; Django-Q2 với ORM broker vừa đủ cho quy mô đồ</p>
+<p>  án, giảm số service phải chạy.</p>
+<h3>2.3.5. Next.js 16 + React 19 + TypeScript + Tailwind CSS (Frontend)</h3>
+<p>- WHAT: Next.js - framework React fullstack (App Router, Server Components);</p>
+<p>  Tailwind - utility-first CSS.</p>
+<p>- Đặc điểm chính: Server Component gọi thẳng API tại server (trang /jobs</p>
+<p>  render nhanh, SEO tốt cho trang public); Client Component cho phần tương</p>
+<p>  tác (form, polling); TypeScript bắt lỗi tại build-time; schema API type</p>
+<p>  SINH TỰ ĐỘNG từ OpenAPI (openapi-typescript) nên FE luôn khớp BE.</p>
+<p>- Vai trò: toàn bộ giao diện 3 vai trò; kiến trúc src/features/<module>/</p>
+<p>  chứa api.ts/types.ts/components tách bạch logic khỏi routing; guard</p>
+<p>  phân quyền theo role ở route group layout; polling 2s cho trạng thái</p>
+<p>  parse CV/JD.</p>
+<p>- Lý do chọn: SSR/SEO cần thiết cho trang việc làm public; hệ sinh thái</p>
+<p>  React lớn nhất; Tailwind tăng tốc viết UI nhất quán.</p>
+<h3>2.3.6. Docker Compose (Triển khai)</h3>
+<p>- WHAT: công cụ định nghĩa và chạy đa container từ một file YAML.</p>
+<p>- Vai trò: 4 dịch vụ chạy nhất quán một lệnh - PostgreSQL+pgvector (:5432),</p>
+<p>  Backend Django (:8000, tự migrate khi start), Worker qcluster (chia volume</p>
+<p>  media với backend), Frontend Next.js (:3000).</p>
+<p>- Lý do chọn: môi trường dev/demo/test giống nhau tuyệt đối, tránh</p>
+<p>  "works on my machine"; khớp yêu cầu Charter liệt kê stack Docker Compose.</p>
+<h3>2.3.7. JWT (SimpleJWT) & Google OAuth (Xác thực)</h3>
+<p>- WHAT: JWT - token chữ ký số mang thông tin user, stateless; Google OAuth</p>
+<p>  - đăng nhập xã hội.</p>
+<p>- Vai trò: access/refresh token cho API; FE lưu token và gắn Authorization</p>
+<p>  header; role trong token khớp guard route phía Next.js.</p>
+<p>- Lý do chọn: stateless phù hợp kiến trúc tách FE/BE; OAuth giảm rào cản</p>
+<p>  đăng nhập cho ứng viên.</p>
+<p><b>Bảng 2.1. So sánh cách tiếp cận truyền thống và hiện đại trong đề tài</b></p>
+<p>+----------------------+--------------------------------+--------------------------------+</p>
+<p>| Tiêu chí             | Truyền thống                   | Hiện đại (đồ án áp dụng)       |</p>
+<p>+----------------------+--------------------------------+--------------------------------+</p>
+<p>| Phạm vi              | Tìm kiếm từ khóa SQL,          | Semantic search pgvector +     |</p>
+<p>|                      | form nhập tay                  | AI parsing + taxonomy          |</p>
+<p>+----------------------+--------------------------------+--------------------------------+</p>
+<p>| Đặc điểm             | Khớp chuỗi đen trắng; dữ       | Hiểu ý nghĩa qua vector;       |</p>
+<p>|                      | liệu nhập thủ công 100%        | AI điền form, người duyệt      |</p>
+<p>+----------------------+--------------------------------+--------------------------------+</p>
+<p>| Ưu điểm              | Rẻ, chính xác tuyệt đối với    | Độ phủ ngữ nghĩa cao, UX       |</p>
+<p>|                      | từ khóa đúng; đơn giản         | nhanh, giảm nhập liệu lặp      |</p>
+<p>| Khuyết điểm          | Bỏ sót kết quả diễn đạt khác;  | Tốn chi phí AI; cần fallback,  |</p>
+<p>|                      | mệt mỏi do nhập lại            | rate limit, versioning         |</p>
+<p>+----------------------+--------------------------------+--------------------------------+</p>
+<h2>2.4. CÁC NGHIÊN CỨU, HỆ THỐNG LIÊN QUAN</h2>
+<h3>2.4.1. Các hệ thống thương mại</h3>
+<p>a) LinkedIn Jobs (Talent Solutions)</p>
+<p>   - Đặc điểm: mạng nghề nghiệp lớn nhất thế giới; gợi ý việc làm cá nhân</p>
+<p>     hóa dựa trên hồ sơ + hành vi; có tính năng "skills-first" chuẩn hóa</p>
+<p>     kỹ năng theo danh mục riêng.</p>
+<p>   - Ưu điểm: độ chính xác gợi ý cao nhờ dữ liệu khổng lồ.</p>
+<p>   - Hạn chế: đóng source, chi phí doanh nghiệp cao, không công khai kỹ</p>
+<p>     thuật.</p>
+<p>   - Bài học: tư tưởng "skills-first" - xếp hạng theo KỸ NĂNG đã chuẩn hóa</p>
+<p>     chứ không chỉ tiêu đề - được đồ án kế thừa qua Skill Taxonomy.</p>
+<p>b) Indeed / Glassdoor</p>
+<p>   - Đặc điểm: aggregator tin tuyển dụng lớn nhất; tìm kiếm lai từ khóa +</p>
+<p>     ngữ nghĩa, có mức lương ước tính.</p>
+<p>   - Hạn chế: nhiều tin trùng lặp, chất lượng xếp hạng không minh bạch với</p>
+<p>     người dùng.</p>
+<p>   - Bài học: đồ án hiển thị Match Score % công khai cho ứng viên - minh</p>
+<p>     bạch hơn; đồng thời giữ chế độ fallback từ khóa khi AI lỗi (Indeed</p>
+<p>     cũng dùng hybrid).</p>
+<p>c) TopCV / VietnamWorks / ITviec (Việt Nam)</p>
+<p>   - Đặc điểm: phổ biến tại Việt Nam; ITviec chuyên mảng CNTT có lọc theo</p>
+<p>     kỹ năng; TopCV có tính năng tạo CV online.</p>
+<p>   - Hạn chế: chủ yếu khớp từ khóa/lọc thủ công; ứng viên vẫn phải nhập</p>
+<p>     hồ sơ thủ công hoàn toàn.</p>
+<p>   - Bài học: xác nhận đúng "nỗi đau" nhập liệu lặp và tìm kiếm bỏ sót mà</p>
+<p>     đồ án giải quyết; hình thức lọc (địa điểm, lương, hình thức) được đồ</p>
+<p>     án giữ lại làm lớp lọc cứng trước khi xếp hạng ngữ nghĩa.</p>
+<h3>2.4.2. Các nghiên cứu khoa học liên quan</h3>
+<p>a) Person-Job Fit learning (Bian et al., AAAI 2018 - "Domain Adaptation</p>
+<p>   for Person-Job Fit; Zhu et al. - Jobbert: modeling resumes and JD")</p>
+<p>   - Đặc điểm: học biểu diễn chung (joint representation) của resume và</p>
+<p>     JD để dự đoán độ phù hợp; dùng deep learning trên dữ liệu lớn.</p>
+<p>   - Hạn chế: cần dataset huấn luyện khổng lồ, khó áp dụng cho đồ án sinh viên.</p>
+<p>   - Bài học: đồ án đạt cùng MỤC TIÊU (person-job fit score) bằng cách thay</p>
+<p>     mô hình tự huấn luyện bằng embedding pretrained của Gemini + cosine -</p>
+<p>     zero-training, phù hợp nguồn lực nhỏ.</p>
+<p>b) Các khảo sát hệ thống gợi ý việc làm (job recommender systems survey -</p>
+<p>   Singh et al.; MakeItHome...)</p>
+<p>   - Điểm chung: pipeline điển hình là Profile representation -> Matching</p>
+<p>     -> Ranking; các survey chỉ ra cold-start và khả năng giải thích là</p>
+<p>     hai thách thức lớn nhất.</p>
+<p>   - Bài học áp dụng: (i) pipeline của đồ án bám đúng 3 giai đoạn chuẩn;</p>
+<p>     (ii) Match Score % hiển thị trực tiếp chính là yếu tố GIẢI THÍCH được;</p>
+<p>     (iii) cold-start xử lý bằng cơ chế match_score=null + tái sinh vector</p>
+<p>     nền thay vì trả kết quả sai.</p>
+<p>c) ESCO & O*NET (từ điển kỹ năng chuẩn quốc tế)</p>
+<p>   - Đặc điểm: taxonomy kỹ năng do EU (ESCO) và Mỹ (O*NET) công bố, mã hóa</p>
+<p>     kỹ năng nghề nghiệp thống nhất.</p>
+<p>   - Hạn chế: chưa bản địa hóa tốt cho tiếng Việt.</p>
+<p>   - Bài học: đồ án tự thiết kế Skill Taxonomy quản trị bởi Admin với cơ</p>
+<p>     chế alias + merged_into + duyệt PENDING - mô phỏng tư tưởng ESCO ở</p>
+<p>     quy mô nhỏ, có khả năng nhập khẩu dữ liệu ESCO sau này.</p>
+<h3>2.4.3. Tổng hợp bài học rút ra cho đề tài</h3>
+<p>   (1) Hybrid search (lọc cứng + semantic ranking) là hướng đi được các</p>
+<p>       hệ thống lớn xác nhận - không thay thế hoàn toàn từ khóa;</p>
+<p>   (2) AI phải có "vòng kim loạn": luôn có fallback và con người duyệt cuối;</p>
+<p>   (3) Chuẩn hóa kỹ năng là mắt xích quyết định chất lượng so khớp;</p>
+<p>   (4) Minh bạch điểm số (Match Score %) tăng niềm tin người dùng.</p>
+<p>TÀI LIỆU / NGUỒN THAM KHẢO CHÍNH THỐNG (gợi ý trích dẫn)</p>
+<p style='margin-left:24pt'>[1] Django Software Foundation. Django Documentation (v5.x). https://docs.djangoproject.com</p>
+<p style='margin-left:24pt'>[2] Django REST Framework. Documentation. https://www.django-rest-framework.org</p>
+<p style='margin-left:24pt'>[3] PostgreSQL Global Development Group. PostgreSQL 16 Documentation. https://www.postgresql.org/docs/</p>
+<p style='margin-left:24pt'>[4] pgvector - Open-source vector similarity search for Postgres. https://github.com/pgvector/pgvector</p>
+<p style='margin-left:24pt'>[5] Malkov, Yu A., Boyarov, D. A. "Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs." IEEE TPAMI, 2018.</p>
+<p style='margin-left:24pt'>[6] Google. Gemini API Documentation (Embeddings, Structured Output). https://ai.google.dev/gemini-api/docs</p>
+<p style='margin-left:24pt'>[7] Bian, S. et al. "Domain Adaptation for Person-Job Fit: Learning to Rank for Employment." AAAI 2018.</p>
+<p style='margin-left:24pt'>[8] Zhu, C. et al. "Person-Job Fit: Adapting the Right Talent for the Right Job with Joint Representation Learning." MAN / arXiv 1806.03618.</p>
+<p style='margin-left:24pt'>[9] Singh, A. et al. "A Survey of Job Recommender Systems." ACM Computing Surveys / Springer.</p>
+<p style='margin-left:24pt'>[10] European Commission. ESCO - European Skills, Competences, Qualifications and Occupations. https://esco.ec.europa.eu</p>
+<p style='margin-left:24pt'>[11] O*NET OnLine - Technology Skills Taxonomy. https://www.onetcenter.org</p>
+<p style='margin-left:24pt'>[12] TopDev. Vietnam IT Market Report (hằng năm). https://topdev.vn/report</p>
+<p style='margin-left:24pt'>[13] Fielding, R. T. "Architectural Styles and the Design of Network-based Software Architectures." Dissertation UC Irvine, 2000 (REST).</p>
+<p style='margin-left:24pt'>[14] Fowler, M. Patterns of Enterprise Application Architecture. Addison-Wesley, 2002 (Service Layer).</p>
+<p style='margin-left:24pt'>[15] Schwaber, K., Sutherland, J. The Scrum Guide. https://scrumguides.org</p>
+<p style='margin-left:24pt'>[16] OWASP Foundation. OWASP Top 10 / Cheat Sheet Series. https://owasp.org</p>
+<p style='margin-left:24pt'>[17] RapidFuzz - Rapid fuzzy string matching. https://github.com/maxbachmann/RapidFuzz</p>
+<p style='margin-left:24pt'>[18] Django Q2 Documentation. https://django-q2.readthedocs.io</p>
+<p style='margin-left:24pt'>[19] Next.js Documentation (v16). https://nextjs.org/docs</p>
+<p style='margin-left:24pt'>[20] Docker Compose Overview. https://docs.docker.com/compose/</p>
+</body></html>

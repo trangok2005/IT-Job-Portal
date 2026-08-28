@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertCircle, Building2, CircleCheck, FileText, Loader2, LogOut, Menu, ShieldCheck, UserRound, X } from "lucide-react";
+import { AlertCircle, Building2, CircleCheck, FileText, Loader2, LogOut, Menu, ShieldCheck, Sparkles, UserRound, X } from "lucide-react";
 import { useState } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -30,6 +30,7 @@ const PUBLIC_NAV_LINKS = [
 const ROLE_NAV_LINKS: Record<UserRole, Array<{ href: string; label: string }>> = {
   CANDIDATE: [
     { href: "/jobs", label: "Tìm việc" },
+    { href: "/candidate/jobs/recommended", label: "Việc phù hợp" },
     { href: "/candidate/profile", label: "Hồ sơ" },
     { href: "/candidate/applications", label: "Đơn ứng tuyển" },
   ],
@@ -83,11 +84,18 @@ export function Navbar() {
         </Link>
       </DropdownMenuItem>
       {user.role === "CANDIDATE" && (
-        <DropdownMenuItem asChild>
-          <Link href="/candidate/applications">
-            <FileText className="mr-2" /> Đơn ứng tuyển
-          </Link>
-        </DropdownMenuItem>
+        <>
+          <DropdownMenuItem asChild>
+            <Link href="/candidate/jobs/recommended">
+              <Sparkles className="mr-2" /> Việc làm phù hợp
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/candidate/applications">
+              <FileText className="mr-2" /> Đơn ứng tuyển
+            </Link>
+          </DropdownMenuItem>
+        </>
       )}
       <DropdownMenuSeparator />
       <DropdownMenuItem onSelect={handleSignOut}>

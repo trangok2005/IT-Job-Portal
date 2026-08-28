@@ -41,7 +41,6 @@ class User(AbstractUser):
     # inherited from AbstractUser: self.is_active
 
     phone = models.CharField(max_length=20, blank=True, help_text="Số điện thoại liên hệ.")
-    phone_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

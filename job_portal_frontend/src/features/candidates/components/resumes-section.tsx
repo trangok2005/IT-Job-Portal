@@ -9,7 +9,6 @@ import {
   Star,
   Trash2,
   UploadCloud,
-  WandSparkles,
 } from "lucide-react";
 import { useRef } from "react";
 
@@ -50,18 +49,12 @@ export function ResumesSection({
   runMutation,
   onLocalError,
   onNotice,
-  onUsePreview,
-  activePreviewId,
-  onDeleted,
 }: {
   items: ResumeDto[];
   pending: boolean;
   runMutation: RunProfileMutation;
   onLocalError: (message: string) => void;
   onNotice?: (message: string) => void;
-  onUsePreview: (resume: ResumeDto) => void;
-  activePreviewId?: string;
-  onDeleted?: (resumeId: string) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const { startImport } = useCandidateResumeImport();
@@ -75,8 +68,8 @@ export function ResumesSection({
       onLocalError("CV chỉ hỗ trợ file PDF, DOC hoặc DOCX.");
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      onLocalError("Dung lượng CV không được vượt quá 10 MB.");
+    if (file.size > 5 * 1024 * 1024) {
+      onLocalError("Dung lượng CV không được vượt quá 5 MB.");
       return;
     }
     try {
@@ -90,8 +83,7 @@ export function ResumesSection({
 
   const remove = async (resume: ResumeDto) => {
     if (!window.confirm(`Xóa CV ${resume.original_filename}?`)) return;
-    const deleted = await runMutation(() => deleteResume(resume.id), "Đã xóa CV.");
-    if (deleted) onDeleted?.(resume.id);
+    await runMutation(() => deleteResume(resume.id), "Đã xóa CV.");
   };
 
   return (
@@ -153,22 +145,8 @@ export function ResumesSection({
                     {statusLabels[resume.parse_status]}
                   </span>
                 </div>
-                {resume.parse_status === "FAILED" && resume.parse_error_message && (
-                  <p className="mt-2 text-xs text-red-600">{resume.parse_error_message}</p>
-                )}
               </div>
               <div className="flex flex-wrap items-center gap-1 border-t border-zinc-100 pt-3 sm:border-0 sm:pt-0">
-                {resume.parse_status === "SUCCESS" && (
-                  <Button
-                    type="button"
-                    variant={activePreviewId === resume.id ? "accent" : "outline"}
-                    size="sm"
-                    onClick={() => onUsePreview(resume)}
-                  >
-                    <WandSparkles />
-                    {activePreviewId === resume.id ? "Đang xem bản nháp" : "Dùng dữ liệu CV"}
-                  </Button>
-                )}
                 <Button asChild type="button" variant="ghost" size="sm">
                   <a href={resume.file_url} target="_blank" rel="noreferrer"><Download />Xem</a>
                 </Button>

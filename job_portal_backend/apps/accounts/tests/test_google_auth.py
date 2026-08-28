@@ -40,6 +40,7 @@ class GoogleAuthApiTests(APITestCase):
             "valid-google-token",
             ANY,
             "web-client-id.apps.googleusercontent.com",
+            clock_skew_in_seconds=60,
         )
         user = User.objects.get(email="candidate@example.com")
         self.assertEqual(user.auth_provider, "GOOGLE")

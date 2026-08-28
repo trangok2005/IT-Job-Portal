@@ -8,17 +8,7 @@ export const updateMyCompany = (payload: CompanyUpdatePayload) => authApiRequest
 export const resubmitCompany = (id: string) => authApiRequest<CompanyDto>(`/api/companies/${id}/resubmit/`, json("POST"));
 export const getMyJobs = () => authApiRequest<Paginated<EmployerJobDto>>("/api/jobs/my-jobs/?page_size=100");
 export const getEmployerJob = (id: string) => authApiRequest<JobDto>(`/api/jobs/${id}/`);
-export const createEmployerJob = (payload: JobPayload, jdFile?: File | null) => {
-  if (!jdFile) return authApiRequest<JobDto>("/api/jobs/", json("POST", payload));
-  const body = new FormData();
-  for (const [key, value] of Object.entries(payload)) {
-    if (value === undefined || value === null || key === "raw_jd_file") continue;
-    if (Array.isArray(value)) value.forEach((item) => body.append(key, String(item)));
-    else body.set(key, String(value));
-  }
-  body.set("raw_jd_file", jdFile);
-  return authApiRequest<JobDto>("/api/jobs/", { method: "POST", body });
-};
+export const createEmployerJob = (payload: JobPayload) => authApiRequest<JobDto>("/api/jobs/", json("POST", payload));
 export const updateEmployerJob = (id: string, payload: JobUpdatePayload) => authApiRequest<JobDto>(`/api/jobs/${id}/`, json("PATCH", payload));
 export const publishEmployerJob = (id: string) => authApiRequest<JobDto>(`/api/jobs/${id}/publish/`, json("POST"));
 export const closeEmployerJob = (id: string) => authApiRequest<JobDto>(`/api/jobs/${id}/close/`, json("POST"));

@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { applyToJob } from "@/features/applications/api";
+import { getCandidateProfile } from "@/features/candidates/api";
 import { consumePendingApplication, rememberPendingApplication } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-provider";
 
@@ -19,11 +21,15 @@ export function ApplyButton({ jobId }: { jobId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [applicationId, setApplicationId] = useState<string | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [primaryResumeName, setPrimaryResumeName] = useState<string | null>(null);
+  const [attachCurrentResume, setAttachCurrentResume] = useState(false);
 
   useEffect(() => {
     if (user?.role !== "CANDIDATE" || !consumePendingApplication(jobId)) return;
     queueMicrotask(() => {
       setActionError(null);
+      setProfileLoading(true);
       setOpen(true);
     });
   }, [jobId, user]);
@@ -34,6 +40,28 @@ export function ApplyButton({ jobId }: { jobId: string }) {
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || user?.role !== "CANDIDATE" || applicationId) return;
+    let active = true;
+    getCandidateProfile()
+      .then((profile) => {
+        if (!active) return;
+        const primaryResume = profile.resumes.find((resume) => resume.is_primary);
+        setPrimaryResumeName(primaryResume?.original_filename ?? null);
+        setAttachCurrentResume(Boolean(primaryResume));
+      })
+      .catch(() => {
+        if (!active) return;
+        setPrimaryResumeName(null);
+        setAttachCurrentResume(false);
+        setError("Không thể tải CV chính. Bạn vẫn có thể ứng tuyển không kèm CV.");
+      })
+      .finally(() => {
+        if (active) setProfileLoading(false);
+      });
+    return () => { active = false; };
+  }, [applicationId, open, user]);
 
   const startApply = () => {
     if (!user) {
@@ -48,6 +76,8 @@ export function ApplyButton({ jobId }: { jobId: string }) {
     }
     setActionError(null);
     setError(null);
+    setApplicationId(null);
+    setProfileLoading(true);
     setOpen(true);
   };
 
@@ -55,7 +85,11 @@ export function ApplyButton({ jobId }: { jobId: string }) {
     setSubmitting(true);
     setError(null);
     try {
-      const application = await applyToJob(jobId, coverLetter);
+      const application = await applyToJob({
+        job: jobId,
+        cover_letter: coverLetter,
+        attach_current_resume: attachCurrentResume,
+      });
       setApplicationId(application.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể gửi hồ sơ ứng tuyển.");
@@ -80,25 +114,42 @@ export function ApplyButton({ jobId }: { jobId: string }) {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-zinc-900">Xác nhận ứng tuyển</h2>
-                <p className="mt-1 text-sm text-zinc-500">Hệ thống dùng CV chính trong hồ sơ của bạn.</p>
+                <p className="mt-1 text-sm text-zinc-500">Kiểm tra thông tin trước khi gửi đơn ứng tuyển.</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100"><X className="size-5" /></button>
             </div>
             {applicationId ? (
               <div className="mt-6 text-center">
                 <CheckCircle2 className="mx-auto size-12 text-emerald-600" />
-                <p className="mt-3 font-semibold text-zinc-900">Hồ sơ đã được gửi</p>
-                <p className="mt-1 text-sm text-zinc-500">Bạn có thể theo dõi trạng thái trong danh sách đơn ứng tuyển.</p>
+                <p className="mt-3 font-semibold text-zinc-900">Ứng tuyển thành công</p>
+                <p className="mt-1 text-sm text-zinc-500">Đơn ứng tuyển đã được gửi và có thể theo dõi ngay.</p>
                 <Button asChild className="mt-5 w-full"><Link href={`/candidate/applications/${applicationId}`}>Xem đơn ứng tuyển</Link></Button>
               </div>
             ) : (
               <>
+                <div className="mt-6 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                  <label className="flex items-start gap-3 text-sm text-zinc-700">
+                    <Checkbox
+                      checked={attachCurrentResume}
+                      disabled={profileLoading || !primaryResumeName}
+                      onCheckedChange={(checked) => setAttachCurrentResume(checked === true)}
+                    />
+                    <span>
+                      <span className="block font-medium">Đính kèm CV chính hiện tại</span>
+                      <span className="mt-1 block text-xs text-zinc-500">
+                        {profileLoading
+                          ? "Đang tải thông tin CV..."
+                          : primaryResumeName ?? "Bạn chưa có CV chính. Đơn sẽ được gửi không kèm CV."}
+                      </span>
+                    </span>
+                  </label>
+                </div>
                 <label htmlFor="cover-letter" className="mt-6 block text-sm font-medium text-zinc-700">Thư giới thiệu <span className="font-normal text-zinc-400">(không bắt buộc)</span></label>
                 <textarea id="cover-letter" value={coverLetter} onChange={(event) => setCoverLetter(event.target.value)} className="mt-2 min-h-36 w-full rounded-xl border border-zinc-300 p-3.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Chia sẻ ngắn gọn vì sao bạn phù hợp với vị trí..." />
                 {error && <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
                 <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Hủy</Button>
-                  <Button type="button" variant="accent" onClick={submit} disabled={submitting}>
+                  <Button type="button" variant="accent" onClick={submit} disabled={submitting || profileLoading}>
                     {submitting ? <Loader2 className="animate-spin" /> : <Send />}Gửi hồ sơ
                   </Button>
                 </div>

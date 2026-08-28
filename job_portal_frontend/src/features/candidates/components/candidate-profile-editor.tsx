@@ -12,7 +12,6 @@ import type {
   ExperienceDto,
   ProfileSavePayload,
   ProfileUpdatePayload,
-  ResumeDto,
   ResumeImportDto,
   ResumePreview,
 } from "@/features/candidates/types";
@@ -59,20 +58,17 @@ function draftExperience(item: NonNullable<ResumePreview["experiences"]>[number]
 
 export function CandidateProfileEditor({
   profile,
-  previewResume,
   previewImport,
   onSaved,
   onCancel,
 }: {
   profile: CandidateProfileDto;
-  previewResume?: ResumeDto | null;
   previewImport?: ResumeImportDto | null;
   onSaved: (profile: CandidateProfileDto) => void;
   onCancel?: () => void;
 }) {
-  const preview = (previewImport?.parsed_data
-    ?? (previewResume?.parsed_data ?? null)) as ResumePreview | null;
-  const previewLabel = previewImport?.original_filename ?? previewResume?.original_filename;
+  const preview = previewImport?.parsed_data as ResumePreview | null;
+  const previewLabel = previewImport?.original_filename;
   const [draftProfile, setDraftProfile] = useState<DraftProfile>({
     ...profile,
     full_name: preview?.full_name || profile.full_name,
@@ -180,10 +176,10 @@ export function CandidateProfileEditor({
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>
       )}
       <div className="sticky bottom-4 z-10 flex justify-end gap-2 rounded-2xl border border-zinc-200 bg-white/95 p-4 shadow-lg backdrop-blur">
-        {onCancel && preview && (
+        {onCancel && (
           <Button type="button" size="lg" variant="outline" onClick={onCancel} disabled={pending}>
             <X />
-            Hủy bản nháp
+            {preview ? "Hủy bản nháp" : "Hủy"}
           </Button>
         )}
         <Button type="button" size="lg" onClick={save} disabled={pending}>

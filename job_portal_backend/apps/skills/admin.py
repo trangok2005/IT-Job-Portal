@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import transaction
 
 from apps.skills.models import CandidateSkill, MatchingWeightConfig, Skill, SkillAlias, SkillCategory
 
@@ -33,11 +34,18 @@ class MatchingWeightConfigAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_active",)
 
+    @transaction.atomic
     def save_model(self, request, obj, form, change):
+        configs = list(
+            MatchingWeightConfig.objects.select_for_update().order_by("pk")
+        )
         obj.updated_by = request.user
         if obj.is_active:
             # Chỉ 1 config được active tại một thời điểm.
-            MatchingWeightConfig.objects.exclude(pk=obj.pk).update(is_active=False)
+            for other in configs:
+                if other.pk != obj.pk and other.is_active:
+                    other.is_active = False
+                    other.save(update_fields=["is_active", "updated_at"])
         super().save_model(request, obj, form, change)
 
 

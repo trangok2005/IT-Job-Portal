@@ -4,113 +4,27 @@ import csv
 from datetime import timedelta
 from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
 from apps.companies.models import Company
+from apps.core.seed_data.sample_jobs import (
+    INITIAL_GROUP_ROWS,
+    ROLE_GROUPS,
+    SALARY_BY_LEVEL,
+    SKILL_ALIASES,
+)
 from apps.jobs import services as job_services
 from apps.jobs.models import JobPost, JobSkill
-from apps.skills.models import Skill, SkillCategory
-from apps.skills.utils import make_unique_slug
+from apps.skills.models import Skill
+from apps.skills.utils import normalize_alias
 
 
 User = get_user_model()
-CSV_PATH = Path(__file__).with_name("job_descriptions_500_balanced.csv")
-
-# Keep the original 20 rows, then fill every role family to 10 jobs.
-INITIAL_GROUP_ROWS = {
-    "Backend": [3, 4],
-    "Frontend": [17, 33],
-    "Full-stack": [0, 1],
-    "QA": [21, 30],
-    "Mobile": [11, 37],
-    "Software/.NET": [44, 242],
-    "Game": [51, 99],
-    "AI": [59, 94],
-    "Business": [23, 127],
-    "DevOps/Data": [14, 18],
-}
-
-ROLE_GROUPS = {
-    "Backend": {
-        "Backend Developer", "Backend Engineer", "Backend Intern",
-        "Java Developer", "Java Engineer", "Java Software Engineer",
-        "PHP Developer", "Senior Java Developer",
-    },
-    "Frontend": {"Frontend Developer", "Web Developer", "UX/UI Designer"},
-    "Full-stack": {
-        "Full-stack Developer", "Fullstack Developer",
-        "Java/Golang/Angular Developer", "Magento Developer",
-    },
-    "QA": {
-        "QA Engineer", "Automation Tester", "Software Tester",
-        "Senior QA Engineer", "Quality Control Engineer",
-        "Software Quality Assurance Engineer", "Automation Test Lead",
-        "Leader Tester Engineer", "Quality Assurance Manager",
-    },
-    "Mobile": {
-        "Mobile Developer", "Flutter Developer", "iOS Developer",
-        "Leader React Native",
-    },
-    "Software/.NET": {
-        "Software Engineer", "Software Developer", ".NET Developer",
-        "Senior .NET Developer", "Senior Software Engineer",
-        "C#.NET Leader", "C/C++ Developer", "C++ Developer",
-        "Senior C++ Developer", "C++/C# Developer",
-    },
-    "Game": {
-        "Game Developer", "Unity Developer", "Playable Ads Developer",
-        "Game Designer",
-    },
-    "AI": {
-        "AI Engineer", "Machine Learning Engineer", "Data Scientist",
-        "AI Analyst", "Quantitative Developer",
-    },
-    "Business": {
-        "Business Analyst", "Product Manager", "IT Project Manager",
-        "Project Manager", "Technical Project Manager",
-    },
-    "DevOps/Data": {
-        "DevOps Engineer", "DevSecOps Engineer", "Data Engineer",
-        "Data Engineer Intern", "Data Analyst", "Data Integration Engineer",
-        "Cloud Engineer", "Site Reliability Engineer", "Database Engineer",
-        "Database Developer", "Database Administrator",
-    },
-}
-
-SKILL_ALIASES = {
-    "ReactJS": "React",
-    "React.js": "React",
-    "NextJS": "Next.js",
-    "NodeJS": "Node.js",
-    "ExpressJS": "Express",
-    "Golang": "Go",
-    "Postgres": "PostgreSQL",
-    "Spring": "Spring Boot",
-    "Spring Framework": "Spring Boot",
-    "REST": "REST API",
-    "RESTful": "REST API",
-    "RESTful API": "REST API",
-    "RESTful APIs": "REST API",
-    ".NET": "ASP.NET Core",
-    ".NET Core": "ASP.NET Core",
-    "ASP.NET": "ASP.NET Core",
-    "ASP.NET MVC": "ASP.NET Core",
-    "HTML": "HTML/CSS",
-    "CSS": "HTML/CSS",
-}
-
-SALARY_BY_LEVEL = {
-    JobPost.ExperienceLevel.INTERN: (5_000_000, 10_000_000),
-    JobPost.ExperienceLevel.FRESHER: (9_000_000, 15_000_000),
-    JobPost.ExperienceLevel.JUNIOR: (12_000_000, 22_000_000),
-    JobPost.ExperienceLevel.MIDDLE: (20_000_000, 35_000_000),
-    JobPost.ExperienceLevel.SENIOR: (30_000_000, 50_000_000),
-    JobPost.ExperienceLevel.LEAD: (40_000_000, 70_000_000),
-    "": (15_000_000, 30_000_000),
-}
+CSV_PATH = settings.BASE_DIR / "apps" / "core" / "seed_data" / "job_descriptions_500_balanced.csv"
 
 
 def _list_field(raw: str) -> list[str]:
@@ -124,31 +38,47 @@ def _list_field(raw: str) -> list[str]:
 def _experience_level(title: str, description: str) -> str:
     text = f"{title} {description}".lower()
     if "intern" in text or "internship" in text:
-        return JobPost.ExperienceLevel.INTERN
+        return JobPost.ExperienceLevel.ENTRY
     if "fresher" in text or "graduate" in text:
-        return JobPost.ExperienceLevel.FRESHER
+        return JobPost.ExperienceLevel.ENTRY
     if "lead" in text or "manager" in text or "principal" in text:
         return JobPost.ExperienceLevel.LEAD
     if "senior" in text or " sr." in text:
-        return JobPost.ExperienceLevel.SENIOR
+        return JobPost.ExperienceLevel.MID_SENIOR
     if "middle" in text or " mid" in text:
-        return JobPost.ExperienceLevel.MIDDLE
+        return JobPost.ExperienceLevel.MID_SENIOR
     if "junior" in text:
         return JobPost.ExperienceLevel.JUNIOR
-    return ""
+    return JobPost.ExperienceLevel.JUNIOR
 
 
 def _job_type(title: str, description: str) -> str:
     text = f"{title} {description}".lower()
-    if "intern" in text:
-        return JobPost.JobType.INTERNSHIP
     if "part-time" in text or "part time" in text:
         return JobPost.JobType.PART_TIME
     if "contract" in text or "freelance" in text:
         return JobPost.JobType.CONTRACT
-    if "remote" in text:
-        return JobPost.JobType.REMOTE
     return JobPost.JobType.FULL_TIME
+
+
+def _workplace_type(title: str, description: str) -> str:
+    text = f"{title} {description}".lower()
+    if "hybrid" in text:
+        return JobPost.WorkplaceType.HYBRID
+    if "remote" in text or "work from home" in text:
+        return JobPost.WorkplaceType.REMOTE
+    return JobPost.WorkplaceType.ONSITE
+
+
+def _location(value: str) -> str:
+    normalized = normalize_alias(value).replace("đ", "d")
+    if any(part in normalized for part in ("ho chi minh", "hcm", "sai gon", "saigon")):
+        return JobPost.Location.HO_CHI_MINH
+    if any(part in normalized for part in ("ha noi", "hanoi")):
+        return JobPost.Location.HANOI
+    if "da nang" in normalized:
+        return JobPost.Location.DA_NANG
+    return ""
 
 
 def _select_rows(rows: list[dict]) -> list[tuple[int, dict]]:
@@ -198,7 +128,6 @@ class Command(BaseCommand):
         with CSV_PATH.open(encoding="utf-8-sig", newline="") as source:
             rows = list(csv.DictReader(source))
         selected = _select_rows(rows)
-        skill_category, _ = SkillCategory.objects.get_or_create(name="Imported JD")
         jobs_to_embed = []
         created_count = 0
 
@@ -248,7 +177,8 @@ class Command(BaseCommand):
                             ]
                             if part
                         ),
-                        "location": (row["city"].strip() or row["location"].strip())[:255],
+                        "location": _location(row["city"].strip() or row["location"].strip()),
+                        "workplace_type": _workplace_type(title, description),
                         "job_type": _job_type(title, description),
                         "experience_level": level,
                         "salary_min": salary_min,
@@ -268,15 +198,12 @@ class Command(BaseCommand):
                         if name and name != "Not Specified"
                     )
                     for skill_name in canonical_names:
-                        skill = Skill.objects.filter(name__iexact=skill_name).first()
+                        skill = Skill.objects.filter(
+                            name__iexact=skill_name,
+                            status__in=[Skill.Status.APPROVED, Skill.Status.PENDING],
+                        ).first()
                         if skill is None:
-                            skill = Skill.objects.create(
-                                name=skill_name,
-                                slug=make_unique_slug(skill_name),
-                                category=skill_category,
-                                status=Skill.Status.APPROVED,
-                                source=Skill.Source.ADMIN_MANUAL,
-                            )
+                            continue
                         JobSkill.objects.get_or_create(job=job, skill=skill)
                 if created or job.embedding_is_stale:
                     jobs_to_embed.append(job)

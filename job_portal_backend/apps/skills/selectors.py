@@ -1,6 +1,7 @@
 """skills selectors — read-only queries (no writes / no business mutation)."""
 from django.db.models import Count, Q
 
+from apps.core.matching import DEFAULT_MATCHING_WEIGHTS, MatchingWeights
 from apps.jobs.models import JobPost
 from apps.skills.models import MatchingWeightConfig, Skill, SkillCategory
 
@@ -48,3 +49,16 @@ def get_active_weight_config():
         # Mặc định lấy config đầu tiên nếu admin chưa kích hoạt config nào.
         config = MatchingWeightConfig.objects.first()
     return config
+
+
+def get_active_matching_weights():
+    """Return active recommendation weights, or the documented 60/25/10/5 defaults."""
+    config = MatchingWeightConfig.objects.filter(is_active=True).first()
+    if config is None:
+        return DEFAULT_MATCHING_WEIGHTS
+    return MatchingWeights(
+        semantic=config.weight_semantic_similarity,
+        skill=config.weight_skill_overlap,
+        experience=config.weight_experience_match,
+        education=config.weight_education_match,
+    )

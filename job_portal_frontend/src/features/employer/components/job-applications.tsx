@@ -75,7 +75,7 @@ export function JobApplications({ jobId }: { jobId: string }) {
               <Link key={item.id} href={`/employer/jobs/${jobId}/applications/${item.id}`} className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm hover:border-primary-200 sm:flex-row sm:items-center">
                 <span className="grid size-11 place-items-center rounded-xl bg-primary-50 font-bold text-primary">{item.candidate_name.charAt(0)}</span>
                 <div className="min-w-0 flex-1"><h3 className="font-semibold text-zinc-900">{item.candidate_name}</h3><p className="mt-1 truncate text-sm text-zinc-500">{item.candidate_headline || item.candidate_email}</p></div>
-                <div className="flex items-center gap-3"><span className="font-bold text-accent">{item.match_score === null ? "Đang tính" : `${item.match_score}%`}</span><ApplicationStatusBadge status={item.status} /></div>
+                <div className="flex items-center gap-3"><span className="font-bold text-accent">{item.match_score === null ? "Chưa có điểm phù hợp" : `${item.match_score}%`}</span><ApplicationStatusBadge status={item.status} /></div>
               </Link>
             ))}
           </div>

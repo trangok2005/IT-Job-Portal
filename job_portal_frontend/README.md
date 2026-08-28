@@ -83,7 +83,7 @@ job_portal_frontend/
 │   │                                           # trọng số Business Rule Ranking
 │   │
 │   ├── features/                            # Giữ nguyên theo charter gốc — mỗi thư mục ↔ 1 app Django
-│   │   ├── auth/  companies/  candidates/  skills/  jobs/  applications/  ai-analysis/  notifications/
+│   │   ├── auth/  companies/  candidates/  skills/  jobs/  applications/  ai-analysis/
 │   │   │   └── api.ts / types.ts / hooks.ts / components/    (không đổi so với bản trước)
 │   │
 │   ├── components/

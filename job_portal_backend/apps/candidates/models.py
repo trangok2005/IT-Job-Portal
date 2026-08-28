@@ -21,7 +21,7 @@ from django.db import models
 from django.db.models import Q
 from pgvector.django import VectorField, HnswIndex
 
-from apps.core.models import BaseModel
+from apps.core.models import BaseModel, TimeStampedModel, UUIDModel
 from integrations.gemini.embeddings import (
     EMBEDDING_DIMENSIONS,
     current_candidate_embedding_signature,
@@ -89,15 +89,18 @@ class CandidateProfile(BaseModel):
 
     @property
     def is_complete(self):
-        """Hồ sơ đủ điều kiện ứng tuyển khi có thông tin liên hệ và CV chính."""
+        """Hồ sơ đủ điều kiện ứng tuyển khi có liên hệ và ít nhất một skill."""
         required_fields = (self.full_name, self.phone, self.desired_position)
         return bool(
             all(value and value.strip() for value in required_fields)
-            and self.resumes.filter(is_primary=True).exclude(file="").exists()
+            and self.candidate_skills.filter(
+                skill__is_active=True,
+                skill__status__in=("APPROVED", "PENDING"),
+            ).exists()
         )
 
 
-class Education(BaseModel):
+class Education(UUIDModel, TimeStampedModel):
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="educations")
     school_name = models.CharField(max_length=255)
     major = models.CharField(max_length=255, blank=True)
@@ -120,7 +123,7 @@ class Education(BaseModel):
         return f"{self.school_name} - {self.major}"
 
 
-class Experience(BaseModel):
+class Experience(UUIDModel, TimeStampedModel):
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="experiences")
     company_name = models.CharField(max_length=255)
     position = models.CharField(max_length=255)
@@ -142,7 +145,7 @@ class Experience(BaseModel):
         return f"{self.position} @ {self.company_name}"
 
 
-class ResumeImport(BaseModel):
+class ResumeImport(UUIDModel, TimeStampedModel):
     """Bản ghi tạm cho luồng upload CV -> AI parse -> preview -> user confirm (UC-01).
     Tách riêng khỏi Resume (CV chính thức) để:
     - Không ghi đè hồ sơ chính khi user chỉ preview.
@@ -166,9 +169,8 @@ class ResumeImport(BaseModel):
     parse_status = models.CharField(
         max_length=20, choices=ParseStatus.choices, default=ParseStatus.PENDING
     )
-    raw_extracted_json = models.JSONField(
-        null=True, blank=True, help_text="Output thô từ Gemini trước khi validate/normalize."
-    )
+    # Giới hạn số lần Gemini parse lại bản ghi này (chống retry vô hạn của broker).
+    parse_attempts = models.PositiveSmallIntegerField(default=0)
     parsed_data = models.JSONField(
         null=True, blank=True, help_text="Dữ liệu đã validate, dùng để điền Form preview."
     )
@@ -185,10 +187,8 @@ class ResumeImport(BaseModel):
         return f"{self.original_filename} ({self.parse_status})"
 
 
-class Resume(BaseModel):
-    """File CV chính thức do ứng viên upload + kết quả thô từ Gemini Resume Parser.
-    Giữ lại raw_json phục vụ debug khi AI trích xuất sai (UC-01 exception E1/E2).
-    """
+class Resume(UUIDModel, TimeStampedModel):
+    """File CV chính thức do ứng viên xác nhận từ bản xem trước."""
 
     class ParseStatus(models.TextChoices):
         PENDING = "PENDING", "Đang xử lý"
@@ -202,11 +202,7 @@ class Resume(BaseModel):
     file_size_bytes = models.PositiveIntegerField(null=True, blank=True)
 
     parse_status = models.CharField(max_length=20, choices=ParseStatus.choices, default=ParseStatus.PENDING)
-    raw_extracted_json = models.JSONField(null=True, blank=True, help_text="Output thô từ Gemini trước khi validate/normalize.")
     parsed_data = models.JSONField(null=True, blank=True)
-    parse_error_message = models.TextField(blank=True)
-    applied_at = models.DateTimeField(null=True, blank=True)
-    applied_profile_version = models.PositiveIntegerField(null=True, blank=True)
 
     is_primary = models.BooleanField(default=True, help_text="CV chính hiện dùng để ứng tuyển mặc định.")
 

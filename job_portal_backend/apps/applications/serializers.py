@@ -29,12 +29,13 @@ class ApplicationStatusHistorySerializer(serializers.ModelSerializer):
 
 
 class ApplicationCreateSerializer(serializers.Serializer):
-    """Candidate chỉ chọn job và cover letter; CV luôn lấy bản primary."""
+    """Candidate chọn job, thư giới thiệu và có đính kèm CV chính hay không."""
 
     job = serializers.PrimaryKeyRelatedField(
         queryset=JobPost.objects.filter(is_active=True),
     )
     cover_letter = serializers.CharField(required=False, allow_blank=True)
+    attach_current_resume = serializers.BooleanField(required=False, default=False)
 
 
 class ApplicationListQuerySerializer(serializers.Serializer):
@@ -72,7 +73,7 @@ class CandidateApplicationReadSerializer(serializers.ModelSerializer):
     job_id = serializers.UUIDField(source="job.id", read_only=True)
     job_title = serializers.CharField(source="job.title", read_only=True)
     company_name = serializers.CharField(source="job.company.name", read_only=True)
-    submitted_resume = ResumeSerializer(source="resume", read_only=True)
+    submitted_resume = ResumeSerializer(source="resume", read_only=True, allow_null=True)
     history = ApplicationStatusHistorySerializer(
         source="status_history",
         many=True,
@@ -89,7 +90,6 @@ class CandidateApplicationReadSerializer(serializers.ModelSerializer):
             "submitted_resume",
             "cover_letter",
             "status",
-            "status_updated_at",
             "history",
             "created_at",
             "updated_at",
@@ -113,7 +113,7 @@ class EmployerApplicationReadSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
-    submitted_resume = ResumeSerializer(source="resume", read_only=True)
+    submitted_resume = ResumeSerializer(source="resume", read_only=True, allow_null=True)
     match_score = serializers.SerializerMethodField()
     history = ApplicationStatusHistorySerializer(
         source="status_history",
@@ -137,7 +137,6 @@ class EmployerApplicationReadSerializer(serializers.ModelSerializer):
             "submitted_resume",
             "cover_letter",
             "status",
-            "status_updated_at",
             "match_score",
             "history",
             "created_at",
@@ -155,9 +154,19 @@ class EmployerApplicationReadSerializer(serializers.ModelSerializer):
 
 
 class ApplicationAnalysisReadSerializer(serializers.ModelSerializer):
-    inputs_are_stale = serializers.BooleanField(read_only=True)
-    weight_config_id = serializers.UUIDField(source="weight_config.id", read_only=True)
-    weight_config_name = serializers.CharField(source="weight_config.name", read_only=True)
+    weight_config_id = serializers.SerializerMethodField()
+    weight_config_name = serializers.SerializerMethodField()
+    snapshot_created_at = serializers.DateTimeField(
+        source="application.snapshot_created_at", read_only=True,
+    )
+
+    def get_weight_config_id(self, obj):
+        snapshot = obj.application.matching_weight_snapshot or {}
+        return snapshot.get("config_id")
+
+    def get_weight_config_name(self, obj):
+        snapshot = obj.application.matching_weight_snapshot or {}
+        return snapshot.get("config_name")
 
     class Meta:
         model = AIAnalysis
@@ -175,7 +184,7 @@ class ApplicationAnalysisReadSerializer(serializers.ModelSerializer):
             "candidate_embedding_version",
             "job_embedding_version",
             "computed_at",
-            "inputs_are_stale",
+            "snapshot_created_at",
         ]
         read_only_fields = fields
 
@@ -196,4 +205,4 @@ class EmptyApplicationAnalysisSerializer(serializers.Serializer):
     candidate_embedding_version = serializers.IntegerField(allow_null=True)
     job_embedding_version = serializers.IntegerField(allow_null=True)
     computed_at = serializers.DateTimeField(allow_null=True)
-    inputs_are_stale = serializers.BooleanField(allow_null=True)
+    snapshot_created_at = serializers.DateTimeField(allow_null=True)

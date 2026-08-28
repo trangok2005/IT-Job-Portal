@@ -12,37 +12,18 @@ from apps.core.management.commands.seed_sample_jobs import (
     CSV_PATH,
     ROLE_GROUPS,
     SKILL_ALIASES,
+    _location,
     _list_field,
     _select_rows,
+    _workplace_type,
 )
+from apps.core.seed_data.sample_jobs import EXTRA_GROUP_ROLES, GROUP_QUOTAS
 from apps.jobs import services as job_services
 from apps.jobs.models import JobPost, JobSkill
-from apps.skills.models import Skill, SkillCategory
-from apps.skills.utils import make_unique_slug
+from apps.skills.models import Skill
 
 
 User = get_user_model()
-
-GROUP_QUOTAS = {
-    "Backend": 9,
-    "Frontend": 6,
-    "Full-stack": 5,
-    "QA": 5,
-    "Mobile": 5,
-    "Software/.NET": 7,
-    "Game": 4,
-    "AI": 2,
-    "Business": 3,
-    "DevOps/Data": 4,
-}
-
-EXTRA_GROUP_ROLES = {
-    "Software/.NET": {
-        "Software Internship", "Software Development Intern", "Intern Developer",
-        "Junior Developer", "Software Development Intern",
-    },
-    "DevOps/Data": {"Intern Security Engineer", "Security Engineer"},
-}
 
 
 def _is_explicit_intern(row: dict) -> bool:
@@ -97,7 +78,6 @@ class Command(BaseCommand):
         with CSV_PATH.open(encoding="utf-8-sig", newline="") as source:
             rows = list(csv.DictReader(source))
         selected = _select_intern_sources(rows)
-        skill_category, _ = SkillCategory.objects.get_or_create(name="Imported JD")
         jobs_to_embed = []
         created_count = 0
 
@@ -161,9 +141,10 @@ class Command(BaseCommand):
                             "Được mentoring, tham gia dự án thực tế, hỗ trợ thực tập và có "
                             "cơ hội trở thành nhân viên chính thức."
                         ),
-                        "location": (row["city"].strip() or row["location"].strip())[:255],
-                        "job_type": JobPost.JobType.INTERNSHIP,
-                        "experience_level": JobPost.ExperienceLevel.INTERN,
+                        "location": _location(row["city"].strip() or row["location"].strip()),
+                        "workplace_type": _workplace_type(title, row["description"]),
+                        "job_type": JobPost.JobType.FULL_TIME,
+                        "experience_level": JobPost.ExperienceLevel.ENTRY,
                         "salary_min": 4_000_000,
                         "salary_max": 10_000_000,
                         "salary_negotiable": False,
@@ -176,15 +157,12 @@ class Command(BaseCommand):
                 if created:
                     created_count += 1
                     for skill_name in canonical_names:
-                        skill = Skill.objects.filter(name__iexact=skill_name).first()
+                        skill = Skill.objects.filter(
+                            name__iexact=skill_name,
+                            status__in=[Skill.Status.APPROVED, Skill.Status.PENDING],
+                        ).first()
                         if skill is None:
-                            skill = Skill.objects.create(
-                                name=skill_name,
-                                slug=make_unique_slug(skill_name),
-                                category=skill_category,
-                                status=Skill.Status.APPROVED,
-                                source=Skill.Source.ADMIN_MANUAL,
-                            )
+                            continue
                         JobSkill.objects.get_or_create(job=job, skill=skill)
                 if created or job.embedding_is_stale:
                     jobs_to_embed.append(job)

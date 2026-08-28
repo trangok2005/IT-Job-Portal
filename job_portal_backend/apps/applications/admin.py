@@ -12,11 +12,19 @@ class ApplicationStatusHistoryInline(admin.TabularInline):
 
 @admin.register(JobApplication)
 class JobApplicationAdmin(admin.ModelAdmin):
-    list_display = ("candidate", "job", "status", "status_updated_at")
+    list_display = ("candidate", "job", "status", "updated_at")
     list_filter = ("status",)
     search_fields = ("candidate__full_name", "job__title")
     inlines = [ApplicationStatusHistoryInline]
-    readonly_fields = ("status", "status_updated_at")
+    readonly_fields = (
+        "status",
+        "profile_snapshot",
+        "job_snapshot",
+        "matching_weight_snapshot",
+        "candidate_embedding_snapshot",
+        "job_embedding_snapshot",
+        "snapshot_created_at",
+    )
 
     def has_add_permission(self, request):
         """Applications must be created through the business service."""

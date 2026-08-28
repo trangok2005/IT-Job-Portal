@@ -45,7 +45,6 @@ INSTALLED_APPS = [
     "apps.applications",
     "apps.dashboard",
     "apps.ai_analysis",
-    "apps.notifications",
 ]
 
 MIDDLEWARE = [
@@ -108,7 +107,6 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ),
     "DEFAULT_PAGINATION_CLASS": "common.pagination.DefaultPagination",
-    "PAGE_SIZE": 20,
     "DEFAULT_FILTER_BACKENDS": (
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.SearchFilter",
@@ -118,9 +116,14 @@ REST_FRAMEWORK = {
 }
 
 # Lưu ý: KHÔNG đặt DEFAULT_THROTTLE_CLASSES — throttle chỉ áp dụng có chủ đích
-# qua get_throttles() của từng ViewSet (UC-03 E3).
+# qua get_throttles() của từng View. Class nằm ở common/throttling.py.
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
-    "job_search": "5/min",
+    # UC-03 E3: tìm kiếm việc làm
+    "job_search_anon": "5/min",
+    "job_search_user": "10/min",
+    # UC-01/UC-02: upload file cho Gemini parse (mỗi user)
+    "upload_parse_minute": "2/min",
+    "upload_parse_daily": "10/day",
 }
 
 # ---------------------------------------------------------------------------
@@ -187,11 +190,11 @@ CORS_ALLOWED_ORIGINS = env_list(
 # ---------------------------------------------------------------------------
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-MAX_RESUME_SIZE_BYTES = int(os.getenv("MAX_RESUME_SIZE_BYTES", str(10 * 1024 * 1024)))
-MAX_JD_SIZE_BYTES = int(os.getenv("MAX_JD_SIZE_BYTES", str(10 * 1024 * 1024)))
+MAX_RESUME_SIZE_BYTES = int(os.getenv("MAX_RESUME_SIZE_BYTES", str(5 * 1024 * 1024)))
+MAX_JD_SIZE_BYTES = int(os.getenv("MAX_JD_SIZE_BYTES", str(5 * 1024 * 1024)))
 
 # ---------------------------------------------------------------------------
-# Django-Q (background worker: embedding, notifications)
+# Django-Q (background worker: embeddings and import cleanup)
 # ---------------------------------------------------------------------------
 Q_CLUSTER = {
     "name": "job_portal",
@@ -212,26 +215,6 @@ Q_CLUSTER = {
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_PARSER_MODEL = os.getenv("GEMINI_PARSER_MODEL", "gemini-3.6-flash")
 EMBEDDING_TIMEOUT_MS = int(os.getenv("EMBEDDING_TIMEOUT_MS", "10000"))
-
-# ---------------------------------------------------------------------------
-# Gmail SMTP notifications
-# ---------------------------------------------------------------------------
-EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND",
-    "django.core.mail.backends.smtp.EmailBackend",
-)
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.getenv(
-    "DEFAULT_FROM_EMAIL",
-    EMAIL_HOST_USER or "noreply@jobportal.local",
-)
-EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
-NOTIFICATION_MAX_RETRIES = int(os.getenv("NOTIFICATION_MAX_RETRIES", "3"))
-NOTIFICATION_RETRY_MINUTES = int(os.getenv("NOTIFICATION_RETRY_MINUTES", "5"))
 
 # ---------------------------------------------------------------------------
 # i18n / timezone

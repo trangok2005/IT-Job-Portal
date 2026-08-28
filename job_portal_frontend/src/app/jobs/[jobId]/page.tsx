@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getJob } from "@/lib/api-client";
-import { EXPERIENCE_LABELS, formatSalary, JOB_TYPE_LABELS } from "@/features/jobs/utils";
+import { EXPERIENCE_LABELS, formatSalary, JOB_TYPE_LABELS, WORKPLACE_TYPE_LABELS } from "@/features/jobs/utils";
 import { ApplyButton } from "@/features/applications/components/apply-button";
 
 export const metadata = { title: "Chi tiết việc làm | IT Job Portal" };
@@ -45,6 +45,7 @@ export default async function JobDetailPage({ params }: PageProps<"/jobs/[jobId]
             <p className="mt-1 text-sm text-zinc-500">{job.company_name}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge variant="default">{JOB_TYPE_LABELS[job.job_type] ?? job.job_type}</Badge>
+              <Badge variant="outline">{WORKPLACE_TYPE_LABELS[job.workplace_type]}</Badge>
               {job.experience_level && (
                 <Badge variant="outline">
                   {EXPERIENCE_LABELS[job.experience_level] ?? job.experience_level}

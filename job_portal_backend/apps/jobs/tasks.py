@@ -1,6 +1,7 @@
 """Django-Q tasks cho embedding và hết hạn tin tuyển dụng."""
 import logging
 
+from django.db.models import F
 from django.utils import timezone
 
 from integrations.gemini.embeddings import (
@@ -13,27 +14,48 @@ from apps.jobs.models import JDImport, JobPost
 
 logger = logging.getLogger(__name__)
 
+# Số lần tối đa một JDImport được gửi Gemini parse (đồng bộ với UC-01).
+MAX_PARSE_ATTEMPTS = 3
+
 
 def parse_jd_import(import_id: str) -> bool:
+    # Nhận lại cả FAILED để task bị re-present (crash recovery) có cơ hội thử
+    # lại như UC-01; giới hạn parse_attempts vẫn là ranh giới cứng chung.
     claimed = JDImport.objects.filter(
-        pk=import_id, status=JDImport.Status.PENDING
-    ).update(status=JDImport.Status.PROCESSING, error_message="")
+        pk=import_id,
+        status__in=[JDImport.Status.PENDING, JDImport.Status.FAILED],
+        parse_attempts__lt=MAX_PARSE_ATTEMPTS,
+    ).update(
+        status=JDImport.Status.PROCESSING,
+        parse_attempts=F("parse_attempts") + 1,
+        error_message="",
+    )
+    jd_import = JDImport.objects.filter(pk=import_id).first()
     if not claimed:
+        if jd_import is not None and jd_import.parse_attempts >= MAX_PARSE_ATTEMPTS:
+            # Cạn lượt thử: chốt FAILED vĩnh viễn, không gọi Gemini nữa.
+            JDImport.objects.filter(pk=import_id).update(
+                status=JDImport.Status.FAILED,
+                error_message=f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích JD.",
+                updated_at=timezone.now(),
+            )
         return False
-    jd_import = JDImport.objects.get(pk=import_id)
+    if jd_import is None:
+        # Bản ghi bị hủy khi đang PROCESSING — không còn gì để parse.
+        logger.warning("JD import %s disappeared before parsing", import_id)
+        return False
     try:
         from apps.jobs.jd_parser import parse_job_description
         from apps.jobs.serializers import JobDescriptionParseResultSerializer
 
         with jd_import.file.open("rb") as source:
             source.name = jd_import.original_filename
-            raw_data, parsed = parse_job_description(source)
+            _, parsed = parse_job_description(source)
         serialized = JobDescriptionParseResultSerializer(parsed).data
         JDImport.objects.filter(
             pk=import_id, status=JDImport.Status.PROCESSING
         ).update(
             status=JDImport.Status.SUCCESS,
-            raw_extracted_json=raw_data,
             parsed_data=serialized,
             error_message="",
             updated_at=timezone.now(),
@@ -55,7 +77,7 @@ def parse_jd_import(import_id: str) -> bool:
 def cleanup_expired_jd_imports() -> int:
     expired = list(JDImport.objects.filter(expires_at__lte=timezone.now()))
     for jd_import in expired:
-        if jd_import.status != JDImport.Status.CONSUMED and jd_import.file.name:
+        if jd_import.file.name:
             jd_import.file.storage.delete(jd_import.file.name)
         jd_import.delete()
     return len(expired)

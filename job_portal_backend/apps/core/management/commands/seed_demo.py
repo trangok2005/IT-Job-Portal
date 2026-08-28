@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -7,9 +8,17 @@ from apps.accounts.models import User
 from apps.candidates import services as candidate_services
 from apps.candidates.models import CandidateProfile
 from apps.companies.models import Company
+from apps.core.seed_data.demo import (
+    ADMIN,
+    CANDIDATE,
+    CANDIDATE_PROFILE,
+    COMPANY,
+    EMPLOYER,
+    JOB,
+)
 from apps.jobs import services as job_services
 from apps.jobs.models import JobPost
-from apps.skills.models import Skill, SkillCategory
+from apps.skills.models import Skill
 
 
 class Command(BaseCommand):
@@ -17,94 +26,87 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         admin, created = User.objects.get_or_create(
-            username="admin",
-            defaults={"email": "admin@gmail.com", "role": User.Role.ADMIN, "is_staff": True, "is_superuser": True},
+            username=ADMIN["username"],
+            defaults={
+                "email": ADMIN["email"],
+                "role": User.Role.ADMIN,
+                "is_staff": True,
+                "is_superuser": True,
+            },
         )
         if created:
-            admin.set_password("admin123")
+            admin.set_password(ADMIN["password"])
             admin.save()
-            self.stdout.write("Created admin user (admin@gmail.com/admin123)")
+            self.stdout.write(f"Created admin user ({ADMIN['email']}/{ADMIN['password']})")
 
-        category, _ = SkillCategory.objects.get_or_create(name="Programming Language")
-        skill_names = ["Python", "Django", "React", "PostgreSQL", "Docker", "TypeScript"]
-        for name in skill_names:
-            skill, created = Skill.objects.get_or_create(
-                slug=name.lower(),
-                defaults={"name": name, "category": category},
-            )
-            if created:
-                self.stdout.write(f"Created skill: {name}")
+        call_command("seed_skills_taxonomy")
 
         employer, created = User.objects.get_or_create(
-            username="employer",
-            defaults={"email": "employer@gmail.com", "role": User.Role.EMPLOYER},
+            username=EMPLOYER["username"],
+            defaults={"email": EMPLOYER["email"], "role": User.Role.EMPLOYER},
         )
         if created:
-            employer.set_password("employer123")
+            employer.set_password(EMPLOYER["password"])
             employer.save()
 
+        company_defaults = dict(COMPANY["defaults"], owner=employer)
         company, created = Company.objects.get_or_create(
-            name="TechCorp Vietnam",
+            name=COMPANY["name"],
             defaults={
-                "owner": employer,
-                "tax_code": "0123456789",
-                "description": "Công ty công nghệ chuyên phát triển sản phẩm phần mềm.",
-                "website": "https://techcorp.example.com",
-                "address": "Hà Nội, Việt Nam",
-                "company_size": "50-100",
-                "industry": "IT - Software",
+                **company_defaults,
                 "status": Company.Status.APPROVED,
             },
         )
         if created:
-            self.stdout.write("Created company: TechCorp Vietnam (APPROVED)")
+            self.stdout.write(f"Created company: {COMPANY['name']} (APPROVED)")
 
         job = JobPost.objects.filter(company=company).first()
         if job is None:
             job = JobPost.objects.create(
                 company=company,
                 created_by=employer,
-                title="Backend Developer (Python/Django)",
-                description="Phát triển hệ thống job portal với Django REST Framework, PostgreSQL + pgvector.",
-                requirements="3 năm kinh nghiệm Python/Django, PostgreSQL, Docker.",
-                benefits="Lương thưởng hấp dẫn, bảo hiểm đầy đủ, môi trường trẻ trung.",
-                location="Hà Nội",
+                title=JOB["title"],
+                description=JOB["description"],
+                requirements=JOB["requirements"],
+                benefits=JOB["benefits"],
+                location=JOB["location"],
+                workplace_type=JobPost.WorkplaceType.ONSITE,
                 job_type=JobPost.JobType.FULL_TIME,
-                experience_level=JobPost.ExperienceLevel.MIDDLE,
-                salary_min=15000000,
-                salary_max=25000000,
+                experience_level=JobPost.ExperienceLevel.MID_SENIOR,
+                salary_min=JOB["salary_min"],
+                salary_max=JOB["salary_max"],
                 status=JobPost.Status.ACTIVE,
                 published_at=timezone.now(),
                 expires_at=timezone.now() + timedelta(days=30),
             )
-            python_skill = Skill.objects.get(slug="python")
-            django_skill = Skill.objects.get(slug="django")
-            job.required_skills.add(python_skill, django_skill)
-            self.stdout.write("Created active job: Backend Developer (Python/Django)")
+            required_skills = Skill.objects.filter(
+                slug__in=JOB["required_skill_slugs"]
+            )
+            if required_skills.exists():
+                job.required_skills.add(*required_skills)
+            self.stdout.write(f"Created active job: {JOB['title']}")
         if job.embedding_is_stale:
             job_services.enqueue_job_embedding_robust(job)
 
         candidate_user, created = User.objects.get_or_create(
-            username="candidate",
-            defaults={"email": "candidate@gmail.com", "role": User.Role.CANDIDATE},
+            username=CANDIDATE["username"],
+            defaults={"email": CANDIDATE["email"], "role": User.Role.CANDIDATE},
         )
         if created:
-            candidate_user.set_password("candidate123")
+            candidate_user.set_password(CANDIDATE["password"])
             candidate_user.save()
         profile = CandidateProfile.objects.filter(user=candidate_user).first()
         if profile is None:
             profile = CandidateProfile.objects.create(
                 user=candidate_user,
-                full_name="Nguyễn Văn Ứng Viên",
-                headline="Backend Developer 2 năm kinh nghiệm",
-                summary="Yêu thích Python/Django.",
+                **CANDIDATE_PROFILE,
             )
             self.stdout.write("Created candidate profile")
         if profile.embedding_is_stale:
             candidate_services.enqueue_candidate_embedding(profile)
 
         self.stdout.write(self.style.SUCCESS(
-            "Seed done. Logins: admin@gmail.com/admin123, "
-            "employer@gmail.com/employer123, "
-            "candidate@gmail.com/candidate123"
+            f"Seed done. Logins: {ADMIN['email']}/{ADMIN['password']}, "
+            f"{EMPLOYER['email']}/{EMPLOYER['password']}, "
+            f"{CANDIDATE['email']}/{CANDIDATE['password']}"
         ))

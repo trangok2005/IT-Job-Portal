@@ -6,8 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import {
   EXPERIENCE_LABELS,
   JOB_TYPE_LABELS,
+  LOCATION_OPTIONS,
+  WORKPLACE_TYPE_LABELS,
   isExperienceLevel,
   isJobType,
+  isLocation,
+  isWorkplaceType,
   formatVnd,
 } from "@/features/jobs/utils";
 import { JobFilters } from "@/features/jobs/components/job-filters";
@@ -23,7 +27,10 @@ export default async function JobsPage({
 }: PageProps<"/jobs">) {
   const params = await searchParams;
   const keyword = toParam(params.keyword);
-  const location = toParam(params.location);
+  const rawLocation = toParam(params.location);
+  const location = isLocation(rawLocation) ? rawLocation : undefined;
+  const rawWorkplaceType = toParam(params.workplace_type);
+  const workplaceType = isWorkplaceType(rawWorkplaceType) ? rawWorkplaceType : undefined;
   const rawJobType = toParam(params.job_type);
   const rawExperienceLevel = toParam(params.experience_level);
   const jobType = isJobType(rawJobType) ? rawJobType : undefined;
@@ -43,17 +50,17 @@ export default async function JobsPage({
   try {
     jobsResult = await getJobs({
       keyword,
+      workplace_type: workplaceType,
       location,
       job_type: jobType,
       experience_level: experienceLevel,
       salary_min: salaryMin,
       page,
-      page_size: 20,
     });
   } catch (error) {
     if (error instanceof ApiError && error.status === 429) {
       throttled = true;
-      jobsResult = { results: [], count: 0 };
+      jobsResult = { results: [], count: 0, next: null, previous: null };
     } else {
       throw error;
     }
@@ -65,7 +72,8 @@ export default async function JobsPage({
 
   const filterChips = [
     keyword ? { key: "keyword", label: keyword } : null,
-    location ? { key: "location", label: location } : null,
+    workplaceType ? { key: "workplace_type", label: WORKPLACE_TYPE_LABELS[workplaceType] } : null,
+    location ? { key: "location", label: LOCATION_OPTIONS.find((option) => option.value === location)?.label ?? location } : null,
     jobType ? { key: "job_type", label: JOB_TYPE_LABELS[jobType] ?? jobType } : null,
     experienceLevel
       ? { key: "experience_level", label: EXPERIENCE_LABELS[experienceLevel] ?? experienceLevel }
@@ -75,6 +83,7 @@ export default async function JobsPage({
 
   const activeParams = new URLSearchParams();
   if (keyword) activeParams.set("keyword", keyword);
+  if (workplaceType) activeParams.set("workplace_type", workplaceType);
   if (location) activeParams.set("location", location);
   if (jobType) activeParams.set("job_type", jobType);
   if (experienceLevel) activeParams.set("experience_level", experienceLevel);
@@ -89,7 +98,8 @@ export default async function JobsPage({
     if (target > 1) next.set("page", String(target));
     return `/jobs${next.size ? `?${next.toString()}` : ""}`;
   };
-  const pageCount = Math.ceil(count / 20);
+  const hasNextPage = Boolean(jobsResult.next);
+  const hasPreviousPage = Boolean(jobsResult.previous);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
@@ -99,12 +109,12 @@ export default async function JobsPage({
       </p>
 
       <div className="mt-6">
-        <SearchBar key={`${keyword ?? ""}:${location ?? ""}`} initialKeyword={keyword ?? ""} initialLocation={location ?? ""} />
+        <SearchBar key={keyword ?? ""} initialKeyword={keyword ?? ""} />
       </div>
 
       {/* Bộ lọc bổ sung (UC-03) */}
       <div className="mt-4">
-        <JobFilters jobType={jobType} experienceLevel={experienceLevel} salaryMin={salaryMin} />
+        <JobFilters workplaceType={workplaceType} jobType={jobType} experienceLevel={experienceLevel} salaryMin={salaryMin} location={location} />
       </div>
 
       {filterChips.length > 0 && (
@@ -122,7 +132,7 @@ export default async function JobsPage({
 
       {searchFallback && (
         <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Hệ thống AI đang bận, kết quả tìm kiếm hiển thị theo chế độ từ khóa cơ bản.
+          Hệ thống AI đang bận, kết quả được tìm bằng PostgreSQL Full-Text Search.
         </div>
       )}
 
@@ -141,11 +151,11 @@ export default async function JobsPage({
           ))}
         </div>
       )}
-      {pageCount > 1 && (
+      {(hasPreviousPage || hasNextPage) && (
         <nav className="mt-8 flex items-center justify-center gap-3" aria-label="Phân trang">
-          {page > 1 && <Link href={pageHref(page - 1)} className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium hover:border-primary hover:text-primary">Trang trước</Link>}
-          <span className="text-sm text-zinc-500">Trang {page} / {pageCount}</span>
-          {page < pageCount && <Link href={pageHref(page + 1)} className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium hover:border-primary hover:text-primary">Trang sau</Link>}
+          {hasPreviousPage && <Link href={pageHref(page - 1)} className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium hover:border-primary hover:text-primary">Trang trước</Link>}
+          <span className="text-sm text-zinc-500">Trang {page}</span>
+          {hasNextPage && <Link href={pageHref(page + 1)} className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium hover:border-primary hover:text-primary">Trang sau</Link>}
         </nav>
       )}
     </div>

@@ -10,7 +10,6 @@ class AIAnalysisAdmin(admin.ModelAdmin):
         "match_score",
         "candidate_embedding_version",
         "job_embedding_version",
-        "inputs_are_stale",
         "computed_at",
     )
     search_fields = ("application__candidate__full_name", "application__job__title")

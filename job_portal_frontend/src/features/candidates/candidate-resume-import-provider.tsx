@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 import {
   cancelResumeImport,
@@ -8,12 +8,16 @@ import {
   parseResumeImport,
 } from "@/features/candidates/api";
 import type { ResumeImportDto } from "@/features/candidates/types";
+import { ApiError } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-provider";
+import { useStatusPolling } from "@/lib/use-status-polling";
 
 const STORAGE_KEY = "active-resume-import";
 
 type CandidateResumeImportContextValue = {
   resumeImport: ResumeImportDto | null;
+  /** Poll đã tự ngắt sau 2 phút mà CV vẫn chưa xong → mời tải lại trang. */
+  stalled: boolean;
   startImport: (file: File) => Promise<ResumeImportDto>;
   cancelImport: () => Promise<void>;
   clearImport: () => void;
@@ -44,23 +48,35 @@ export function CandidateResumeImportProvider({ children }: {
     }).catch(clearImport);
   }, [user?.role]);
 
-  useEffect(() => {
-    // ResumeImport chỉ có PENDING là trạng thái "đang chạy" (UC-01 bước 10).
-    if (!resumeImport || resumeImport.parse_status !== "PENDING") return;
-    const timer = window.setInterval(() => {
-      void getResumeImport(resumeImport.id).then((result) => {
-        if (result.parse_status === "CONSUMED") clearImport();
-        else setResumeImport(result);
-      }).catch(clearImport);
-    }, 2000);
-    return () => window.clearInterval(timer);
+  const isPending = resumeImport?.parse_status === "PENDING";
+
+  const pollOnce = useCallback(async () => {
+    if (!resumeImport) return;
+    const result = await getResumeImport(resumeImport.id);
+    if (result.parse_status === "CONSUMED") clearImport();
+    else setResumeImport(result);
   }, [resumeImport]);
 
+  const { stalled } = useStatusPolling({
+    enabled: Boolean(isPending && resumeImport),
+    poll: pollOnce,
+    onError: clearImport,
+  });
+
   const startImport = async (file: File) => {
-    const result = await parseResumeImport(file);
-    localStorage.setItem(STORAGE_KEY, result.id);
-    setResumeImport(result);
-    return result;
+    try {
+      const result = await parseResumeImport(file);
+      localStorage.setItem(STORAGE_KEY, result.id);
+      setResumeImport(result);
+      return result;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 429) {
+        throw new Error(
+          "Bạn đã tải CV quá nhiều lần (tối đa 2 lượt/phút, 10 lượt/ngày). Vui lòng thử lại sau.",
+        );
+      }
+      throw error;
+    }
   };
 
   const cancelImport = async () => {
@@ -69,7 +85,7 @@ export function CandidateResumeImportProvider({ children }: {
   };
 
   return (
-    <CandidateResumeImportContext.Provider value={{ resumeImport, startImport, cancelImport, clearImport }}>
+    <CandidateResumeImportContext.Provider value={{ resumeImport, stalled, startImport, cancelImport, clearImport }}>
       {children}
     </CandidateResumeImportContext.Provider>
   );
@@ -77,6 +93,7 @@ export function CandidateResumeImportProvider({ children }: {
 
 const NOOP_VALUE: CandidateResumeImportContextValue = {
   resumeImport: null,
+  stalled: false,
   startImport: async () => {
     throw new Error("CandidateResumeImportProvider is not mounted");
   },

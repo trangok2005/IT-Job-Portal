@@ -12,9 +12,15 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, extend_schema_view
 
 from apps.companies.models import Company
-from apps.jobs import perms, selectors, serializers, services, throttling
+from apps.jobs import perms, selectors, serializers, services
 from apps.jobs.job_search_service import SearchFilters, search_jobs
 from apps.jobs.models import JDImport, JobPost
+from common.throttling import (
+    JobSearchAnonThrottle,
+    JobSearchUserThrottle,
+    UploadParseDailyThrottle,
+    UploadParseMinuteThrottle,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -49,7 +55,7 @@ class JobViewSet(
     """
     serializer_class = serializers.JobReadSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ["created_at", "salary_min", "salary_max", "view_count"]
+    ordering_fields = ["created_at", "salary_min", "salary_max"]
     ordering = ["-created_at"]
 
     def get_permissions(self):
@@ -74,9 +80,14 @@ class JobViewSet(
         return [IsAuthenticated()]
 
     def get_throttles(self):
-        """UC-03 E3: chỉ chặn spam trên action tìm kiếm công khai."""
+        """Throttle có chủ đích theo action:
+        - list: tìm kiếm công khai (anon 5/phút, user 10/phút) — UC-03 E3
+        - parse_jd: upload JD cho Gemini parse (2/phút, 10/ngày) — UC-02
+        """
         if self.action == "list":
-            return [throttling.JobSearchAnonThrottle()]
+            return [JobSearchAnonThrottle(), JobSearchUserThrottle()]
+        if self.action == "parse_jd":
+            return [UploadParseMinuteThrottle(), UploadParseDailyThrottle()]
         return super().get_throttles()
 
     def get_queryset(self):
@@ -166,8 +177,7 @@ class JobViewSet(
         services.update_job(
             job,
             data={
-                key: value
-                for key, value in serializer.validated_data.items()
+                key: value for key, value in serializer.validated_data.items()
                 if key not in ["required_skills", "publish_immediately", "jd_import_id"]
             },
             required_skills=serializer.validated_data.get("required_skills"),
@@ -179,20 +189,15 @@ class JobViewSet(
         job = self.get_object()
         serializer = self.get_serializer(job, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+        try:
+            self.perform_update(serializer)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         output = serializers.JobReadSerializer(
             job,
             context=self.get_serializer_context(),
         )
         return Response(output.data)
-
-    def retrieve(self, request, *args, **kwargs):
-        """Tăng view_count cho mỗi lượt xem hợp lệ của tin ACTIVE công khai."""
-        job = self.get_object()
-        if selectors.is_public_job(job):
-            services.increment_view_count(job)
-        serializer = self.get_serializer(job)
-        return Response(serializer.data)
 
     @extend_schema(responses=serializers.EmployerJobReadSerializer(many=True))
     @action(methods=["get"], detail=False, url_path="my-jobs")

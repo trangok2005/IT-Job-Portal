@@ -5,6 +5,14 @@ import sys
 
 
 def main():
+    # Console Windows mặc định cp1252 - không in được tiếng Việt có dấu
+    # trong thông báo của các lệnh quản trị (seed, shell...).
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         # Missing mocks must fail fast instead of consuming a real Gemini quota.
         os.environ["GEMINI_API_KEY"] = ""

@@ -8,11 +8,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
 from apps.accounts.models import User
-from apps.candidates.models import CandidateProfile, Education, Resume
+from apps.candidates.models import CandidateProfile, Education, Resume, ResumeImport
 from apps.candidates.tasks import (
+    MAX_PARSE_ATTEMPTS,
     _normalize_parsed_data,
+    cleanup_expired_resume_imports,
     generate_candidate_embedding,
-    parse_resume,
+    parse_resume_import,
 )
 
 
@@ -82,7 +84,7 @@ class ResumeParseTaskTests(TestCase):
         )
 
     @patch("apps.candidates.tasks._get_client")
-    def test_parse_resume_stores_review_preview_without_mutating_profile(self, get_client):
+    def test_parse_resume_import_stores_review_preview_without_mutating_profile(self, get_client):
         raw_data = {
             "full_name": "After Parse",
             "phone": "0901234567",
@@ -107,16 +109,85 @@ class ResumeParseTaskTests(TestCase):
         )
         get_client.return_value = SimpleNamespace(models=models)
 
-        result = parse_resume(str(self.resume.id))
+        resume_import = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile("cv.pdf", b"%PDF-1.4 test", content_type="application/pdf"),
+            original_filename="cv.pdf",
+        )
+
+        result = parse_resume_import(str(resume_import.id))
 
         self.assertEqual(result, raw_data)
-        self.resume.refresh_from_db()
+        resume_import.refresh_from_db()
         self.profile.refresh_from_db()
-        self.assertEqual(self.resume.parse_status, Resume.ParseStatus.SUCCESS)
-        self.assertEqual(self.resume.parsed_data["full_name"], "After Parse")
-        self.assertEqual(self.resume.parsed_data["educations"][0]["school_name"], "HUST")
+        self.assertEqual(
+            resume_import.parse_status, ResumeImport.ParseStatus.SUCCESS
+        )
+        self.assertEqual(resume_import.parsed_data["full_name"], "After Parse")
+        self.assertEqual(
+            resume_import.parsed_data["educations"][0]["school_name"], "HUST"
+        )
         self.assertEqual(self.profile.full_name, "Before Parse")
         self.assertFalse(Education.objects.filter(candidate=self.profile).exists())
+
+    @patch("apps.candidates.tasks._get_client")
+    def test_parse_resume_import_stops_after_max_attempts(self, get_client):
+        models = Mock()
+        models.generate_content.side_effect = RuntimeError("Gemini unavailable")
+        get_client.return_value = SimpleNamespace(models=models)
+
+        resume_import = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile("cv.pdf", b"%PDF-1.4 test", content_type="application/pdf"),
+            original_filename="cv.pdf",
+        )
+
+        for _ in range(MAX_PARSE_ATTEMPTS):
+            with self.assertRaises(RuntimeError):
+                parse_resume_import(str(resume_import.id))
+
+        self.assertEqual(models.generate_content.call_count, MAX_PARSE_ATTEMPTS)
+        resume_import.refresh_from_db()
+        self.assertEqual(resume_import.parse_attempts, MAX_PARSE_ATTEMPTS)
+
+        # Lượt gọi thứ N + 1: không đụng Gemini nữa, chốt FAILED vĩnh viễn.
+        result = parse_resume_import(str(resume_import.id))
+
+        self.assertEqual(result, {})
+        self.assertEqual(models.generate_content.call_count, MAX_PARSE_ATTEMPTS)
+        resume_import.refresh_from_db()
+        self.assertEqual(resume_import.parse_status, ResumeImport.ParseStatus.FAILED)
+        self.assertIn("vượt quá", resume_import.parse_error_message.lower())
+
+    def test_parse_resume_import_missing_record_returns_empty(self):
+        ghost_id = "00000000-0000-0000-0000-000000000000"
+
+        self.assertEqual(parse_resume_import(ghost_id), {})
+
+    def test_cleanup_removes_expired_pending_imports(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        expired_pending = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile("old.pdf", b"%PDF-1.4", content_type="application/pdf"),
+            original_filename="old.pdf",
+        )
+        ResumeImport.objects.filter(pk=expired_pending.pk).update(
+            expires_at=timezone.now() - timedelta(hours=25)
+        )
+        fresh = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile("new.pdf", b"%PDF-1.4", content_type="application/pdf"),
+            original_filename="new.pdf",
+        )
+
+        removed = cleanup_expired_resume_imports()
+
+        self.assertEqual(removed, 1)
+        self.assertFalse(ResumeImport.objects.filter(pk=expired_pending.pk).exists())
+        self.assertTrue(ResumeImport.objects.filter(pk=fresh.pk).exists())
 
     def test_normalize_parsed_data_converts_nullable_text_fields(self):
         normalized = _normalize_parsed_data({

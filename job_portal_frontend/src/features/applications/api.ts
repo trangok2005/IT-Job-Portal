@@ -2,6 +2,7 @@ import { authApiRequest } from "@/lib/api-client";
 import type { Paginated } from "@/lib/types";
 import type {
   AnalysisDto,
+  ApplicationCreatePayload,
   ApplicationStatus,
   ApplicationTransitionStatus,
   CandidateApplicationDto,
@@ -14,10 +15,10 @@ export const getCandidateApplications = () =>
 export const getCandidateApplication = (id: string) =>
   authApiRequest<CandidateApplicationDto>(`/api/applications/${id}/`);
 
-export const applyToJob = (job: string, coverLetter: string) =>
+export const applyToJob = (payload: ApplicationCreatePayload) =>
   authApiRequest<CandidateApplicationDto>("/api/applications/", {
     method: "POST",
-    body: JSON.stringify({ job, cover_letter: coverLetter }),
+    body: JSON.stringify(payload),
   });
 
 export const getJobApplications = (

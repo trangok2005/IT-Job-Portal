@@ -15,10 +15,10 @@ trong models.py hoặc khai báo lại default_app_config.
 from django.conf import settings
 from django.db import models
 
-from apps.core.models import BaseModel
+from apps.core.models import BaseModel, TimeStampedModel, UUIDModel
 
 
-class SkillCategory(BaseModel):
+class SkillCategory(UUIDModel):
     name = models.CharField(max_length=150, unique=True)
 
     class Meta:
@@ -104,7 +104,7 @@ class Skill(BaseModel):
         return node
 
 
-class SkillAlias(BaseModel):
+class SkillAlias(UUIDModel):
     """Raw strings (as typed by users or extracted by Gemini) that map to a
     canonical Skill, e.g. 'ReactJS', 'React.js', 'react' -> Skill('React').
     This is the core of the Skill Normalization step in the AI pipeline.
@@ -148,12 +148,19 @@ class MatchingWeightConfig(BaseModel):
 
     class Meta:
         db_table = "matching_weight_configs"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_active"],
+                condition=models.Q(is_active=True),
+                name="unique_active_matching_weight_config",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.name} ({'active' if self.is_active else 'inactive'})"
 
 
-class CandidateSkill(BaseModel):
+class CandidateSkill(UUIDModel, TimeStampedModel):
     """UC-01: skill của ứng viên, có thể do AI trích xuất từ CV hoặc do
     ứng viên tự thêm/sửa. Import CandidateProfile cục bộ (bên trong hàm
     không cần vì candidates không import skills -> không có vòng lặp),
@@ -177,8 +184,6 @@ class CandidateSkill(BaseModel):
     level = models.CharField(max_length=20, choices=Level.choices, blank=True)
     years_of_experience = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     source = models.CharField(max_length=20, choices=Source.choices, default=Source.MANUAL)
-    # Điểm tin cậy do Gemini trả về khi trích xuất (0.0 - 1.0), None nếu nhập tay.
-    ai_confidence = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = "candidate_skills"

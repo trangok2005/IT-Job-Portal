@@ -2,6 +2,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
@@ -9,7 +10,12 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
-from apps.candidates.models import CandidateProfile, Education, Resume
+from apps.candidates.models import (
+    CandidateProfile,
+    Education,
+    Resume,
+    ResumeImport,
+)
 from apps.skills.models import Skill, SkillAlias
 
 
@@ -249,6 +255,8 @@ class CandidateApiTests(APITestCase):
 
 class CandidateResumeApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.override = override_settings(MEDIA_ROOT=Path(self.temp_dir.name))
@@ -267,7 +275,7 @@ class CandidateResumeApiTests(APITestCase):
         )
         self.client.force_authenticate(self.user)
 
-    def test_upload_resume(self):
+    def test_upload_resume_import(self):
         file = SimpleUploadedFile(
             "cv.pdf",
             b"%PDF-1.4 test",
@@ -275,24 +283,55 @@ class CandidateResumeApiTests(APITestCase):
         )
 
         response = self.client.post(
-            reverse("candidate-resume-list-create"),
+            reverse("candidate-resume-import-create"),
             {"file": file},
             format="multipart",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        resume = Resume.objects.get(candidate=self.profile)
-        self.assertTrue(resume.is_primary)
-        self.assertEqual(resume.parse_status, Resume.ParseStatus.PENDING)
+        resume_import = ResumeImport.objects.get(candidate=self.profile)
+        self.assertEqual(
+            resume_import.parse_status, ResumeImport.ParseStatus.PENDING
+        )
+        self.assertIsNotNone(resume_import.expires_at)
 
-    def test_upload_rejects_unsupported_file(self):
+    def test_upload_resume_import_rejects_unsupported_file(self):
         file = SimpleUploadedFile("cv.exe", b"invalid")
 
         response = self.client.post(
-            reverse("candidate-resume-list-create"),
+            reverse("candidate-resume-import-create"),
             {"file": file},
             format="multipart",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertFalse(Resume.objects.filter(candidate=self.profile).exists())
+        self.assertFalse(
+            ResumeImport.objects.filter(candidate=self.profile).exists()
+        )
+
+    def test_upload_resume_import_throttled_after_two_per_minute(self):
+        for i in range(2):
+            file = SimpleUploadedFile(
+                f"cv{i}.pdf",
+                b"%PDF-1.4 test",
+                content_type="application/pdf",
+            )
+            response = self.client.post(
+                reverse("candidate-resume-import-create"),
+                {"file": file},
+                format="multipart",
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        third = SimpleUploadedFile(
+            "cv3.pdf",
+            b"%PDF-1.4 test",
+            content_type="application/pdf",
+        )
+        response = self.client.post(
+            reverse("candidate-resume-import-create"),
+            {"file": third},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)

@@ -8,17 +8,22 @@ import xml.etree.ElementTree as ET
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+from apps.jobs.models import JobPost
 from apps.skills.models import Skill
-from apps.skills.services import resolve_extracted_skill
+from apps.skills.services import resolve_savable_skill
 from apps.skills.utils import normalize_alias
 
 
 JD_PARSE_PROMPT = """
 Phân tích Job Description sau và trả về đúng một JSON object, không markdown.
 Các key: title, description, requirements, benefits, location, job_type,
-experience_level, salary_min, salary_max, salary_negotiable, expires_at, skills.
-job_type chỉ là FULL_TIME, PART_TIME, INTERNSHIP, CONTRACT hoặc REMOTE.
-experience_level chỉ là INTERN, FRESHER, JUNIOR, MIDDLE, SENIOR, LEAD hoặc chuỗi rỗng.
+    workplace_type, experience_level, salary_min, salary_max, salary_negotiable,
+    expires_at, skills.
+    location chỉ là Hồ Chí Minh, Hà Nội, Đà Nẵng hoặc chuỗi rỗng.
+    workplace_type chỉ là ONSITE, HYBRID hoặc REMOTE.
+    job_type chỉ là FULL_TIME, PART_TIME hoặc CONTRACT.
+    experience_level chỉ là ENTRY, JUNIOR, MID_SENIOR, LEAD hoặc chuỗi rỗng.
+    Thực tập/Fresher thuộc ENTRY; Remote là workplace_type, không phải job_type.
 salary_min/salary_max là số nguyên VND hoặc null. expires_at dùng ISO 8601 hoặc null.
 skills là mảng tên kỹ năng. Không suy diễn dữ liệu không có trong JD; field văn bản
 dùng chuỗi rỗng, danh sách dùng mảng rỗng và giá trị không xác định dùng null.
@@ -47,13 +52,23 @@ def _parse_json_response(text: str) -> dict:
 def _normalize_data(data: dict) -> dict:
     normalized = dict(data)
     for field in (
-        "title", "description", "requirements", "benefits", "location",
-        "experience_level",
+        "title", "description", "requirements", "benefits", "experience_level",
     ):
         if normalized.get(field) is None:
             normalized[field] = ""
     if normalized.get("job_type") is None:
         normalized["job_type"] = "FULL_TIME"
+    if normalized.get("workplace_type") is None:
+        normalized["workplace_type"] = "ONSITE"
+    raw_location = normalize_alias(str(normalized.get("location") or "")).replace("đ", "d")
+    if any(value in raw_location for value in ("ho chi minh", "hcm", "sai gon", "saigon")):
+        normalized["location"] = JobPost.Location.HO_CHI_MINH
+    elif any(value in raw_location for value in ("ha noi", "hanoi")):
+        normalized["location"] = JobPost.Location.HANOI
+    elif "da nang" in raw_location:
+        normalized["location"] = JobPost.Location.DA_NANG
+    else:
+        normalized["location"] = ""
     if normalized.get("salary_negotiable") is None:
         normalized["salary_negotiable"] = False
     seen = set()
@@ -87,17 +102,22 @@ def _extract_docx_text(file_data: bytes) -> str:
 
 
 def _resolve_approved_skills(names: list[str]) -> tuple[list[str], list[str]]:
+    """Resolve skill names qua hàm chung resolve_savable_skill (nguồn
+    JD_PARSING). Kỹ năng lạ được TỰ TẠO ở trạng thái PENDING và nằm luôn
+    trong matched — nhất quán với luồng CV; chỉ tên rỗng/không hợp lệ mới
+    rơi vào unmatched."""
     matched = []
     unmatched = []
     seen_ids = set()
     for name in names:
-        skill = resolve_extracted_skill(name, Skill.Source.JD_PARSING)
-        if skill and skill.status == Skill.Status.APPROVED and skill.is_active:
-            if skill.pk not in seen_ids:
-                seen_ids.add(skill.pk)
-                matched.append(str(skill.pk))
-        else:
+        try:
+            skill = resolve_savable_skill(name, Skill.Source.JD_PARSING)
+        except ValueError:
             unmatched.append(name)
+            continue
+        if skill.pk not in seen_ids:
+            seen_ids.add(skill.pk)
+            matched.append(str(skill.pk))
     return matched, unmatched
 
 

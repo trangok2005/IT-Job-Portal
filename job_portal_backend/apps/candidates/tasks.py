@@ -5,6 +5,7 @@ import mimetypes
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+from django.db.models import F
 from django.utils import timezone
 
 from apps.candidates.models import CandidateProfile, Resume, ResumeImport
@@ -16,6 +17,19 @@ from apps.core.embedding_text_builders import build_candidate_text
 
 
 logger = logging.getLogger(__name__)
+
+# Số lần tối đa một bản ghi được gửi Gemini parse; vượt quá sẽ FAILED vĩnh viễn
+# thay vì để broker re-present vô hạn (tiêu quota khi Gemini lỗi kéo dài).
+MAX_PARSE_ATTEMPTS = 3
+
+
+def _claim_parse_attempt(model, record_id: str, permanent_message: str) -> bool:
+    """Tăng số lượt thử một cách nguyên tử; trả False nếu đã cạn lượt."""
+    claimed = model.objects.filter(
+        pk=record_id,
+        parse_attempts__lt=MAX_PARSE_ATTEMPTS,
+    ).update(parse_attempts=F("parse_attempts") + 1)
+    return bool(claimed)
 
 
 RESUME_PARSE_PROMPT = """
@@ -93,54 +107,31 @@ def _normalize_parsed_data(data: dict) -> dict:
     return normalized
 
 
-def parse_resume(resume_id: str) -> dict:
-    """Gửi CV lên Gemini, lưu JSON thô và kích hoạt tạo lại embedding."""
-    from google.genai import types
-
-    from apps.candidates import serializers, services
-
-    resume = Resume.objects.select_related("candidate").get(pk=resume_id)
-    if resume.parse_status == Resume.ParseStatus.SUCCESS:
-        return resume.raw_extracted_json or {}
-
-    try:
-        with resume.file.open("rb") as source:
-            file_data = source.read()
-        mime_type = (
-            mimetypes.guess_type(resume.original_filename)[0]
-            or "application/octet-stream"
-        )
-        client = _get_client()
-        response = client.models.generate_content(
-            model=settings.GEMINI_PARSER_MODEL,
-            contents=[
-                RESUME_PARSE_PROMPT,
-                types.Part.from_bytes(data=file_data, mime_type=mime_type),
-            ],
-        )
-        raw_data = _parse_json_response(response.text)
-        normalized_data = _normalize_parsed_data(raw_data)
-        serializer = serializers.ResumeParsedDataSerializer(data=normalized_data)
-        serializer.is_valid(raise_exception=True)
-        preview = serializers.ResumeParsedDataSerializer(
-            serializer.validated_data
-        ).data
-        services.mark_resume_parsed(resume, raw_data, preview)
-        return raw_data
-    except Exception as exc:
-        services.mark_resume_parse_failed(resume, str(exc))
-        raise
-
-
 def parse_resume_import(resume_import_id: str) -> dict:
     """Gửi CV (ResumeImport) lên Gemini, lưu kết quả parse vào ResumeImport."""
     from google.genai import types
 
     from apps.candidates import serializers, services
 
-    resume_import = ResumeImport.objects.select_related("candidate").get(pk=resume_import_id)
+    resume_import = (
+        ResumeImport.objects.select_related("candidate")
+        .filter(pk=resume_import_id)
+        .first()
+    )
+    if resume_import is None:
+        logger.warning(
+            "ResumeImport %s disappeared before parsing (cleanup/cancel)",
+            resume_import_id,
+        )
+        return {}
     if resume_import.parse_status == ResumeImport.ParseStatus.SUCCESS:
-        return resume_import.raw_extracted_json or {}
+        return resume_import.parsed_data or {}
+
+    if not _claim_parse_attempt(ResumeImport, resume_import_id, "CV"):
+        services.mark_resume_import_failed(
+            resume_import, f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích CV."
+        )
+        return {}
 
     try:
         with resume_import.file.open("rb") as source:
@@ -205,13 +196,13 @@ def generate_candidate_embedding(profile_id: str, profile_version: int) -> bool:
 
 def cleanup_expired_resume_imports() -> int:
     """Hậu điều kiện UC-01: bản ghi ResumeImport không được dùng trong 24h
-    sẽ bị xóa (kèm file vật lý) để giải phóng dung lượng DB/storage."""
+    sẽ bị xóa (kèm file vật lý) để giải phóng dung lượng DB/storage.
+    PENDING quá hạn cũng xóa: đó là task mồ côi (worker chết hoặc task mất);
+    hàm parse đã có guard .first() nên không crash nếu đụng bản ghi vừa xóa.
+    """
     from apps.candidates import services
 
-    expired = ResumeImport.objects.filter(
-        expires_at__lt=timezone.now(),
-    ).exclude(parse_status=ResumeImport.ParseStatus.PENDING)
-    # PENDING quá hạn cũng xóa: worker đã fail/timeout hoặc task mất.
+    expired = ResumeImport.objects.filter(expires_at__lt=timezone.now())
     count = 0
     for resume_import in expired.iterator():
         services.delete_resume_import(resume_import)

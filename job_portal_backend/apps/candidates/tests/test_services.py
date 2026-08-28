@@ -72,6 +72,22 @@ class CandidateServiceTests(TestCase):
         with self.assertRaisesMessage(ValueError, "đã có"):
             services.create_candidate_skill(self.profile, skill)
 
+    def test_adding_pending_skill_is_allowed_consistently_with_save_all(self):
+        pending = Skill.objects.create(
+            name="PostgresX", slug="postgresx", status=Skill.Status.PENDING
+        )
+        version_before = self.profile.profile_version
+
+        candidate_skill = services.create_candidate_skill(
+            self.profile, pending, level="INTERMEDIATE", years_of_experience=2
+        )
+
+        self.assertEqual(candidate_skill.skill.status, Skill.Status.PENDING)
+        self.assertEqual(candidate_skill.level, "INTERMEDIATE")
+        self.assertEqual(candidate_skill.years_of_experience, 2)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.profile_version, version_before + 1)
+
 
 class ResumeServiceTests(TestCase):
     def setUp(self):
@@ -92,24 +108,34 @@ class ResumeServiceTests(TestCase):
     def _file(self, name="cv.pdf"):
         return SimpleUploadedFile(name, b"%PDF-1.4 test", content_type="application/pdf")
 
-    def test_upload_enqueues_only_parser_without_bumping_profile(self):
+    def _parsed_import(self, name="cv.pdf"):
+        """Tạo ResumeImport đã parse SUCCESS sẵn sàng cho consume."""
+        resume_import = services.create_resume_import(self.profile, self._file(name))
+        return services.mark_resume_import_parsed(
+            resume_import,
+            {"full_name": "Parsed User", "skills": ["Python"]},
+        )
+
+    def test_create_import_enqueues_only_parser_without_bumping_profile(self):
         with patch("django_q.tasks.async_task") as async_task:
             with self.captureOnCommitCallbacks(execute=True):
-                resume = services.upload_resume(self.profile, self._file())
+                resume_import = services.create_resume_import(
+                    self.profile, self._file()
+                )
 
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.profile_version, 1)
         async_task.assert_called_once_with(
-            "apps.candidates.tasks.parse_resume",
-            str(resume.pk),
+            "apps.candidates.tasks.parse_resume_import",
+            str(resume_import.pk),
         )
 
-    def test_first_resume_is_primary_and_second_can_replace_it(self):
-        first = services.upload_resume(self.profile, self._file("first.pdf"))
-        second = services.upload_resume(
-            self.profile,
-            self._file("second.pdf"),
-            is_primary=True,
+    def test_consumed_resume_replaces_primary_flag(self):
+        first = services.consume_resume_import(
+            self._parsed_import("first.pdf")
+        )
+        second = services.consume_resume_import(
+            self._parsed_import("second.pdf")
         )
 
         first.refresh_from_db()
@@ -118,8 +144,8 @@ class ResumeServiceTests(TestCase):
         self.assertEqual(self.profile.resumes.filter(is_primary=True).count(), 1)
 
     def test_deleting_primary_selects_newest_remaining_resume(self):
-        first = services.upload_resume(self.profile, self._file("first.pdf"))
-        second = services.upload_resume(self.profile, self._file("second.pdf"))
+        first = services.consume_resume_import(self._parsed_import("first.pdf"))
+        second = services.consume_resume_import(self._parsed_import("second.pdf"))
 
         services.delete_resume(first)
 
@@ -127,7 +153,7 @@ class ResumeServiceTests(TestCase):
         self.assertTrue(second.is_primary)
 
     def test_database_rejects_multiple_primary_resumes(self):
-        services.upload_resume(self.profile, self._file("first.pdf"))
+        services.consume_resume_import(self._parsed_import("first.pdf"))
 
         with self.assertRaises(IntegrityError), transaction.atomic():
             Resume.objects.create(
@@ -137,21 +163,17 @@ class ResumeServiceTests(TestCase):
                 is_primary=True,
             )
 
-    def test_mark_resume_parsed_stores_preview_without_updating_profile(self):
-        resume = services.upload_resume(self.profile, self._file())
+    def test_mark_resume_import_parsed_stores_preview_without_updating_profile(self):
+        resume_import = services.create_resume_import(self.profile, self._file())
 
-        services.mark_resume_parsed(
-            resume,
+        services.mark_resume_import_parsed(
+            resume_import,
             {"full_name": "Parsed User", "skills": ["Python"]},
         )
 
-        self.assertEqual(resume.parse_status, Resume.ParseStatus.SUCCESS)
+        self.assertEqual(resume_import.parse_status, ResumeImport.ParseStatus.SUCCESS)
         self.assertEqual(
-            resume.raw_extracted_json,
-            {"full_name": "Parsed User", "skills": ["Python"]},
-        )
-        self.assertEqual(
-            resume.parsed_data,
+            resume_import.parsed_data,
             {"full_name": "Parsed User", "skills": ["Python"]},
         )
         self.profile.refresh_from_db()

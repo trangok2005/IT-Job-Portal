@@ -54,7 +54,6 @@ def create_jd_import(user, company: Company, file) -> JDImport:
         created_by=user,
         file=file,
         original_filename=Path(file.name).name,
-        file_size_bytes=getattr(file, "size", None),
         status=JDImport.Status.PENDING,
         expires_at=timezone.now() + timedelta(hours=24),
     )
@@ -113,12 +112,18 @@ def _bump_content_version(job: JobPost) -> None:
         _enqueue_embedding(job)
 
 
-def _replace_job_skills(job: JobPost, skills: list) -> None:
-    """Thay danh sách skill trong cùng transaction của thao tác tạo/cập nhật."""
+def _replace_job_skills(job: JobPost, skill_specs: list) -> None:
+    """Thay danh sách skill trong cùng transaction của thao tác tạo/cập nhật.
+    Mỗi phần tử là dict {skill, min_years?, is_required?} từ serializer."""
     job.job_skills.all().delete()
     JobSkill.objects.bulk_create(
-        JobSkill(job=job, skill=skill, weight=1.00)
-        for skill in skills
+        JobSkill(
+            job=job,
+            skill=spec["skill"],
+            is_required=spec.get("is_required", True),
+            min_years=spec.get("min_years"),
+        )
+        for spec in skill_specs
     )
 
 
@@ -151,9 +156,6 @@ def create_job(
         ).first()
         if jd_import is None:
             raise ValueError("Kết quả trích xuất JD không hợp lệ hoặc đã hết hạn.")
-        data.setdefault("raw_jd_file", jd_import.file.name)
-        data.setdefault("raw_extracted_json", jd_import.raw_extracted_json)
-
     job = JobPost.objects.create(
         company=company,
         created_by=user,
@@ -167,8 +169,7 @@ def create_job(
         _enqueue_embedding(job)
     if jd_import is not None:
         jd_import.status = JDImport.Status.CONSUMED
-        jd_import.consumed_job = job
-        jd_import.save(update_fields=["status", "consumed_job", "updated_at"])
+        jd_import.save(update_fields=["status", "updated_at"])
     return job
 
 
@@ -178,7 +179,11 @@ def update_job(
     data: dict,
     required_skills: list | None = None,
 ) -> JobPost:
-    """Cập nhật nội dung; tin ACTIVE sẽ tự enqueue embedding version mới."""
+    """Chỉ tin DRAFT được chỉnh sửa nội dung. ACTIVE/CLOSED/EXPIRED là
+    bản ghi bất biến: tin đang tuyển giữ nguyên ngữ nghĩa của các đơn đã
+    nộp, tin đóng/kết thúc là lịch sử — không ai sửa được."""
+    if job.status != JobPost.Status.DRAFT:
+        raise ValueError("Chỉ tin nháp mới được chỉnh sửa nội dung.")
     if not data and required_skills is None:
         return job
     for field, value in data.items():
@@ -219,13 +224,6 @@ def close_job(job: JobPost) -> JobPost:
         raise ValueError("Chỉ có thể đóng tin đang tuyển.")
     job.status = JobPost.Status.CLOSED
     job.save(update_fields=["status", "updated_at"])
-    return job
-
-
-def increment_view_count(job: JobPost) -> JobPost:
-    """Tăng lượt xem nguyên tử để tránh mất dữ liệu khi nhiều request đồng thời."""
-    JobPost.objects.filter(pk=job.pk).update(view_count=F("view_count") + 1)
-    job.refresh_from_db(fields=["view_count"])
     return job
 
 

@@ -71,7 +71,7 @@ class EmbeddingTextBuilderTests(TestCase):
             title="Backend Intern",
             description="Build <script>noise()</script> Python APIs",
             requirements="Know Python",
-            experience_level=JobPost.ExperienceLevel.INTERN,
+            experience_level=JobPost.ExperienceLevel.ENTRY,
         )
         JobSkill.objects.create(job=self.job, skill=skill)
 
@@ -96,7 +96,7 @@ class EmbeddingTextBuilderTests(TestCase):
             "Position: Backend Intern\n"
             "Role summary: Build Python APIs\n"
             "Requirements: Know Python\n"
-            "Experience level: Thực tập sinh\n"
+            "Experience level: Mới đi làm (Intern / Fresher)\n"
             "Skills: Python",
         )
 

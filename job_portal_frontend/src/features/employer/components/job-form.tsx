@@ -16,6 +16,12 @@ import {
 } from "@/features/employer/api";
 import type { JobPayload, SkillDto } from "@/features/employer/types";
 import { useJDImport } from "@/features/employer/jd-import-provider";
+import {
+  EXPERIENCE_LABELS,
+  JOB_TYPE_LABELS,
+  LOCATION_OPTIONS,
+  WORKPLACE_TYPE_LABELS,
+} from "@/features/jobs/utils";
 import type { JobDto } from "@/lib/types";
 
 const fieldClass =
@@ -25,11 +31,12 @@ const textareaClass =
 
 export function JobForm({ jobId, importId }: { jobId?: string; importId?: string }) {
   const router = useRouter();
-  const { jdImport, startImport, cancelImport, clearImport } = useJDImport();
+  const { jdImport, stalled: jdStalled, startImport, cancelImport, clearImport } = useJDImport();
   const [job, setJob] = useState<JobDto | null>(null);
   const [jdFile, setJdFile] = useState<File | null>(null);
   const [skills, setSkills] = useState<SkillDto[]>([]);
   const [selected, setSelected] = useState<string[] | null>(null);
+  const [minYears, setMinYears] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(Boolean(jobId));
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -52,6 +59,13 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
         if (jobResponse) {
           setJob(jobResponse);
           setSelected(jobResponse.skills.map((skill) => skill.skill));
+          setMinYears(
+            Object.fromEntries(
+              jobResponse.skills
+                .filter((s) => s.min_years !== null)
+                .map((s) => [s.skill, String(s.min_years)]),
+            ),
+          );
         }
       })
       .catch((reason: unknown) => {
@@ -63,6 +77,10 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
   const parseJd = async () => {
     if (!jdFile) {
       setError("Vui lòng chọn file JD PDF, DOC hoặc DOCX.");
+      return;
+    }
+    if (jdFile.size > 5 * 1024 * 1024) {
+      setError("Dung lượng JD không được vượt quá 5 MB.");
       return;
     }
     setParsing(true);
@@ -92,14 +110,19 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
       description: String(form.get("description") ?? "").trim(),
       requirements: String(form.get("requirements") ?? "").trim(),
       benefits: String(form.get("benefits") ?? "").trim(),
-      location: String(form.get("location") ?? "").trim(),
+      location: String(form.get("location") ?? "").trim() as JobPayload["location"],
+      workplace_type: String(form.get("workplace_type")) as JobPayload["workplace_type"],
       job_type: String(form.get("job_type")) as JobPayload["job_type"],
       experience_level: String(form.get("experience_level")) as JobPayload["experience_level"],
       salary_min: optionalNumber("salary_min"),
       salary_max: optionalNumber("salary_max"),
       salary_negotiable: form.get("salary_negotiable") === "on",
       expires_at: expiry ? new Date(expiry).toISOString() : null,
-      required_skills: selectedSkills,
+      required_skills: selectedSkills.map((id) => {
+        const raw = minYears[id];
+        const years = raw === undefined || raw.trim() === "" || Number.isNaN(Number(raw)) ? null : Number(raw);
+        return { skill: id, min_years: years === null ? null : String(years), is_required: true };
+      }),
       publish_immediately: !jobId && intent === "publish",
       jd_import_id: activeImport?.status === "SUCCESS" ? activeImport.id : undefined,
     };
@@ -115,7 +138,7 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
         }
       }
       else {
-        await createEmployerJob(payload, payload.jd_import_id ? null : jdFile);
+        await createEmployerJob(payload);
         if (payload.jd_import_id) clearImport();
       }
       router.push("/employer/jobs");
@@ -149,7 +172,7 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
       </Link>
       <h1 className="mt-4 text-2xl font-bold text-zinc-900">{jobId ? "Sửa tin tuyển dụng" : "Tạo tin tuyển dụng"}</h1>
       <p className="mt-1 text-sm text-zinc-500">
-        {jobId ? "Cập nhật nội dung sẽ làm mới embedding của tin đang hoạt động." : "Bạn có thể lưu nháp để hoàn thiện sau hoặc đăng tin ngay."}
+        {jobId ? "Chỉnh sửa nội dung tin nháp. Tin đã đăng sẽ không thể thay đổi." : "Bạn có thể lưu nháp để hoàn thiện sau hoặc đăng tin ngay."}
       </p>
       {!jobId && (
         <section className="mt-6 rounded-xl border border-primary-100 bg-primary-50/50 p-5">
@@ -172,7 +195,7 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
               {isParsing ? "Đang phân tích..." : "Trích xuất JD"}
             </Button>
           </div>
-          {activeImport && ["PENDING", "PROCESSING"].includes(activeImport.status) && <p className="mt-3 text-sm text-primary">Bạn có thể rời trang này. Hệ thống sẽ báo trên thanh điều hướng khi JD sẵn sàng.</p>}
+          {activeImport && ["PENDING", "PROCESSING"].includes(activeImport.status) && <p className="mt-3 text-sm text-primary">Bạn có thể rời trang này. Hệ thống sẽ báo trên thanh điều hướng khi JD sẵn sàng.{jdStalled && " Hệ thống đã ngừng tự động kiểm tra — tải lại trang để cập nhật trạng thái."}</p>}
           {activeImport?.status === "FAILED" && <div className="mt-3 flex items-center gap-3 text-sm text-red-700"><span>{activeImport.error_message}</span><Button type="button" variant="ghost" onClick={() => void cancelImport()}>Bỏ kết quả</Button></div>}
           {parsed && <p className="mt-3 text-sm text-emerald-700">Đã điền dữ liệu từ <strong>{activeImport?.original_filename ?? jdFile?.name}</strong>. Vui lòng kiểm tra trước khi lưu.</p>}
           {parsed && parsed.unmatched_skills.length > 0 && <p className="mt-2 text-xs text-amber-800">Skill chưa có trong taxonomy: {parsed.unmatched_skills.join(", ")}. Admin cần chuẩn hóa trước khi có thể gắn vào tin.</p>}
@@ -187,16 +210,26 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
         </label>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Địa điểm"><Input name="location" defaultValue={initial?.location ?? ""} /></Field>
+          <Field label="Địa điểm">
+            <select name="location" defaultValue={initial?.location ?? ""} className={fieldClass}>
+              <option value="">Chọn địa điểm</option>
+              {LOCATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </Field>
           <Field label="Hạn nhận hồ sơ"><Input name="expires_at" type="datetime-local" defaultValue={initial?.expires_at?.slice(0, 16) ?? ""} /></Field>
+          <Field label="Nơi làm việc">
+            <select name="workplace_type" defaultValue={initial?.workplace_type ?? "ONSITE"} className={fieldClass}>
+              {Object.entries(WORKPLACE_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </Field>
           <Field label="Loại việc">
             <select name="job_type" defaultValue={initial?.job_type ?? "FULL_TIME"} className={fieldClass}>
-              <option value="FULL_TIME">Toàn thời gian</option><option value="PART_TIME">Bán thời gian</option><option value="INTERNSHIP">Thực tập</option><option value="CONTRACT">Hợp đồng</option><option value="REMOTE">Từ xa</option>
+              {Object.entries(JOB_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </Field>
           <Field label="Cấp độ">
             <select name="experience_level" defaultValue={initial?.experience_level ?? ""} className={fieldClass}>
-              <option value="">Không yêu cầu</option>{["INTERN", "FRESHER", "JUNIOR", "MIDDLE", "SENIOR", "LEAD"].map((value) => <option key={value} value={value}>{value}</option>)}
+              <option value="">Không yêu cầu</option>{Object.entries(EXPERIENCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </Field>
           <Field label="Lương tối thiểu"><Input name="salary_min" type="number" min="0" defaultValue={initial?.salary_min ?? ""} /></Field>
@@ -213,6 +246,7 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
 
         <fieldset>
           <legend className="text-sm font-medium text-zinc-700">Kỹ năng yêu cầu</legend>
+          <p className="mt-1 text-xs text-zinc-400">Tùy chọn: nhập số năm kinh nghiệm tối thiểu cho từng kỹ năng.</p>
           <div className="mt-2 flex max-h-56 flex-wrap gap-2 overflow-y-auto rounded-xl border border-zinc-200 p-3">
             {skills.map((skill) => {
               const checked = selectedSkills.includes(skill.id);
@@ -224,6 +258,29 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
               );
             })}
           </div>
+          {selectedSkills.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {selectedSkills.map((id) => {
+                const skill = skills.find((s) => s.id === id);
+                if (!skill) return null;
+                return (
+                  <div key={id} className="flex items-center gap-2">
+                    <span className="w-44 shrink-0 truncate text-sm text-zinc-700">{skill.name}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      placeholder="Số năm tối thiểu"
+                      value={minYears[id] ?? ""}
+                      onChange={(e) => setMinYears((current) => ({ ...current, [id]: e.target.value }))}
+                      className={`${fieldClass} mt-0 h-9 w-40`}
+                    />
+                    <span className="text-xs text-zinc-400">năm</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </fieldset>
 
         <div className="flex justify-end gap-2 border-t border-zinc-100 pt-5">

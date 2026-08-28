@@ -53,27 +53,6 @@ implement.
 ### Backend — `job_portal_backend/`
 
 ```
-job_portal_backend/
-├── config/                # Cấu hình project — KHÔNG chứa business logic
-│   └── settings/base|local|staging|production|test.py
-├── apps/                  # TẤT CẢ domain app — không rải app ở root
-│   ├── core/               # BaseModel, mixins, custom exceptions dùng chung
-│   ├── accounts/           # User, Role, JWT/OAuth
-│   ├── companies/          # Company, approval status
-│   ├── candidates/         # CandidateProfile, Resume
-│   ├── skills/              # Skill Taxonomy, normalization
-│   ├── jobs/                # JobPost, tìm kiếm, semantic search
-│   ├── applications/        # JobApplication, state machine
-│   ├── ai_analysis/         # Match Score, ranking logic
-│   └── notifications/       # Email/thông báo
-├── integrations/          # Tầng bọc MỌI dịch vụ bên ngoài
-│   ├── gemini/              # client, resume_parser, jd_parser, embeddings
-│   ├── storage/             # Cloudinary qua django-storages
-│   └── email/               # Gmail SMTP backend
-├── api/v1/urls.py         # gom router từng app
-├── common/                # pagination, exceptions, permissions, middleware
-├── deploy/docker/, deploy/nginx/
-└── .github/workflows/ci.yml, cd.yml
 ```
 
 Mỗi app trong `apps/` có cấu trúc nội bộ **giống nhau** (ví dụ `apps/jobs/`):
@@ -142,9 +121,11 @@ liệu) đặt trong `features/<feature>/`, KHÔNG đặt trực tiếp trong `a
   **(Đề xuất, cần xác nhận)**)
 - **JobPost** — tiêu đề, mô tả, kỹ năng yêu cầu (chuẩn hóa), mức lương,
   `embedding` (vector), `status` (`DRAFT` / `ACTIVE` / `CLOSED` / `EXPIRED`)
-- **JobApplication** — `candidate_id`, `job_id`, `profile_snapshot`,
-  `resume_snapshot`, `cover_letter` (tùy chọn), `match_score` (Cosine
-  Similarity × 100%, có thể `null`), `status`, `applied_at`
+- **JobApplication** — `candidate_id`, `job_id`, snapshot input chấm điểm,
+  CV chính được chọn (tùy chọn), `cover_letter` (tùy chọn), `status`,
+  `applied_at`
+- **AIAnalysis** — kết quả chấm điểm bất biến của một `JobApplication`, có
+  thể chưa tồn tại trong lúc task nền chưa hoàn thành
 - **Skill Taxonomy** — danh mục kỹ năng chuẩn hóa, do Admin quản trị
 
 ### State machine — `JobApplication.status` (BẮT BUỘC, không được vi phạm)
@@ -169,18 +150,18 @@ ghi DB, trả lỗi rõ ràng nếu chuyển không hợp lệ.
 - `JobPost` ở `DRAFT`: **không** kích hoạt tác vụ sinh embedding. Chỉ khi
   chuyển sang `ACTIVE` mới tạo task `generate_job_embedding` vào Django-Q.
 - Nhà tuyển dụng chỉ đăng tin được khi `Company` ở trạng thái đã phê duyệt.
-- Ứng viên chỉ được ứng tuyển (UC-04) khi `CandidateProfile` đã hoàn thiện
-  đầy đủ thông tin bắt buộc, **bao gồm CV**. Hệ thống **không cho đính kèm
-  hoặc thay CV mới** ngay tại thời điểm ứng tuyển — vì embedding chỉ được
-  sinh sẵn khi hồ sơ được lưu qua UC-01, không tính real-time lúc nộp đơn.
-- `match_score` tính tại thời điểm ứng tuyển. Nếu embedding chưa sẵn sàng
-  hoặc Gemini API lỗi/timeout: vẫn tạo `JobApplication` với
-  `match_score = null`, ghi log lỗi, đưa tác vụ tính lại vào Django-Q Queue.
+- Ứng viên chỉ được ứng tuyển khi hồ sơ có họ tên, số điện thoại, vị trí mong
+  muốn và ít nhất một kỹ năng hợp lệ. Đính kèm CV chính là tùy chọn.
+- Input chấm điểm và bộ trọng số được snapshot cùng transaction tạo đơn.
+  Django-Q chỉ nhận `application_id`; retry luôn dùng lại snapshot này.
+- Embedding được sinh sẵn khi hồ sơ/job được lưu. Nếu vector snapshot chưa
+  sẵn sàng, task application được phép gọi Gemini từ text snapshot nhưng
+  không ghi đè embedding toàn cục của CandidateProfile/JobPost.
+- `AIAnalysis` đã tính thành công không bị ghi đè và hồ sơ ứng viên thay đổi
+  sau đó không kích hoạt tính lại application cũ.
 - Mỗi cặp `(candidate_id, job_id)` chỉ được có **tối đa 1** `JobApplication`.
 - Resume/JD Parsing lỗi/timeout: phải cho 2 lựa chọn — thử lại upload, hoặc
   chuyển sang nhập thủ công. Không được chặn luồng hoàn toàn.
-- Lỗi gửi email/thông báo không được chặn luồng chính — chỉ log lỗi, người
-  dùng vẫn nhận kết quả thao tác thành công.
 - `profile_version` tăng +1 mỗi khi `CandidateProfile` được cập nhật và lưu
   thành công.
 - Job đã đóng (`CLOSED`) không chặn việc cập nhật trạng thái các
@@ -318,8 +299,8 @@ sâu; chỉ dùng kế thừa khi đúng quan hệ "is-a".
 ## 6. Quy ước API
 
 - **REST resource naming**: danh từ số nhiều, kebab/snake theo chuẩn DRF —
-  `/api/v1/jobs/`, `/api/v1/candidates/profile/`,
-  `/api/v1/companies/{id}/jobs/`, `/api/v1/applications/{id}/status/`
+  `/api//jobs/`, `/api/candidates/profile/`,
+  `/api/companies/{id}/jobs/`, `/api/applications/{id}/status/`
   **(Đề xuất, cần xác nhận — Charter không quy định chi tiết URL pattern)**.
 - **Response format chuẩn** — thống nhất qua `common/exceptions.py`
   **(Đề xuất, cần xác nhận cấu trúc chính xác)**:
@@ -345,13 +326,6 @@ sâu; chỉ dùng kế thừa khi đúng quan hệ "is-a".
 }
 ```
 
-- Versioning qua path `/api/v1/`, mọi route mới thêm vào bản v1 hiện tại trừ
-  khi có breaking change (khi đó cần bàn về `/api/v2/`).
-- Endpoint đổi trạng thái (`JobApplication.status`, `JobPost.status`) phải
-  validate qua state machine ở mục 4 trước khi ghi DB, trả `error.code` rõ
-  ràng khi vi phạm.
-
----
 
 ## 7. Quy ước Testing
 
@@ -380,7 +354,7 @@ tả chi tiết lệnh/biến môi trường cụ thể)**
 # Backend + DB + worker
 cd job_portal_backend
 cp .env.example .env
-docker compose -f deploy/docker/docker-compose.yml up --build
+docker compose up --build
 
 # Migration (nếu chưa tự chạy trong compose)
 docker compose exec backend python manage.py migrate

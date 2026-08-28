@@ -1,11 +1,19 @@
-"""Django-Q task tính match score cho hồ sơ ứng tuyển."""
+"""Django-Q task tính match score từ snapshot bất biến của application."""
 import math
+from datetime import date
 from decimal import Decimal
 
 from apps.ai_analysis import services
+from apps.ai_analysis.models import AIAnalysis
 from apps.applications.models import JobApplication
-from apps.skills.selectors import get_active_weight_config
-from integrations.gemini.embeddings import EMBEDDING_MODEL
+from apps.core.matching import (
+    experience_score,
+    recognized_degree_level,
+    required_degree_level,
+    total_experience_years,
+)
+from apps.skills.models import MatchingWeightConfig
+from integrations.gemini.embeddings import EMBEDDING_MODEL, embed_document
 
 
 def _cosine_similarity(left, right) -> float:
@@ -18,73 +26,164 @@ def _cosine_similarity(left, right) -> float:
     return dot_product / (left_norm * right_norm)
 
 
-def _ensure_embeddings(application: JobApplication) -> None:
-    """Sinh đồng bộ embedding còn thiếu bên trong background worker hiện tại."""
-    candidate = application.candidate
+def _candidate_embedding(application: JobApplication):
+    if application.candidate_embedding_snapshot is not None:
+        return application.candidate_embedding_snapshot
+
+    snapshot = application.profile_snapshot
+    profile = application.candidate
+    if (
+        profile.embedding is not None
+        and profile.embedding_version == snapshot["profile_version"]
+        and profile.embedding_signature == snapshot["embedding_signature"]
+    ):
+        vector = list(profile.embedding)
+    else:
+        vector = embed_document(snapshot["embedding_text"])
+
+    JobApplication.objects.filter(
+        pk=application.pk,
+        candidate_embedding_snapshot__isnull=True,
+    ).update(candidate_embedding_snapshot=vector)
+    application.refresh_from_db(fields=["candidate_embedding_snapshot"])
+    return application.candidate_embedding_snapshot
+
+
+def _job_embedding(application: JobApplication):
+    if application.job_embedding_snapshot is not None:
+        return application.job_embedding_snapshot
+
+    snapshot = application.job_snapshot
     job = application.job
-    if candidate.embedding is None or candidate.embedding_is_stale:
-        from apps.candidates.tasks import generate_candidate_embedding
+    if (
+        job.embedding is not None
+        and job.embedding_version == snapshot["content_version"]
+        and job.embedding_signature == snapshot["embedding_signature"]
+    ):
+        vector = list(job.embedding)
+    else:
+        vector = embed_document(snapshot["embedding_text"])
 
-        generate_candidate_embedding(str(candidate.pk), candidate.profile_version)
-    if job.embedding is None or job.embedding_is_stale:
-        from apps.jobs.tasks import generate_job_embedding
-
-        generate_job_embedding(
-            str(job.pk),
-            job.content_version,
-            allow_closed=True,
-        )
+    JobApplication.objects.filter(
+        pk=application.pk,
+        job_embedding_snapshot__isnull=True,
+    ).update(job_embedding_snapshot=vector)
+    application.refresh_from_db(fields=["job_embedding_snapshot"])
+    return application.job_embedding_snapshot
 
 
 def compute_application_match_score(application_id: str) -> bool:
-    """Tính CosineSimilarity x 100 và lưu kết quả giải thích vào AIAnalysis."""
+    """Tạo duy nhất một kết quả từ input đã chụp lúc ứng tuyển."""
+    if AIAnalysis.objects.filter(application_id=application_id).exists():
+        return True
+
     application = (
         JobApplication.objects.select_related("candidate", "job")
-        .prefetch_related(
-            "candidate__candidate_skills",
-            "job__job_skills",
-        )
         .get(pk=application_id)
     )
-    _ensure_embeddings(application)
-    application.candidate.refresh_from_db()
-    application.job.refresh_from_db()
+    if not all(
+        (
+            application.profile_snapshot,
+            application.job_snapshot,
+            application.matching_weight_snapshot,
+            application.snapshot_created_at,
+        )
+    ):
+        # Legacy applications predate immutable scoring snapshots and cannot be
+        # reconstructed truthfully from the candidate's current profile.
+        return False
 
-    candidate_embedding = application.candidate.embedding
-    job_embedding = application.job.embedding
+    candidate_embedding = _candidate_embedding(application)
+    job_embedding = _job_embedding(application)
     if candidate_embedding is None or job_embedding is None:
-        raise RuntimeError("Embedding chưa sẵn sàng để tính match score.")
+        raise RuntimeError("Embedding snapshot chưa sẵn sàng để tính điểm.")
 
-    similarity = _cosine_similarity(candidate_embedding, job_embedding)
-    score = Decimal(str(round(max(0.0, min(1.0, similarity)) * 100, 2)))
-
-    candidate_skill_ids = set(
-        application.candidate.candidate_skills.values_list("skill_id", flat=True)
+    similarity = max(
+        0.0,
+        min(1.0, _cosine_similarity(candidate_embedding, job_embedding)),
     )
-    job_skills = list(application.job.job_skills.select_related("skill"))
+    semantic_score = round(similarity * 100, 2)
+
+    profile_snapshot = application.profile_snapshot
+    job_snapshot = application.job_snapshot
+    candidate_skill_ids = {item["id"] for item in profile_snapshot["skills"]}
+    job_skills = job_snapshot["skills"]
     matched_skills = [
-        job_skill.skill.name
-        for job_skill in job_skills
-        if job_skill.skill_id in candidate_skill_ids
+        item["name"] for item in job_skills if item["id"] in candidate_skill_ids
     ]
     missing_skills = [
-        job_skill.skill.name
-        for job_skill in job_skills
-        if job_skill.is_required and job_skill.skill_id not in candidate_skill_ids
+        item["name"]
+        for item in job_skills
+        if item["is_required"] and item["id"] not in candidate_skill_ids
     ]
-    skill_overlap = None
-    if job_skills:
-        skill_overlap = Decimal(
-            str(round(len(matched_skills) / len(job_skills) * 100, 2))
-        )
+    skill_overlap = (
+        round(len(matched_skills) / len(job_skills) * 100, 2)
+        if job_skills
+        else 100.0
+    )
 
+    intervals = [
+        (
+            date.fromisoformat(item["start_date"]) if item["start_date"] else None,
+            date.fromisoformat(item["end_date"]) if item["end_date"] else None,
+            item["is_current"],
+        )
+        for item in profile_snapshot["experiences"]
+    ]
+    snapshot_date = application.snapshot_created_at.date()
+    total_years = total_experience_years(intervals, snapshot_date)
+    exp_score = round(
+        experience_score(total_years, job_snapshot["experience_level"]),
+        2,
+    )
+
+    required_level = required_degree_level(job_snapshot["requirements"])
+    if not required_level:
+        edu_score = 100.0
+    else:
+        highest_degree = max(
+            (
+                recognized_degree_level(item["degree"])
+                for item in profile_snapshot["educations"]
+            ),
+            default=0,
+        )
+        edu_score = 100.0 if highest_degree >= required_level else 0.0
+
+    weight_snapshot = application.matching_weight_snapshot
+    semantic_weight = Decimal(weight_snapshot["semantic"])
+    skill_weight = Decimal(weight_snapshot["skill"])
+    experience_weight = Decimal(weight_snapshot["experience"])
+    education_weight = Decimal(weight_snapshot["education"])
+    score = Decimal(
+        str(
+            round(
+                float(semantic_weight) * semantic_score
+                + float(skill_weight) * skill_overlap
+                + float(experience_weight) * exp_score
+                + float(education_weight) * edu_score,
+                2,
+            )
+        )
+    )
+
+    weight_config = None
+    if weight_snapshot["config_id"]:
+        weight_config = MatchingWeightConfig.objects.filter(
+            pk=weight_snapshot["config_id"],
+        ).first()
     services.save_match_analysis(
         application=application,
         match_score=score,
+        semantic_similarity_score=semantic_score,
         skill_overlap_score=skill_overlap,
+        experience_score=exp_score,
+        education_score=edu_score,
         matched_skills=matched_skills,
         missing_skills=missing_skills,
-        weight_config=get_active_weight_config(),
+        weight_config=weight_config,
         embedding_model_version=EMBEDDING_MODEL,
+        candidate_embedding_version=profile_snapshot["profile_version"],
+        job_embedding_version=job_snapshot["content_version"],
     )
     return True

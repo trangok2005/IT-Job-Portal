@@ -1,16 +1,26 @@
 "use client";
 
-import { EXPERIENCE_LABELS, JOB_TYPE_LABELS } from "@/features/jobs/utils";
+import {
+  EXPERIENCE_LABELS,
+  JOB_TYPE_LABELS,
+  LOCATION_OPTIONS,
+  WORKPLACE_TYPE_LABELS,
+} from "@/features/jobs/utils";
+import type { JobDto } from "@/lib/types";
 import { useRouter } from "next/navigation";
 
 export function JobFilters({
+  workplaceType,
   jobType,
   experienceLevel,
   salaryMin,
+  location,
 }: {
-  jobType?: string;
-  experienceLevel?: string;
+  workplaceType?: JobDto["workplace_type"];
+  jobType?: JobDto["job_type"];
+  experienceLevel?: JobDto["experience_level"];
   salaryMin?: number;
+  location?: JobDto["location"];
 }) {
   const router = useRouter();
   const updateParam = (key: string, value: string) => {
@@ -23,6 +33,16 @@ export function JobFilters({
 
   return (
     <div className="flex flex-wrap gap-2">
+      <select
+        value={workplaceType ?? ""}
+        onChange={(e) => updateParam("workplace_type", e.target.value)}
+        className="h-10 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700"
+      >
+        <option value="">Nơi làm việc</option>
+        {Object.entries(WORKPLACE_TYPE_LABELS).map(([value, label]) => (
+          <option key={value} value={value}>{label}</option>
+        ))}
+      </select>
       <select
         value={jobType ?? ""}
         onChange={(e) => updateParam("job_type", e.target.value)}
@@ -45,6 +65,16 @@ export function JobFilters({
           <option key={value} value={value}>
             {label}
           </option>
+        ))}
+      </select>
+      <select
+        value={location ?? ""}
+        onChange={(e) => updateParam("location", e.target.value)}
+        className="h-10 rounded-xl border border-zinc-300 bg-white px-3 text-sm text-zinc-700"
+      >
+        <option value="">Địa điểm</option>
+        {LOCATION_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
         ))}
       </select>
       <select

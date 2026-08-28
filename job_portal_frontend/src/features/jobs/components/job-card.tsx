@@ -3,7 +3,7 @@ import { MapPin, Sparkles, TrendingUp } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import type { JobDto } from "@/lib/types";
-import { formatSalary, JOB_TYPE_LABELS } from "@/features/jobs/utils";
+import { formatSalary, JOB_TYPE_LABELS, WORKPLACE_TYPE_LABELS } from "@/features/jobs/utils";
 
 const LOGO_COLORS = [
   "bg-primary",
@@ -43,14 +43,13 @@ export function JobCard({ job, index = 0, showMatchScore = false }: { job: JobDt
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{JOB_TYPE_LABELS[job.job_type]}</Badge>
+        <Badge variant="outline">{WORKPLACE_TYPE_LABELS[job.workplace_type]}</Badge>
         {skills.map((skill) => (
           <Badge key={skill.id} variant="outline">
             {skill.skill_name}
           </Badge>
         ))}
-        {skills.length === 0 && (
-          <Badge variant="outline">{JOB_TYPE_LABELS[job.job_type] ?? job.job_type}</Badge>
-        )}
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-2 border-t border-zinc-100 pt-4">

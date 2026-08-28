@@ -7,10 +7,10 @@ UC-02 precondition depends on Company.status == APPROVED.
 from django.conf import settings
 from django.db import models
 
-from apps.core.models import BaseModel
+from apps.core.models import TimeStampedModel, UUIDModel
 
 
-class Company(BaseModel):
+class Company(UUIDModel, TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "PENDING", "Chờ duyệt"
         APPROVED = "APPROVED", "Đã duyệt"
@@ -29,7 +29,6 @@ class Company(BaseModel):
     tax_code = models.CharField(max_length=50, unique=True, null=True, blank=True)
     description = models.TextField(blank=True)
     website = models.URLField(blank=True)
-    logo_url = models.URLField(blank=True)
     address = models.CharField(max_length=500, blank=True)
     company_size = models.CharField(max_length=50, blank=True)
     industry = models.CharField(max_length=150, blank=True)
