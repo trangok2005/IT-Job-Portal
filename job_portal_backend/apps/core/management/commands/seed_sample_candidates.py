@@ -2,10 +2,9 @@
 seed_sample_candidates.py
 
 10 CV mẫu, đúng schema trong models.py (User -> CandidateProfile ->
-Education/Experience -> Skill/CandidateSkill), phân bố role theo đúng tỉ
-lệ nhiều nhất trong job_descriptions_500_balanced.csv (Backend, Frontend,
-Full-stack, QA, Mobile, Software Engineer, Game, AI Engineer, Business
-Analyst, DevOps/Data) và theo 2 thành phố chiếm nhiều nhất (Hà Nội, TP.HCM).
+Education/Experience -> Skill/CandidateSkill), phân bố theo các nhóm role
+phổ biến (Backend, Frontend, Full-stack, QA, Mobile, Software, Game,
+AI, Business Analyst, DevOps/Data) và 2 thành phố chiếm đa số (Hà Nội, TP.HCM).
 
 Cài đặt: copy file này vào
     <app_có_CandidateProfile>/management/commands/seed_sample_candidates.py
