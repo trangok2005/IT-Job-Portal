@@ -47,6 +47,23 @@ Set these variables for Production and the corresponding Preview values when pre
 
 `NEXT_PUBLIC_*` values are embedded at build time. Redeploy the frontend after changing them. Add every deployed Vercel/custom origin to Django CORS and CSRF configuration.
 
+## One-Time Render Demo Seed
+
+For a disposable demo database, add these Render variables before one backend deploy:
+
+```text
+RUN_RENDER_SEED=true
+SEED_ADMIN_EMAIL=admin.demo@jobportal.local
+SEED_ADMIN_PASSWORD=<strong unique password>
+SEED_EMPLOYER_EMAIL=employer.demo@jobportal.local
+SEED_EMPLOYER_PASSWORD=<strong unique password>
+SEED_CANDIDATE_PASSWORD=<shared strong demo-candidate password>
+```
+
+The build runs `seed_render_demo` after migrations and creates or updates the skill taxonomy, 50 active jobs under one approved company, 10 complete candidate profiles, one employer, and one admin. It does not enqueue embeddings during the build and does not print passwords.
+
+After the first successful deploy, immediately remove `RUN_RENDER_SEED` or set it to `false`. The command is idempotent and will not duplicate its records, but leaving the flag enabled resets demo passwords and rewrites the seeded records on every deploy. Do not use these demo accounts for real production data.
+
 ## QStash Production
 
 The callback is `POST <BACKEND_PUBLIC_URL>/api/internal/tasks/`. It verifies `Upstash-Signature` before dispatch. Invalid permanent payloads return QStash's non-retry status `489`; task exceptions return `500` for retry.
@@ -78,4 +95,3 @@ Verify after deployment:
 3. Upload/download a disposable private file and confirm the signed R2 URL expires.
 4. Run `python manage.py send_test_email --to verified-recipient@example.com`; the command never prints SMTP credentials.
 5. Complete Google sign-in using every intended Vercel domain.
-
