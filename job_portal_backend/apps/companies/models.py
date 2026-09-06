@@ -56,7 +56,3 @@ class Company(UUIDModel, TimeStampedModel):
 
     def __str__(self):
         return self.name
-
-    @property
-    def is_approved(self):
-        return self.status == self.Status.APPROVED

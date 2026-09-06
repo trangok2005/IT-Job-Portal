@@ -1,13 +1,16 @@
 """ViewSet mỏng cho UC ứng tuyển và xử lý hồ sơ ứng tuyển."""
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 
-from apps.applications import perms, selectors, serializers, services
+from apps.applications import selectors, serializers, services
 from apps.applications.models import JobApplication
-from apps.ai_analysis import selectors as analysis_selectors
+from apps.ai_analysis import selectors as match_result_selectors
+from common import permissions as common_permissions
+from integrations.storage import create_private_file_url
 
 
 class ApplicationViewSet(
@@ -21,10 +24,12 @@ class ApplicationViewSet(
     def get_permissions(self):
         """Phân quyền theo action và role nghiệp vụ."""
         if self.action == "create":
-            return [IsAuthenticated(), perms.IsCandidate()]
-        if self.action in ["transition", "analysis"]:
-            return [IsAuthenticated(), perms.IsEmployerOrAdmin()]
-        return [IsAuthenticated(), perms.CanAccessApplications()]
+            return [IsAuthenticated(), common_permissions.IsCandidate()]
+        if self.action == "transition":
+            return [IsAuthenticated(), common_permissions.IsEmployer()]
+        if self.action == "match_result":
+            return [IsAuthenticated(), common_permissions.IsEmployerOrAdmin()]
+        return [IsAuthenticated(), common_permissions.HasBusinessRole()]
 
     def get_queryset(self):
         """Giới hạn dữ liệu theo role trước khi DRF tìm object."""
@@ -94,6 +99,8 @@ class ApplicationViewSet(
                 request.user,
                 serializer.validated_data["status"],
                 serializer.validated_data.get("note", ""),
+                serializer.validated_data.get("candidate_message", ""),
+                serializer.validated_data["expected_status"],
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -103,28 +110,46 @@ class ApplicationViewSet(
         )
         return Response(output.data)
 
-    @extend_schema(responses=serializers.EmptyApplicationAnalysisSerializer)
-    @action(methods=["get"], detail=True)
-    def analysis(self, request, pk=None):
-        """Return explainable AI details only to the job owner or an admin."""
+    @extend_schema(responses=serializers.EmptyApplicationMatchResultSerializer)
+    @action(methods=["get"], detail=True, url_path="match-result")
+    def match_result(self, request, pk=None):
+        """Return the weighted match details to the job owner or an admin."""
         application = self.get_object()
-        analysis = analysis_selectors.get_application_analysis(application)
-        if analysis is not None:
-            return Response(serializers.ApplicationAnalysisReadSerializer(analysis).data)
+        result = match_result_selectors.get_application_match_result(application)
+        if result is not None:
+            return Response(serializers.ApplicationMatchResultReadSerializer(result).data)
         empty = {
             "match_score": None,
+            "status": application.match_status,
             "semantic_similarity_score": None,
             "skill_overlap_score": None,
             "experience_score": None,
             "education_score": None,
             "matched_skills": [],
             "missing_skills": [],
+            "criteria_applicability": {},
+            "original_weights": application.matching_weight_snapshot or {},
+            "normalized_weights": {},
+            "missing_information": (
+                {"processing": application.match_error} if application.match_error else {}
+            ),
+            "rule_version": (application.matching_weight_snapshot or {}).get("rule_version", ""),
+            "embedding_metadata": {},
             "weight_config_id": None,
             "weight_config_name": None,
             "embedding_model_version": "",
-            "candidate_embedding_version": None,
-            "job_embedding_version": None,
-            "computed_at": None,
+            "created_at": None,
             "snapshot_created_at": application.snapshot_created_at,
         }
-        return Response(serializers.EmptyApplicationAnalysisSerializer(empty).data)
+        return Response(serializers.EmptyApplicationMatchResultSerializer(empty).data)
+
+    @extend_schema(responses=serializers.PrivateFileURLSerializer)
+    @action(methods=["get"], detail=True, url_path="resume-download-url")
+    def resume_download_url(self, request, pk=None):
+        """Issue a CV URL only after the application scope check succeeds."""
+        application = self.get_object()
+        if application.resume is None:
+            raise NotFound("Hồ sơ ứng tuyển không đính kèm CV.")
+        data = create_private_file_url(application.resume.file)
+        data["url"] = request.build_absolute_uri(data["url"])
+        return Response(serializers.PrivateFileURLSerializer(data).data)

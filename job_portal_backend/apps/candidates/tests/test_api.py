@@ -71,7 +71,6 @@ class CandidateApiTests(APITestCase):
                 "headline": "Backend Developer",
                 "summary": "Python APIs",
                 "desired_position": "Backend Developer",
-                "desired_salary_min": 20000000,
                 "is_public": True,
                 "educations": [{"school_name": "HUST", "major": "IT"}],
                 "experiences": [{
@@ -79,7 +78,9 @@ class CandidateApiTests(APITestCase):
                     "position": "Developer",
                     "is_current": True,
                 }],
-                "skills": [{"skill": str(skill.id), "level": "ADVANCED"}],
+                "skills": [
+                    {"skill": str(skill.id), "years_of_experience": 3}
+                ],
             },
             format="json",
         )
@@ -91,6 +92,10 @@ class CandidateApiTests(APITestCase):
         self.assertEqual(self.profile.educations.count(), 1)
         self.assertEqual(self.profile.experiences.count(), 1)
         self.assertEqual(self.profile.candidate_skills.count(), 1)
+        self.assertEqual(
+            self.profile.candidate_skills.get().years_of_experience,
+            3,
+        )
 
     def test_save_profile_normalizes_new_skill_name(self):
         self.client.force_authenticate(self.user)
@@ -107,7 +112,6 @@ class CandidateApiTests(APITestCase):
                 "headline": "",
                 "summary": "",
                 "desired_position": "",
-                "desired_salary_min": None,
                 "is_public": True,
                 "educations": [],
                 "experiences": [],
@@ -121,8 +125,6 @@ class CandidateApiTests(APITestCase):
         candidate_skill = self.profile.candidate_skills.get()
         skill = candidate_skill.skill
         self.assertEqual(skill.name, "Python")
-        self.assertEqual(skill.source, Skill.Source.CV_PARSING)
-        self.assertEqual(candidate_skill.source, "MANUAL")
 
     def test_save_profile_dedupes_skills_resolving_to_same_skill(self):
         self.client.force_authenticate(self.user)
@@ -130,7 +132,6 @@ class CandidateApiTests(APITestCase):
             name="Python",
             slug="dedupe-python",
             status=Skill.Status.APPROVED,
-            source=Skill.Source.ADMIN_MANUAL,
             is_active=True,
         )
         SkillAlias.objects.create(
@@ -151,7 +152,6 @@ class CandidateApiTests(APITestCase):
                 "headline": "",
                 "summary": "",
                 "desired_position": "",
-                "desired_salary_min": None,
                 "is_public": True,
                 "educations": [],
                 "experiences": [],
@@ -174,7 +174,6 @@ class CandidateApiTests(APITestCase):
             name="Rust",
             slug="pending-rust",
             status=Skill.Status.PENDING,
-            source=Skill.Source.CV_PARSING,
         )
 
         response = self.client.put(
@@ -189,7 +188,6 @@ class CandidateApiTests(APITestCase):
                 "headline": "",
                 "summary": "",
                 "desired_position": "",
-                "desired_salary_min": None,
                 "is_public": True,
                 "educations": [],
                 "experiences": [],
@@ -335,3 +333,41 @@ class CandidateResumeApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_candidate_can_get_own_resume_download_url(self):
+        resume = Resume.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile("private-cv.pdf", b"%PDF-1.4 test"),
+            original_filename="private-cv.pdf",
+        )
+
+        response = self.client.get(
+            reverse("candidate-resume-download-url", args=[resume.id])
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["url"].startswith("http://testserver/media/"))
+        self.assertIn("expires_at", response.data)
+
+    def test_candidate_cannot_get_another_candidates_resume_download_url(self):
+        other_user = User.objects.create_user(
+            username="other-resume-candidate",
+            email="other-resume-candidate@example.com",
+            password="password123",
+            role=User.Role.CANDIDATE,
+        )
+        other_profile = CandidateProfile.objects.create(
+            user=other_user,
+            full_name="Other Resume Candidate",
+        )
+        resume = Resume.objects.create(
+            candidate=other_profile,
+            file=SimpleUploadedFile("other.pdf", b"%PDF-1.4 test"),
+            original_filename="other.pdf",
+        )
+
+        response = self.client.get(
+            reverse("candidate-resume-download-url", args=[resume.id])
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

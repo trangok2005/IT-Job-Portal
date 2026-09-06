@@ -95,16 +95,15 @@ class JobServiceTests(TestCase):
     def test_publish_enqueues_embedding_after_commit(self):
         job = self._create_job()
 
-        with patch("django_q.tasks.async_task") as async_task:
+        with patch("apps.jobs.services.publish_task") as publish_task:
             with self.captureOnCommitCallbacks(execute=True):
                 services.publish_job(job)
 
         self.assertEqual(job.status, JobPost.Status.ACTIVE)
         self.assertIsNotNone(job.published_at)
-        async_task.assert_called_once_with(
-            "apps.jobs.tasks.generate_job_embedding",
-            str(job.pk),
-            job.content_version,
+        publish_task.assert_called_once_with(
+            "generate_job_embedding",
+            {"job_id": str(job.pk), "content_version": job.content_version},
         )
 
     def test_closed_job_cannot_be_published_again(self):
@@ -118,13 +117,13 @@ class JobServiceTests(TestCase):
     def test_draft_update_bumps_version_and_enqueues_embedding(self):
         job = self._create_job()
 
-        with patch("django_q.tasks.async_task") as async_task:
+        with patch("apps.jobs.services.publish_task") as publish_task:
             with self.captureOnCommitCallbacks(execute=True):
                 services.update_job(job, {"description": "Updated APIs"})
 
         self.assertEqual(job.content_version, 2)
         # Tin DRAFT không tốn quota Gemini — chỉ ACTIVE mới sinh embedding.
-        async_task.assert_not_called()
+        publish_task.assert_not_called()
 
     def test_non_draft_job_cannot_be_updated(self):
         job = self._create_job()

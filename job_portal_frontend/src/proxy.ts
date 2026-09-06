@@ -77,6 +77,11 @@ function clearAuthCookies(response: NextResponse) {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isGuestOnlyRoute = pathname === "/login" || pathname === "/register";
+
+  if (pathname === "/candidate/jobs/recommended") {
+    return NextResponse.redirect(new URL("/jobs?tab=recommended", request.url));
+  }
 
   const requiredRole = pathname === "/candidate" || pathname.startsWith("/candidate/")
     ? "CANDIDATE"
@@ -103,10 +108,21 @@ export async function proxy(request: NextRequest) {
 
   const role = user?.role;
   if (!role || !VALID_ROLES.has(role)) {
+    if (isGuestOnlyRoute) {
+      const response = NextResponse.next();
+      clearAuthCookies(response);
+      return response;
+    }
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect_to", `${pathname}${request.nextUrl.search}`);
     const response = NextResponse.redirect(loginUrl);
     clearAuthCookies(response);
+    return response;
+  }
+
+  if (isGuestOnlyRoute) {
+    const response = NextResponse.redirect(new URL(ROLE_HOME[role], request.url));
+    setVerifiedCookies(response, request, role, refreshedAccess);
     return response;
   }
 
@@ -122,5 +138,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/candidate/:path*", "/employer/:path*", "/admin/:path*"],
+  matcher: ["/login", "/register", "/candidate/:path*", "/employer/:path*", "/admin/:path*"],
 };

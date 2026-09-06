@@ -42,7 +42,6 @@ class Command(BaseCommand):
                     "slug": make_unique_slug(entry["name"]),
                     "category": category,
                     "status": Skill.Status.APPROVED,
-                    "source": Skill.Source.ADMIN_MANUAL,
                 },
             )
             if skill_created:

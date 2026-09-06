@@ -7,7 +7,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenRefreshView
 from drf_spectacular.utils import extend_schema
 
-from apps.accounts import perms, selectors, serializers, services
+from apps.accounts import selectors, serializers, services
+from common import permissions as common_permissions
 
 
 class RegisterView(CreateAPIView):
@@ -59,7 +60,7 @@ class ActiveUserTokenRefreshView(TokenRefreshView):
 
 
 class AdminUserListView(ListAPIView):
-    permission_classes = [IsAuthenticated, perms.IsAdmin]
+    permission_classes = [IsAuthenticated, common_permissions.IsAdmin]
     serializer_class = serializers.UserSerializer
 
     @extend_schema(parameters=[serializers.AdminUserListQuerySerializer])
@@ -77,7 +78,7 @@ class AdminUserListView(ListAPIView):
 
 
 class AdminUserLockView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsAdmin]
+    permission_classes = [IsAuthenticated, common_permissions.IsAdmin]
     locked = True
 
     @extend_schema(request=None, responses=serializers.UserSerializer)

@@ -9,7 +9,8 @@ from django.conf import settings
 from django.db import models
 from pgvector.django import VectorField, HnswIndex
 
-from apps.core.models import BaseModel, TimeStampedModel, UUIDModel
+from apps.core.models import TimeStampedModel, UUIDModel
+from apps.candidates.models import DegreeLevel
 from integrations.gemini.embeddings import (
     EMBEDDING_DIMENSIONS,
     current_job_embedding_signature,
@@ -18,7 +19,7 @@ from apps.companies.models import Company
 from apps.skills.models import Skill
 
 
-class JobPost(BaseModel):
+class JobPost(UUIDModel, TimeStampedModel):
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Nháp"
         ACTIVE = "ACTIVE", "Đang tuyển"
@@ -65,6 +66,12 @@ class JobPost(BaseModel):
     )
     job_type = models.CharField(max_length=20, choices=JobType.choices, default=JobType.FULL_TIME)
     experience_level = models.CharField(max_length=20, choices=ExperienceLevel.choices, blank=True)
+    required_education_level = models.CharField(
+        max_length=20,
+        choices=DegreeLevel.choices,
+        null=True,
+        blank=True,
+    )
     salary_min = models.PositiveIntegerField(null=True, blank=True)
     salary_max = models.PositiveIntegerField(null=True, blank=True)
     salary_negotiable = models.BooleanField(default=False)
@@ -160,7 +167,6 @@ class JobSkill(UUIDModel, TimeStampedModel):
     job = models.ForeignKey(JobPost, on_delete=models.CASCADE, related_name="job_skills")
     skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name="job_links")
     is_required = models.BooleanField(default=True, help_text="False = 'nice to have'")
-    min_years = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
 
     class Meta:
         db_table = "job_skills"

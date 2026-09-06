@@ -1,13 +1,5 @@
 # IT Job Portal — Context Document cho AI Coding Agent
 
-> File này là ngữ cảnh nền (context) bắt buộc phải đọc trước khi sửa/thêm bất
-> kỳ tính năng nào trong dự án. Nguồn sự thật duy nhất về nghiệp vụ là
-> `Project_Charter_IT_Job_Portal_Final.docx` — mọi thứ trong file này được
-> suy ra trực tiếp từ đó. Phần nào không có trong Charter gốc được đánh dấu
-> rõ **(Đề xuất, cần xác nhận)** — KHÔNG coi đó là sự thật đã chốt.
-
----
-
 ## 1. Tổng quan dự án & mục tiêu
 
 **IT Job Portal** là cổng thông tin tuyển dụng CNTT tích hợp AI, kết nối
@@ -23,29 +15,13 @@ Giải pháp: kết hợp **Resume/JD Parsing bằng Gemini AI**, **Skill
 Normalization**, **Vector Embedding**, **Semantic Search (pgvector)** và
 **Business Rule Ranking** để tính `match_score` hỗ trợ sàng lọc.
 
-**Nguyên tắc bất di bất dịch:** AI chỉ hỗ trợ **phân tích và xếp hạng** mức
-độ phù hợp. AI **KHÔNG BAO GIỜ** tự động quyết định ứng viên được tuyển hay
-bị loại — quyết định cuối cùng luôn thuộc về Nhà tuyển dụng (con người).
-
-### Ngoài phạm vi (Out of Scope) — KHÔNG implement trong bản này
-
-Phỏng vấn trực tuyến/video call, chấm điểm phỏng vấn bằng AI, tự động tuyển
-dụng hoàn toàn, bảng lương/hợp đồng lao động, tích hợp HRM/ERP ngoài, thanh
-toán giữa ứng viên–nhà tuyển dụng, mobile app native, mạng xã hội nghề nghiệp
-đầy đủ, AI tự quyết định thay nhà tuyển dụng.
-
-Nếu một task yêu cầu đụng vào các mục trên → dừng lại và hỏi lại, đừng tự ý
-implement.
-
----
-```
 
 - FE gọi BE qua `NEXT_PUBLIC_API_URL + /api/`, không gọi trực tiếp Gemini
-  hay Cloudinary — mọi tích hợp bên ngoài đi qua BE (`integrations/`).
+  hay Cloudflare R2 — mọi tích hợp bên ngoài đi qua BE (`integrations/`).
 - Auth: JWT (kèm Google OAuth), FE dùng `middleware.ts` để chặn route theo
   role, khớp với role ở BE (`accounts.Role`).
 - Các tác vụ nặng/không cần realtime (sinh embedding, đóng job hết hạn) chạy
-  bất đồng bộ qua **Django-Q**, không chạy đồng bộ trong request-response.
+  bất đồng bộ qua **QStash**, không chạy đồng bộ trong request-response.
 
 
 ## 3. Cấu trúc thư mục và vai trò từng module
@@ -63,14 +39,18 @@ Mỗi app trong `apps/` có cấu trúc nội bộ **giống nhau** (ví dụ `a
 | `selectors.py` | Đọc dữ liệu phức tạp (`get_active_jobs_for()`, `search_jobs_by_vector()`) |
 | `services.py` | Ghi dữ liệu + business logic (`publish_job()`, `close_job()`) |
 | `serializers.py` | Chỉ lo shape input/output, KHÔNG chứa logic nghiệp vụ |
-| `perms.py` | Permission class riêng của app (`IsJobOwner`, `IsApprovedEmployer`) |
+| `perms.py` | Permission phụ thuộc object/nghiệp vụ riêng (`IsJobOwner`, `IsApprovedEmployer`) |
 | `views.py` | ViewSet mỏng: gọi service/selector, trả response — không chứa logic |
-| `tasks.py` | Job async chạy trên Django-Q (tính embedding, đóng job hết hạn) |
+| `tasks.py` | Job async do dispatcher QStash gọi (tính embedding, đóng job hết hạn) |
 | `tests/` | `factories.py`, `test_models.py`, `test_services.py`, `test_api.py` |
 
 **Quy tắc bắt buộc:** khi thêm business logic mới, luôn đặt trong
 `services.py` hoặc `selectors.py`, KHÔNG đặt trong `views.py` hay
 `serializers.py`.
+
+Permission chỉ kiểm tra role và dùng ở nhiều app (`IsAdmin`, `IsCandidate`,
+`IsEmployer`) đặt tại `common/permissions.py`; permission phụ thuộc model hoặc
+object cụ thể vẫn đặt trong `apps/<app>/perms.py`.
 
 ### Frontend — `job_portal_frontend/`
 
@@ -105,17 +85,14 @@ liệu) đặt trong `features/<feature>/`, KHÔNG đặt trực tiếp trong `a
 
 ## 4. Domain Model & ràng buộc nghiệp vụ
 
-> Các entity dưới đây liệt kê đúng những gì Project Charter đã mô tả qua các
-> use case. Trường nào không được Charter nói rõ kiểu dữ liệu/chi tiết được
-> để ở mức khái niệm — **không tự suy diễn thêm field** khi sửa code.
 
 ### Entities
 
 - **User** — `role` (candidate / employer / admin), `is_active`
 - **CandidateProfile** — liên kết User; học vấn, kinh nghiệm, kỹ năng (đã
   chuẩn hóa theo Skill Taxonomy); `embedding` (vector); `profile_version`
-  (tăng +1 mỗi lần cập nhật thành công); Resume (`file_url` trên Cloudinary,
-  cần mã hóa/bảo mật)
+  (tăng +1 mỗi lần cập nhật thành công); Resume lưu private trên Cloudflare
+  R2 và chỉ truy cập qua URL ký ngắn hạn sau khi backend kiểm tra quyền.
 - **Company** — hồ sơ công ty; trạng thái phê duyệt (Charter dùng giá trị
   `APPROVED` làm điều kiện đăng tin — các giá trị khác của trạng thái này
   **(Đề xuất, cần xác nhận)**)
@@ -124,7 +101,7 @@ liệu) đặt trong `features/<feature>/`, KHÔNG đặt trực tiếp trong `a
 - **JobApplication** — `candidate_id`, `job_id`, snapshot input chấm điểm,
   CV chính được chọn (tùy chọn), `cover_letter` (tùy chọn), `status`,
   `applied_at`
-- **AIAnalysis** — kết quả chấm điểm bất biến của một `JobApplication`, có
+- **ApplicationMatchResult** — kết quả chấm điểm bất biến của một `JobApplication`, có
   thể chưa tồn tại trong lúc task nền chưa hoàn thành
 - **Skill Taxonomy** — danh mục kỹ năng chuẩn hóa, do Admin quản trị
 
@@ -148,16 +125,16 @@ ghi DB, trả lỗi rõ ràng nếu chuyển không hợp lệ.
 
 - AI chỉ hỗ trợ scoring/ranking, không bao giờ tự quyết định tuyển/loại.
 - `JobPost` ở `DRAFT`: **không** kích hoạt tác vụ sinh embedding. Chỉ khi
-  chuyển sang `ACTIVE` mới tạo task `generate_job_embedding` vào Django-Q.
+  chuyển sang `ACTIVE` mới publish task `generate_job_embedding` vào QStash.
 - Nhà tuyển dụng chỉ đăng tin được khi `Company` ở trạng thái đã phê duyệt.
 - Ứng viên chỉ được ứng tuyển khi hồ sơ có họ tên, số điện thoại, vị trí mong
   muốn và ít nhất một kỹ năng hợp lệ. Đính kèm CV chính là tùy chọn.
 - Input chấm điểm và bộ trọng số được snapshot cùng transaction tạo đơn.
-  Django-Q chỉ nhận `application_id`; retry luôn dùng lại snapshot này.
+  QStash chỉ nhận `application_id`; retry luôn dùng lại snapshot này.
 - Embedding được sinh sẵn khi hồ sơ/job được lưu. Nếu vector snapshot chưa
   sẵn sàng, task application được phép gọi Gemini từ text snapshot nhưng
   không ghi đè embedding toàn cục của CandidateProfile/JobPost.
-- `AIAnalysis` đã tính thành công không bị ghi đè và hồ sơ ứng viên thay đổi
+- `ApplicationMatchResult` đã tính thành công không bị ghi đè và hồ sơ ứng viên thay đổi
   sau đó không kích hoạt tính lại application cũ.
 - Mỗi cặp `(candidate_id, job_id)` chỉ được có **tối đa 1** `JobApplication`.
 - Resume/JD Parsing lỗi/timeout: phải cho 2 lựa chọn — thử lại upload, hoặc
@@ -166,6 +143,42 @@ ghi DB, trả lỗi rõ ràng nếu chuyển không hợp lệ.
   thành công.
 - Job đã đóng (`CLOSED`) không chặn việc cập nhật trạng thái các
   `JobApplication` đã nộp từ trước — chỉ chặn nhận thêm ứng viên mới.
+
+### Quy tắc Match Score
+
+- `MatchingWeightConfig` mới mặc định dùng trọng số semantic/skill/experience/
+  education lần lượt là `0.35/0.40/0.20/0.05`; hệ số kỹ năng bắt buộc
+  `required_skill_multiplier` (ρ) mặc định là `2`. Bốn trọng số phải thuộc
+  `[0, 1]`, không âm và có tổng bằng `1`; ρ phải hữu hạn và không nhỏ hơn `1`.
+- Kỹ năng được đối sánh bằng định danh ổn định `Skill.id`, không so sánh tên tại
+  thời điểm tính điểm. Kỹ năng `PENDING` còn active được phép tham gia hồ sơ đầy
+  đủ và đối sánh nếu phía ứng viên và công việc cùng tham chiếu một `Skill.id`.
+- Kinh nghiệm dùng ngày đầy đủ từ `DateField`. Mỗi quá trình làm việc là khoảng
+  nửa mở `[start_date, end_date)`; công việc hiện tại dùng ngày tạo snapshot đơn
+  ứng tuyển làm `end_date`. Các khoảng chồng lấn được hợp nhất trước khi cộng số
+  ngày, sau đó số năm kinh nghiệm bằng tổng số ngày chia `365.25`.
+- Ngưỡng kinh nghiệm quy đổi theo cấp độ là `ENTRY=0`, `JUNIOR=1`,
+  `MID_SENIOR=3`, `LEAD=5` năm. Với yêu cầu `R > 0`, điểm `E = min(1, Y/R)`;
+  `ENTRY` đạt `E=1`. Nếu tin không khai cấp độ kinh nghiệm thì tiêu chí không áp
+  dụng; nếu có yêu cầu nhưng hồ sơ không có khoảng hợp lệ thì dùng `Y=0`.
+- Học vấn dùng `DegreeLevel` có cấu trúc: `NONE < ASSOCIATE < BACHELOR < MASTER
+  < PHD`. Chỉ bằng cấp vừa hoàn thành vừa được ứng viên xác nhận mới tham gia.
+  Với độ thiếu bậc `d = max(0, rank_required - rank_candidate)`, điểm
+  `H = max(0, 1 - 0.25d)`. Không có yêu cầu học vấn thì tiêu chí không áp dụng;
+  có yêu cầu nhưng thiếu học vấn hợp lệ thì `H=0`.
+- Điểm kỹ năng là `K = (ρM_required + M_preferred) /
+  (ρN_required + N_preferred)`. Nếu JD không có kỹ năng thì tiêu chí kỹ năng
+  không áp dụng. Semantic, kỹ năng, kinh nghiệm và học vấn đều có miền `[0, 1]`.
+- Điểm tổng bằng `100 × Σ(w_i × s_i) / Σ(w_i)` trên đúng các tiêu chí áp dụng.
+  Không được coi lỗi tạo embedding là semantic không áp dụng; lỗi xử lý phải đi
+  qua trạng thái thất bại thay vì làm tăng điểm do chuẩn hóa lại trọng số.
+- Khi tạo đơn, hệ thống snapshot hồ sơ có cấu trúc, JD, `Skill.id`, ngày tạo,
+  embedding hiện hành, cấu hình trọng số, ρ và phiên bản quy tắc. Kết quả lưu cả
+  tiêu chí áp dụng, trọng số gốc/đã chuẩn hóa, thông tin thiếu và metadata
+  embedding để có thể giải thích và tái lập.
+- Trạng thái xử lý điểm tách biệt với trạng thái tuyển dụng:
+  `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `INSUFFICIENT`. Retry là
+  idempotent: kết quả one-to-one đã tồn tại được trả lại, không bị ghi đè.
 
 ---
 
@@ -347,28 +360,17 @@ sâu; chỉ dùng kế thừa khi đúng quan hệ "is-a".
 
 ## 8. Setup & chạy dự án local
 
-**(Đề xuất, cần xác nhận — Charter chỉ liệt kê stack Docker Compose, chưa mô
-tả chi tiết lệnh/biến môi trường cụ thể)**
-
 ```bash
-# Backend + DB + worker
-cd job_portal_backend
-cp .env.example .env
+# Tạo file local và điền R2 development credentials
+cp job_portal_backend/.env.local.example job_portal_backend/.env.local
+cp job_portal_frontend/.env.local.example job_portal_frontend/.env.local
+
 docker compose up --build
-
-# Migration (nếu chưa tự chạy trong compose)
-docker compose exec backend python manage.py migrate
-
-# Frontend
-cd job_portal_frontend
-cp .env.example .env
-npm install
-npm run dev
 ```
 
-Cần xác nhận: biến môi trường bắt buộc (Gemini API key, Cloudinary key,
-Gmail SMTP credentials, JWT secret, `NEXT_PUBLIC_API_URL`), cổng mặc định
-của từng service, cách chạy riêng Django-Q worker (`Dockerfile.worker`).
+Local dùng QStash Dev, `LocMemCache`, PostgreSQL + pgvector và bucket R2 private
+dành riêng cho development. Hướng dẫn đầy đủ cho local, Render và Vercel nằm ở
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ---
 
@@ -378,10 +380,10 @@ của từng service, cách chạy riêng Django-Q worker (`Dockerfile.worker`).
 | --- | --- |
 | **Embedding** | Vector số thực biểu diễn ngữ nghĩa của văn bản (CV, JD, query), do Gemini Embedding API sinh ra, lưu trong PostgreSQL qua pgvector. |
 | **pgvector** | Extension PostgreSQL cho phép lưu và truy vấn vector, dùng để tính khoảng cách/độ tương đồng (Cosine Similarity) hiệu quả. |
-| **Match Score** | Điểm phù hợp giữa `CandidateProfile` và `JobPost`, tính bằng `Cosine Similarity × 100%` giữa hai embedding. |
+| **Match Score** | Điểm phù hợp 0-100 của một đơn ứng tuyển, tổng hợp semantic, kỹ năng, kinh nghiệm và học vấn theo trọng số snapshot và chỉ chuẩn hóa trên các tiêu chí áp dụng. |
 | **Semantic Search** | Tìm kiếm dựa trên ý nghĩa (qua embedding + similarity), khác với tìm kiếm từ khóa (keyword/SQL ILIKE). |
 | **Skill Taxonomy** | Danh mục kỹ năng chuẩn hóa do Admin quản trị, dùng làm "từ điển" để chuẩn hóa skill trích xuất từ CV/JD. |
 | **Skill Normalization** | Quá trình ánh xạ skill viết tự do (từ CV/JD) về dạng chuẩn trong Skill Taxonomy. |
-| **profile_snapshot / resume_snapshot** | Bản sao dữ liệu hồ sơ/CV tại thời điểm ứng tuyển, lưu trong `JobApplication` để không bị ảnh hưởng nếu ứng viên sửa hồ sơ sau đó. |
+| **profile_snapshot / job_snapshot** | Bản sao dữ liệu hồ sơ có cấu trúc và công việc tại thời điểm ứng tuyển, lưu trong `JobApplication` để kết quả không bị ảnh hưởng bởi thay đổi về sau. File CV đính kèm là tùy chọn và không phải đầu vào trực tiếp của Match Score. |
 | **Business Rule Ranking** | Bước xếp hạng cuối trong pipeline AI, kết hợp Match Score với các quy tắc nghiệp vụ khác (nếu có) trước khi trả kết quả. |
 | **profile_version** | Số phiên bản hồ sơ ứng viên, tăng +1 mỗi lần cập nhật, dùng để theo dõi lịch sử thay đổi. |

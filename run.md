@@ -1,49 +1,124 @@
-# Chạy toàn bộ hệ thống bằng Docker (khuyên dùng)
+# Chạy local
 
-Một lệnh duy nhất — DB (Postgres+pgvector :5432), Django BE (:8000), Django-Q worker, Next.js FE (:3000):
+## Chuẩn bị lần đầu
+
+Từ thư mục gốc repository, tạo file cấu hình local:
 
 ```powershell
-docker compose up -d --wait
+Copy-Item job_portal_backend/.env.local.example job_portal_backend/.env.local
+Copy-Item job_portal_frontend/.env.local.example job_portal_frontend/.env.local
 ```
 
-- Lần đầu tiên (hoặc sau khi reset dữ liệu), seed dữ liệu mẫu:
-  `docker exec job_portal_backend python manage.py seed_demo`
-- Xem log: `docker logs -f job_portal_backend` (hoặc `_qcluster`, `_frontend`, `_db`)
-- Tắt nhưng giữ dữ liệu: thêm lệnh `down`
-- Reset sạch (MẤT HẾT DỮ LIỆU): `down -v --remove-orphans` rồi `up -d --wait` + migrate tự chạy + seed lại
+Điền credential của bucket Cloudflare R2 development vào `job_portal_backend/.env.local`:
 
-Địa chỉ:
+```env
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=
+R2_ENDPOINT_URL=
+```
+
+Các luồng AI, Google Login và gửi mail chỉ hoạt động khi điền thêm
+`GEMINI_API_KEY`, `GOOGLE_CLIENT_ID` và các biến SMTP tương ứng. Không commit
+các file `.env.local`.
+
+## Cách 1: Backend và frontend bằng Docker
+
+QStash Dev phải chạy trên máy host trong một terminal riêng:
+
+```powershell
+npx @upstash/qstash-cli dev
+```
+
+Sau đó chạy PostgreSQL, Django và Next.js:
+
+```powershell
+docker compose up -d --build --wait
+```
+
+Backend container tự chờ PostgreSQL, chạy migration rồi khởi động Django development server. Compose cấu hình backend gọi QStash qua `host.docker.internal:8080`.
+
+Đăng ký lịch sau mỗi lần QStash Dev khởi động lại:
+
+```powershell
+docker compose exec backend python manage.py setup_qstash_schedules
+```
+
+Seed dữ liệu mẫu nếu database chưa có dữ liệu:
+
+```powershell
+docker compose exec backend python manage.py seed_demo
+```
+
+Xem log hoặc dừng hệ thống:
+
+```powershell
+docker compose logs -f backend
+docker compose down
+```
+
+## Cách 2: Chỉ PostgreSQL bằng Docker
+
+Khởi động database:
+
+```powershell
+docker compose up -d db
+```
+
+Cài backend dependencies và chạy migration:
+
+```powershell
+python -m pip install -r job_portal_backend/requirements/base.txt
+python job_portal_backend/manage.py migrate
+```
+
+Mở terminal thứ nhất cho QStash Dev:
+
+```powershell
+npx @upstash/qstash-cli dev
+```
+
+Mở terminal thứ hai cho Django:
+
+```powershell
+python job_portal_backend/manage.py runserver 127.0.0.1:8000
+```
+
+Khi QStash và Django đã chạy, đăng ký schedules một lần:
+
+```powershell
+python job_portal_backend/manage.py setup_qstash_schedules
+```
+
+Mở terminal thứ ba cho Next.js:
+
+```powershell
+npm ci --prefix job_portal_frontend
+npm run dev --prefix job_portal_frontend
+```
+
+Local Django luôn dùng `LocMemCache`; `REDIS_URL` production không được sử dụng. File CV/JD được lưu trong bucket R2 development private, không lưu dưới `MEDIA_ROOT`.
+
+## Địa chỉ local
 
 | Thành phần | URL |
-|---|---|
+| --- | --- |
 | Frontend | http://localhost:3000 |
 | API | http://localhost:8000/api/ |
 | Health check | http://localhost:8000/api/health/ |
 | Swagger | http://localhost:8000/api/docs/ |
-| Admin | http://localhost:8000/admin/ (admin@gmail.com/admin123) |
+| Django Admin | http://localhost:8000/admin/ |
+| QStash Dev | http://localhost:8080 |
 
-Tài khoản demo: `admin@gmail.com/admin123` · `employer@gmail.com/employer123` · `candidate@gmail.com/candidate123`
-
-BE tự động chạy `migrate` khi container start; BE và qcluster dùng chung volume `media` nên CV upload từ web sẽ được worker đọc được.
-
-# Chạy bằng venv trên máy (khi cần debug)
+## Kiểm tra trước khi commit
 
 ```powershell
-# 1. Chỉ bật DB
-docker compose up -d db
-
-# 2. Backend (terminal 1)
-job_portal_backend\.venv\Scripts\python job_portal_backend\manage.py migrate
-job_portal_backend\.venv\Scripts\python job_portal_backend\manage.py seed_demo
-
-# 3. Worker (terminal 2) — bắt buộc phải có để parse CV / embedding / dọn import
-job_portal_backend\.venv\Scripts\python job_portal_backend\manage.py qcluster
-
-# 4. Server (terminal 3)
-job_portal_backend\.venv\Scripts\python job_portal_backend\manage.py runserver 0.0.0.0:8000
-
-# 5. Frontend (terminal 4)
-npm run dev --prefix job_portal_frontend -- --hostname 0.0.0.0 --port 3000
+python job_portal_backend/manage.py test --settings=config.settings.test
+python job_portal_backend/manage.py makemigrations --check --dry-run --settings=config.settings.test
+npm run lint --prefix job_portal_frontend
+npm run typecheck --prefix job_portal_frontend
+npm run build --prefix job_portal_frontend
 ```
 
-Lưu ý: sửa code BE/FE thì build lại image Docker (`docker compose up -d --build`), hoặc dùng cách chạy venv ở dưới.
+Hướng dẫn production Render/Vercel nằm trong `DEPLOYMENT.md`.

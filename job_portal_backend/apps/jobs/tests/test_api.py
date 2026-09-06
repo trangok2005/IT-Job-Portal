@@ -14,7 +14,7 @@ from integrations.gemini.embeddings import (
     current_candidate_embedding_signature,
     current_job_embedding_signature,
 )
-from apps.jobs.models import JDImport, JobPost
+from apps.jobs.models import JDImport, JobPost, JobSkill
 from apps.jobs.tasks import parse_jd_import
 from apps.applications.models import JobApplication
 from apps.skills.models import CandidateSkill, Skill
@@ -110,6 +110,80 @@ class JobApiTests(APITestCase):
         self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
         self.assertFalse(response.data["search_fallback"])
 
+    @patch("apps.jobs.job_search_service.embed_query")
+    def test_explicit_python_developer_intent_excludes_java(self, embed_query):
+        embed_query.return_value = [1.0] + [0.0] * 767
+        python = Skill.objects.create(name="Python", slug="python")
+        java = Skill.objects.create(name="Java", slug="java")
+        python_job = self._job(
+            title="Python Developer",
+            embedding=[0.8, 0.2] + [0.0] * 766,
+            embedding_version=1,
+        )
+        java_job = self._job(
+            title="Java Developer",
+            embedding=[1.0] + [0.0] * 767,
+            embedding_version=1,
+        )
+        JobSkill.objects.create(job=python_job, skill=python, is_required=True)
+        JobSkill.objects.create(job=java_job, skill=java, is_required=True)
+
+        response = self.client.get(
+            reverse("jobs-list"),
+            {"keyword": "dev python"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(python_job.id))
+        self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
+
+    @patch("apps.jobs.job_search_service.embed_query")
+    def test_keyword_search_returns_only_scores_strictly_above_fifty(self, embed_query):
+        embed_query.return_value = [1.0] + [0.0] * 767
+        above = self._job(
+            title="Above threshold",
+            embedding=[0.6, 0.8] + [0.0] * 766,
+            embedding_version=1,
+        )
+        self._job(
+            title="Exactly threshold",
+            embedding=[0.5, 0.8660254037844386] + [0.0] * 766,
+            embedding_version=1,
+        )
+        self._job(
+            title="Below threshold",
+            embedding=[0.0, 1.0] + [0.0] * 766,
+            embedding_version=1,
+        )
+
+        response = self.client.get(reverse("jobs-list"), {"keyword": "Django"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(above.id))
+        self.assertAlmostEqual(
+            response.data["results"][0]["match_score"], 60.0, delta=0.001
+        )
+        self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
+        self.assertFalse(response.data["search_fallback"])
+
+    @patch("apps.jobs.job_search_service.embed_query")
+    def test_keyword_search_does_not_fallback_when_current_scores_are_too_low(self, embed_query):
+        embed_query.return_value = [1.0] + [0.0] * 767
+        self._job(
+            title="Django lexical match",
+            embedding=[0.0, 1.0] + [0.0] * 766,
+            embedding_version=1,
+        )
+
+        response = self.client.get(reverse("jobs-list"), {"keyword": "Django"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
+        self.assertFalse(response.data["search_fallback"])
+
     @patch(
         "apps.jobs.job_search_service.embed_query",
         side_effect=EmbeddingError("timeout"),
@@ -129,12 +203,12 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["results"][0]["id"], str(expected.id))
         self.assertIsNone(response.data["results"][0]["match_score"])
         embed_query.assert_called_once_with("Desired job: Python")
-        self.assertEqual(response["X-Search-Mode"], "FALLBACK_FTS")
+        self.assertEqual(response["X-Search-Mode"], "FALLBACK_BASIC")
         self.assertEqual(response["X-Search-Fallback"], "true")
         self.assertTrue(response.data["search_fallback"])
 
     @patch("apps.jobs.job_search_service.embed_query")
-    def test_keyword_search_uses_fts_when_job_embeddings_are_unavailable(self, embed_query):
+    def test_keyword_search_uses_basic_search_when_job_embeddings_are_unavailable(self, embed_query):
         embed_query.return_value = [1.0] + [0.0] * 767
         expected = self._job(requirements="Python PostgreSQL")
 
@@ -142,8 +216,26 @@ class JobApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["results"][0]["id"], str(expected.id))
-        self.assertEqual(response["X-Search-Mode"], "FALLBACK_FTS")
+        self.assertEqual(response["X-Search-Mode"], "FALLBACK_BASIC")
         self.assertTrue(response.data["search_fallback"])
+
+    @patch(
+        "apps.jobs.job_search_service.embed_query",
+        side_effect=EmbeddingError("timeout"),
+    )
+    def test_fallback_expands_dev_shorthand_without_returning_java(self, embed_query):
+        expected = self._job(title="Python Developer", requirements="Python Django")
+        self._job(title="Java Developer", requirements="Java Spring Boot")
+
+        response = self.client.get(
+            reverse("jobs-list"),
+            {"keyword": "dev python"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], str(expected.id))
+        self.assertEqual(response["X-Search-Mode"], "FALLBACK_BASIC")
 
     def test_authenticated_search_throttled_after_ten_requests_per_minute(self):
         self.client.force_authenticate(user=self.candidate)
@@ -439,7 +531,7 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["company_name"], self.company.name)
         self.assertEqual(len(response.data["skills"]), 1)
 
-    def test_create_job_accepts_pending_skill_with_min_years(self):
+    def test_create_job_accepts_pending_optional_skill(self):
         pending = Skill.objects.create(
             name="PostgresX", slug="job-postgresx", status=Skill.Status.PENDING
         )
@@ -451,7 +543,7 @@ class JobApiTests(APITestCase):
                 "title": "Python Developer",
                 "description": "Build APIs",
                 "required_skills": [
-                    {"skill": str(self.skill.id), "min_years": "3.0"},
+                    {"skill": str(self.skill.id)},
                     {"skill": str(pending.id), "is_required": False},
                 ],
                 "expires_at": (timezone.now() + timedelta(days=10)).isoformat(),
@@ -463,9 +555,7 @@ class JobApiTests(APITestCase):
         job_skill_by_name = {
             item["skill_name"]: item for item in response.data["skills"]
         }
-        self.assertEqual(job_skill_by_name[self.skill.name]["min_years"], "3.0")
         self.assertTrue(job_skill_by_name[self.skill.name]["is_required"])
-        self.assertIsNone(job_skill_by_name[pending.name]["min_years"])
         self.assertFalse(job_skill_by_name[pending.name]["is_required"])
 
     def test_create_job_with_raw_unknown_skill_creates_pending(self):
@@ -488,7 +578,6 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         pending = Skill.objects.get(name="Thần chú AI Cấp 9")
         self.assertEqual(pending.status, Skill.Status.PENDING)
-        self.assertEqual(pending.source, Skill.Source.JD_PARSING)
         job_skill_names = {item["skill_name"] for item in response.data["skills"]}
         self.assertIn(pending.name, job_skill_names)
 

@@ -27,6 +27,7 @@ export function JobFilters({
     const params = new URLSearchParams(window.location.search);
     if (value) params.set(key, value);
     else params.delete(key);
+    params.set("tab", "all");
     params.delete("page");
     router.push(`/jobs${params.size ? `?${params.toString()}` : ""}`);
   };

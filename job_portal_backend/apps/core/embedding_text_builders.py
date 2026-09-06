@@ -73,7 +73,7 @@ def build_job_text(job: "JobPost") -> str:
     skills = build_skills_line(
         link.skill.name
         for link in job.job_skills.select_related("skill")
-        .filter(skill__status="APPROVED", skill__is_active=True)
+        .filter(skill__status__in=("APPROVED", "PENDING"), skill__is_active=True)
         .order_by("skill__name", "pk")
     )
     return build_labeled_text(

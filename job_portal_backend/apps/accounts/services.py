@@ -43,7 +43,6 @@ def _create_role_profile(user: User, company_name: str = "") -> None:
     CandidateProfile.objects.create(
         user=user,
         full_name=full_name or user.username,
-        phone=user.phone,
     )
 
 

@@ -1,14 +1,16 @@
-"""Django-Q tasks xử lý CV và embedding hồ sơ ứng viên."""
+"""Background tasks xử lý CV và embedding hồ sơ ứng viên."""
 import json
 import logging
 import mimetypes
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.candidates.models import CandidateProfile, Resume, ResumeImport
+from common.document_extraction import extract_docx_text
 from integrations.gemini.embeddings import (
     current_candidate_embedding_signature,
     embed_document,
@@ -23,20 +25,39 @@ logger = logging.getLogger(__name__)
 MAX_PARSE_ATTEMPTS = 3
 
 
-def _claim_parse_attempt(model, record_id: str, permanent_message: str) -> bool:
-    """Tăng số lượt thử một cách nguyên tử; trả False nếu đã cạn lượt."""
-    claimed = model.objects.filter(
+def _claim_parse_attempt(record_id: str) -> bool:
+    """Claim exactly one delivery so concurrent callbacks cannot parse twice."""
+    now = timezone.now()
+    lease_expired_at = now - timedelta(seconds=settings.TASK_PROCESSING_LEASE_SECONDS)
+    claimed = ResumeImport.objects.filter(
         pk=record_id,
         parse_attempts__lt=MAX_PARSE_ATTEMPTS,
-    ).update(parse_attempts=F("parse_attempts") + 1)
+    ).filter(
+        Q(
+            parse_status__in=[
+                ResumeImport.ParseStatus.PENDING,
+                ResumeImport.ParseStatus.FAILED,
+            ]
+        )
+        | Q(
+            parse_status=ResumeImport.ParseStatus.PROCESSING,
+            updated_at__lte=lease_expired_at,
+        )
+    ).update(
+        parse_status=ResumeImport.ParseStatus.PROCESSING,
+        parse_attempts=F("parse_attempts") + 1,
+        parse_error_message="",
+        updated_at=now,
+    )
     return bool(claimed)
 
 
 RESUME_PARSE_PROMPT = """
 Phân tích CV sau và trả về đúng một JSON object. Không thêm markdown.
 Các key cần có: full_name, phone, headline, summary, educations, experiences,
-skills. educations là mảng object gồm school_name, major, degree, start_date,
-end_date, description. experiences là mảng object gồm company_name, position,
+skills. educations là mảng object gồm school_name, major, degree, degree_level,
+is_completed, start_date, end_date, description; degree_level chỉ là NONE,
+ASSOCIATE, BACHELOR, MASTER, PHD hoặc null. experiences là mảng object gồm company_name, position,
 start_date, end_date, is_current, description. Ngày dùng YYYY-MM-DD hoặc null.
 skills là mảng string. Không suy diễn thông tin không có trong CV; field văn bản
 dùng chuỗi rỗng, ngày dùng null và danh sách dùng mảng rỗng khi thiếu dữ liệu.
@@ -44,12 +65,16 @@ dùng chuỗi rỗng, ngày dùng null và danh sách dùng mảng rỗng khi th
 
 
 def _get_client():
-    """Khởi tạo Gemini client và báo lỗi cấu hình rõ ràng cho Django-Q."""
+    """Khởi tạo Gemini client và báo lỗi cấu hình rõ ràng cho task runner."""
     if not settings.GEMINI_API_KEY:
         raise ImproperlyConfigured("GEMINI_API_KEY chưa được cấu hình.")
     from google import genai
+    from google.genai import types
 
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
+    return genai.Client(
+        api_key=settings.GEMINI_API_KEY,
+        http_options=types.HttpOptions(timeout=settings.EMBEDDING_TIMEOUT_MS),
+    )
 
 
 def _parse_json_response(text: str) -> dict:
@@ -97,6 +122,10 @@ def _normalize_parsed_data(data: dict) -> dict:
                     clean_item[field] = ""
             if collection == "experiences" and clean_item.get("is_current") is None:
                 clean_item["is_current"] = False
+            if collection == "educations":
+                clean_item["is_completed"] = bool(clean_item.get("is_completed", False))
+                # AI may suggest a level, but only the candidate can confirm it.
+                clean_item["is_verified"] = False
             normalized[collection].append(clean_item)
 
     normalized["skills"] = [
@@ -124,14 +153,34 @@ def parse_resume_import(resume_import_id: str) -> dict:
             resume_import_id,
         )
         return {}
-    if resume_import.parse_status == ResumeImport.ParseStatus.SUCCESS:
+    if resume_import.parse_status in [
+        ResumeImport.ParseStatus.SUCCESS,
+        ResumeImport.ParseStatus.CONSUMED,
+    ]:
         return resume_import.parsed_data or {}
 
-    if not _claim_parse_attempt(ResumeImport, resume_import_id, "CV"):
-        services.mark_resume_import_failed(
-            resume_import, f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích CV."
-        )
+    if not _claim_parse_attempt(resume_import_id):
+        if (
+            resume_import.parse_status == ResumeImport.ParseStatus.PROCESSING
+            and resume_import.parse_attempts < MAX_PARSE_ATTEMPTS
+        ):
+            raise RuntimeError("Resume import is already being processed.")
+        if (
+            resume_import.parse_status
+            in [
+                ResumeImport.ParseStatus.PENDING,
+                ResumeImport.ParseStatus.PROCESSING,
+                ResumeImport.ParseStatus.FAILED,
+            ]
+            and resume_import.parse_attempts >= MAX_PARSE_ATTEMPTS
+        ):
+            services.mark_resume_import_failed(
+                resume_import,
+                f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích CV.",
+            )
         return {}
+
+    resume_import.refresh_from_db()
 
     try:
         with resume_import.file.open("rb") as source:
@@ -140,12 +189,16 @@ def parse_resume_import(resume_import_id: str) -> dict:
             mimetypes.guess_type(resume_import.original_filename)[0]
             or "application/octet-stream"
         )
+        if resume_import.original_filename.lower().endswith(".docx"):
+            document_content = extract_docx_text(file_data)
+        else:
+            document_content = types.Part.from_bytes(data=file_data, mime_type=mime_type)
         client = _get_client()
         response = client.models.generate_content(
             model=settings.GEMINI_PARSER_MODEL,
             contents=[
                 RESUME_PARSE_PROMPT,
-                types.Part.from_bytes(data=file_data, mime_type=mime_type),
+                document_content,
             ],
         )
         raw_data = _parse_json_response(response.text)
@@ -155,10 +208,25 @@ def parse_resume_import(resume_import_id: str) -> dict:
         preview = serializers.ResumeParsedDataSerializer(
             serializer.validated_data
         ).data
-        services.mark_resume_import_parsed(resume_import, raw_data, preview)
+        ResumeImport.objects.filter(
+            pk=resume_import_id,
+            parse_status=ResumeImport.ParseStatus.PROCESSING,
+        ).update(
+            parsed_data=preview,
+            parse_status=ResumeImport.ParseStatus.SUCCESS,
+            parse_error_message="",
+            updated_at=timezone.now(),
+        )
         return raw_data
     except Exception as exc:
-        services.mark_resume_import_failed(resume_import, str(exc))
+        ResumeImport.objects.filter(
+            pk=resume_import_id,
+            parse_status=ResumeImport.ParseStatus.PROCESSING,
+        ).update(
+            parse_status=ResumeImport.ParseStatus.FAILED,
+            parse_error_message=str(exc)[:2000],
+            updated_at=timezone.now(),
+        )
         raise
 
 

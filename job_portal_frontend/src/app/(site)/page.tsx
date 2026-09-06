@@ -35,7 +35,7 @@ export default async function HomePage() {
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 pb-16 pt-16 text-center sm:px-6 sm:pt-20">
           <span className="inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white px-4 py-1.5 text-xs font-medium text-primary-700 shadow-sm">
             <Sparkles className="h-3.5 w-3.5" />
-            AI match giữa CV và tin tuyển dụng
+            Ghép nối CV và tin tuyển dụng theo mức độ phù hợp
           </span>
           <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-5xl">
             {jobCount > 0 ? (
@@ -85,7 +85,7 @@ export default async function HomePage() {
             <div>
               <h2 className="text-xl font-bold">Tuyển dụng IT nhanh chóng, hiệu quả</h2>
               <p className="mt-1 text-sm text-primary-100">
-                Đăng tin tuyển dụng và tiếp cận nguồn ứng viên chất lượng với AI match.
+                Đăng tin tuyển dụng và tiếp cận ứng viên theo mức độ phù hợp.
               </p>
             </div>
           </div>

@@ -6,13 +6,16 @@ from django.utils.text import slugify
 
 
 def strip_accents(text: str) -> str:
-    text = unicodedata.normalize("NFD", text)
+    text = unicodedata.normalize("NFKD", text)
     return "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
 
 
 def normalize_alias(text: str) -> str:
-    """Lowercase + bỏ dấu + gom khoảng trắng → SkillAlias.normalized_text
-    dùng để fuzzy-match (rapidfuzz) trước khi coi là skill mới hoàn toàn."""
+    """Compatibility-normalize, lowercase, strip accents, and fold whitespace.
+
+    Meaningful symbols are retained so short names such as C, C++, and C# do
+    not collapse to the same normalization key.
+    """
     return re.sub(r"\s+", " ", strip_accents(text).strip().casefold())
 
 

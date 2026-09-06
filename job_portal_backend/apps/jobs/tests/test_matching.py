@@ -5,10 +5,9 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import User
-from apps.candidates.models import CandidateProfile, Education, Experience
+from apps.candidates.models import CandidateProfile, DegreeLevel, Education, Experience
 from apps.companies.models import Company
 from apps.core.matching import (
-    DEFAULT_MATCHING_WEIGHTS,
     required_degree_level,
     total_experience_years,
 )
@@ -107,30 +106,35 @@ class WeightedRecommendationTests(TestCase):
             candidate=self.profile,
             school_name="University",
             degree="Bachelor of Engineering",
+            degree_level=DegreeLevel.BACHELOR,
+            is_completed=True,
+            is_verified=True,
         )
         neutral = self._job(
             "Neutral",
             [1.0] + [0.0] * 767,
             requirements="Không yêu cầu bằng đại học",
             experience_level=JobPost.ExperienceLevel.ENTRY,
+            required_education_level=DegreeLevel.NONE,
         )
         demanding = self._job(
             "Demanding",
             [1.0] + [0.0] * 767,
             requirements="Master's degree required",
             experience_level=JobPost.ExperienceLevel.MID_SENIOR,
+            required_education_level=DegreeLevel.MASTER,
         )
         self._weights(0, 0, experience=Decimal("0.333"), education=Decimal("0.667"))
 
         by_id = {item.pk: item for item in get_recommended_jobs(self.profile)}
 
-        self.assertEqual(by_id[neutral.pk].skill_score, 100.0)
+        self.assertEqual(by_id[neutral.pk].skill_score, 0.0)
         self.assertEqual(by_id[neutral.pk].experience_score, 100.0)
-        self.assertEqual(by_id[neutral.pk].education_score, 100.0)
+        self.assertEqual(by_id[neutral.pk].education_score, 0.0)
         self.assertEqual(by_id[neutral.pk].match_score, 100.0)
         self.assertAlmostEqual(by_id[demanding.pk].experience_score, 33.4, delta=0.2)
-        self.assertEqual(by_id[demanding.pk].education_score, 0.0)
-        self.assertEqual(by_id[demanding.pk].match_score, 11.12)
+        self.assertEqual(by_id[demanding.pk].education_score, 75.0)
+        self.assertAlmostEqual(by_id[demanding.pk].match_score, 61.13, delta=0.2)
 
     def test_employer_direction_ignores_weights_and_stale_candidate_is_null_last(self):
         job = self._job("Employer ranking", [1.0] + [0.0] * 767)
@@ -178,9 +182,9 @@ class WeightedRecommendationTests(TestCase):
         self.assertIsNone(stale.match_score)
         self.assertEqual(results[-1].pk, stale.pk)
 
-    def test_missing_active_config_uses_documented_defaults(self):
+    def test_missing_active_config_returns_no_weights(self):
         MatchingWeightConfig.objects.all().delete()
-        self.assertEqual(get_active_matching_weights(), DEFAULT_MATCHING_WEIGHTS)
+        self.assertIsNone(get_active_matching_weights())
 
 
 class DegreeRequirementTests(TestCase):
@@ -192,7 +196,7 @@ class DegreeRequirementTests(TestCase):
         self.assertEqual(required_degree_level("Strong communication skills"), 0)
         self.assertEqual(required_degree_level("3 years of software engineering"), 0)
 
-    def test_experience_ignores_incomplete_and_invalid_intervals_but_sums_overlaps(self):
+    def test_experience_ignores_invalid_intervals_and_merges_overlaps(self):
         today = timezone.localdate()
         intervals = [
             (today - timedelta(days=365), today, False),
@@ -202,4 +206,4 @@ class DegreeRequirementTests(TestCase):
             (today - timedelta(days=30), None, False),
         ]
 
-        self.assertAlmostEqual(total_experience_years(intervals, today), 2.0, delta=0.01)
+        self.assertAlmostEqual(total_experience_years(intervals, today), 1.0, delta=0.01)

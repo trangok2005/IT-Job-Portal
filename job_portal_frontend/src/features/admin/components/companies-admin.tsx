@@ -12,6 +12,7 @@ import {
   rejectCompany,
 } from "@/features/admin/api";
 import type { AdminCompanyQuery, CompanyDto } from "@/features/admin/types";
+import { COMPANY_STATUS_LABELS } from "@/features/employer/types";
 
 export function CompaniesAdmin() {
   const [items, setItems] = useState<CompanyDto[]>([]);
@@ -19,12 +20,18 @@ export function CompaniesAdmin() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [hasPreviousPage, setHasPreviousPage] = useState(false);
 
-  const load = async (status = filter) => {
+  const load = async (status = filter, targetPage = page) => {
     setError(null);
     try {
-      const response = await getAdminCompanies({ status: status || undefined });
+      const response = await getAdminCompanies({ status: status || undefined, page: targetPage });
       setItems(response.results);
+      setPage(targetPage);
+      setHasNextPage(Boolean(response.next));
+      setHasPreviousPage(Boolean(response.previous));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể tải công ty.");
     } finally {
@@ -34,7 +41,11 @@ export function CompaniesAdmin() {
 
   useEffect(() => {
     getAdminCompanies({ status: "PENDING" })
-      .then((response) => setItems(response.results))
+      .then((response) => {
+        setItems(response.results);
+        setHasNextPage(Boolean(response.next));
+        setHasPreviousPage(Boolean(response.previous));
+      })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "Không thể tải công ty.");
       })
@@ -78,7 +89,7 @@ export function CompaniesAdmin() {
             const value = event.target.value as typeof filter;
             setFilter(value);
             setLoading(true);
-            void load(value);
+            void load(value, 1);
           }}
           className="h-10 rounded-xl border border-zinc-300 bg-white px-3 text-sm"
         >
@@ -110,7 +121,7 @@ export function CompaniesAdmin() {
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-semibold text-zinc-900">{company.name}</h2>
                     <Badge variant={company.status === "APPROVED" ? "success" : "outline"}>
-                      {company.status}
+                      {COMPANY_STATUS_LABELS[company.status]}
                     </Badge>
                   </div>
                   <p className="mt-1 text-sm text-zinc-500">{company.owner_email}</p>
@@ -136,12 +147,13 @@ export function CompaniesAdmin() {
                     <Button size="sm" disabled={busyId === company.id} onClick={() => void act(company, "approve")}>Duyệt công ty</Button>
                   </>
                 )}
-                {company.status === "APPROVED" && <Button size="sm" variant="outline" disabled={busyId === company.id} onClick={() => void act(company, "lock")}>Khóa công ty</Button>}
+                {company.status !== "LOCKED" && <Button size="sm" variant="outline" disabled={busyId === company.id} onClick={() => void act(company, "lock")}>Khóa công ty</Button>}
               </div>
             </article>
           ))}
         </div>
       )}
+      {!loading && (hasPreviousPage || hasNextPage) && <nav className="mt-6 flex items-center justify-center gap-3" aria-label="Phân trang công ty"><Button variant="outline" disabled={!hasPreviousPage} onClick={() => void load(filter, page - 1)}>Trang trước</Button><span className="text-sm text-zinc-500">Trang {page}</span><Button variant="outline" disabled={!hasNextPage} onClick={() => void load(filter, page + 1)}>Trang sau</Button></nav>}
     </div>
   );
 }

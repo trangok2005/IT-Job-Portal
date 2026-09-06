@@ -4,8 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { AuthForm } from "@/features/auth/components/auth-form";
 import { GoogleSignInButton } from "@/features/auth/components/google-sign-in-button";
 import { useAuth } from "@/lib/auth-provider";
@@ -16,7 +14,6 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const { signIn, signInWithGoogle } = useAuth();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [remember, setRemember] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
@@ -67,16 +64,6 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
         onSubmit={onSubmit}
         submitting={submitting}
         submitLabel="Đăng nhập"
-        afterFields={(
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="remember"
-              checked={remember}
-              onCheckedChange={(value) => setRemember(Boolean(value))}
-            />
-            <Label htmlFor="remember" className="font-normal">Ghi nhớ đăng nhập</Label>
-          </div>
-        )}
       />
 
       <div className="relative">

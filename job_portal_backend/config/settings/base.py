@@ -2,12 +2,10 @@
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
+import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
-load_dotenv(BASE_DIR / ".env")
-
 
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -20,9 +18,17 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
+def require_env(*names: str) -> None:
+    missing = [name for name in names if not os.getenv(name, "").strip()]
+    if missing:
+        raise ImproperlyConfigured(
+            f"Missing required environment variables: {', '.join(sorted(missing))}"
+        )
+
+
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-only-change-me")
-DEBUG = env_bool("DEBUG", True)
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "*")
+DEBUG = False
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -35,7 +41,6 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "drf_spectacular",
-    "django_q",
     "apps.core",
     "apps.accounts",
     "apps.companies",
@@ -43,6 +48,7 @@ INSTALLED_APPS = [
     "apps.skills",
     "apps.jobs",
     "apps.applications",
+    "apps.notifications",
     "apps.dashboard",
     "apps.ai_analysis",
 ]
@@ -79,19 +85,24 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # ---------------------------------------------------------------------------
-# Database (PostgreSQL + pgvector). Override via environment / .env
+# Database (PostgreSQL + pgvector)
 # ---------------------------------------------------------------------------
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME", "job_portal"),
-        "USER": os.getenv("DB_USER", "job_portal"),
-        "PASSWORD": os.getenv("DB_PASSWORD", "job_portal"),
-        "HOST": os.getenv("DB_HOST", "localhost"),
-        "PORT": os.getenv("DB_PORT", "5432"),
-        "CONN_MAX_AGE": 60,
+if os.getenv("DATABASE_URL"):
+    DATABASES = {
+        "default": dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=60)
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("DB_NAME", "job_portal"),
+            "USER": os.getenv("DB_USER", "job_portal"),
+            "PASSWORD": os.getenv("DB_PASSWORD", "job_portal"),
+            "HOST": os.getenv("DB_HOST", "localhost"),
+            "PORT": os.getenv("DB_PORT", "5432"),
+            "CONN_MAX_AGE": 60,
+        }
+    }
 
 AUTH_USER_MODEL = "accounts.User"
 
@@ -127,29 +138,13 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
 }
 
 # ---------------------------------------------------------------------------
-# Cache — lịch sử throttle (UC-03 E3) dùng Redis thật khi có REDIS_URL,
-# fallback LocMemCache cho máy dev không có Redis.
+# Cache defaults to process-local storage. Production overrides this explicitly.
 # ---------------------------------------------------------------------------
-if os.getenv("REDIS_URL"):
-    CACHES = {
-        "default": {
-            "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": os.getenv("REDIS_URL"),
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-                "CONNECTION_POOL_KEEPALIVE": True,
-                "SSL_CERT_REQS": None,
-            },
-        }
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
     }
-    # Redis chập chờn không được làm sập search; throttle tạm mất tác dụng.
-    DJANGO_REDIS_IGNORE_EXCEPTIONS = True
-else:
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        }
-    }
+}
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "IT Job Portal API",
@@ -177,36 +172,61 @@ SIMPLE_JWT = {
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
 # ---------------------------------------------------------------------------
-# CORS — local dev allows the Next.js dev server.
+# SMTP notifications
 # ---------------------------------------------------------------------------
-CORS_ALLOW_ALL_ORIGINS = env_bool("CORS_ALLOW_ALL_ORIGINS", True)
-CORS_ALLOWED_ORIGINS = env_list(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000",
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.smtp.EmailBackend",
 )
+EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "IT Job Portal <no-reply@example.com>")
+
+# ---------------------------------------------------------------------------
+# CORS is configured per environment.
+# ---------------------------------------------------------------------------
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
 
 # ---------------------------------------------------------------------------
 # Media / files (resumes, JD uploads)
 # ---------------------------------------------------------------------------
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 MAX_RESUME_SIZE_BYTES = int(os.getenv("MAX_RESUME_SIZE_BYTES", str(5 * 1024 * 1024)))
 MAX_JD_SIZE_BYTES = int(os.getenv("MAX_JD_SIZE_BYTES", str(5 * 1024 * 1024)))
+PRIVATE_FILE_URL_TTL_SECONDS = int(os.getenv("R2_SIGNED_URL_TTL_SECONDS", "300"))
 
-# ---------------------------------------------------------------------------
-# Django-Q (background worker: embeddings and import cleanup)
-# ---------------------------------------------------------------------------
-Q_CLUSTER = {
-    "name": "job_portal",
-    "workers": 1,
-    "recycle": 100,
-    "timeout": 300,
-    "retry": 360,
-    "compress": True,
-    "save_limit": 100,
-    "queue_limit": 100,
-    "label": "Django Q",
-    "orm": "default",
+R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "")
+R2_STORAGE_OPTIONS = {
+    "access_key": os.getenv("R2_ACCESS_KEY_ID", ""),
+    "secret_key": os.getenv("R2_SECRET_ACCESS_KEY", ""),
+    "bucket_name": os.getenv("R2_BUCKET_NAME", ""),
+    "endpoint_url": os.getenv(
+        "R2_ENDPOINT_URL",
+        f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com" if R2_ACCOUNT_ID else "",
+    ),
+    "region_name": "auto",
+    "signature_version": "s3v4",
+    "addressing_style": "path",
+    "default_acl": None,
+    "querystring_auth": True,
+    "querystring_expire": PRIVATE_FILE_URL_TTL_SECONDS,
+    "file_overwrite": False,
 }
 
 # ---------------------------------------------------------------------------
@@ -214,7 +234,9 @@ Q_CLUSTER = {
 # ---------------------------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_PARSER_MODEL = os.getenv("GEMINI_PARSER_MODEL", "gemini-3.6-flash")
+GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
 EMBEDDING_TIMEOUT_MS = int(os.getenv("EMBEDDING_TIMEOUT_MS", "10000"))
+TASK_PROCESSING_LEASE_SECONDS = int(os.getenv("TASK_PROCESSING_LEASE_SECONDS", "60"))
 
 # ---------------------------------------------------------------------------
 # i18n / timezone

@@ -1,31 +1,31 @@
 """Gemini-backed JD extraction used by UC-02 before a draft is created."""
 import json
-import io
 import mimetypes
-import zipfile
-import xml.etree.ElementTree as ET
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 from apps.jobs.models import JobPost
-from apps.skills.models import Skill
 from apps.skills.services import resolve_savable_skill
 from apps.skills.utils import normalize_alias
+from common.document_extraction import extract_docx_text as _extract_docx_text
 
 
 JD_PARSE_PROMPT = """
 Phân tích Job Description sau và trả về đúng một JSON object, không markdown.
 Các key: title, description, requirements, benefits, location, job_type,
-    workplace_type, experience_level, salary_min, salary_max, salary_negotiable,
+    workplace_type, experience_level, required_education_level, salary_min, salary_max, salary_negotiable,
     expires_at, skills.
     location chỉ là Hồ Chí Minh, Hà Nội, Đà Nẵng hoặc chuỗi rỗng.
     workplace_type chỉ là ONSITE, HYBRID hoặc REMOTE.
     job_type chỉ là FULL_TIME, PART_TIME hoặc CONTRACT.
     experience_level chỉ là ENTRY, JUNIOR, MID_SENIOR, LEAD hoặc chuỗi rỗng.
+    required_education_level chỉ là NONE, ASSOCIATE, BACHELOR, MASTER, PHD
+    hoặc null khi JD không khai rõ; không suy diễn từ chức danh hay tên trường.
     Thực tập/Fresher thuộc ENTRY; Remote là workplace_type, không phải job_type.
 salary_min/salary_max là số nguyên VND hoặc null. expires_at dùng ISO 8601 hoặc null.
-skills là mảng tên kỹ năng. Không suy diễn dữ liệu không có trong JD; field văn bản
+skills là mảng object {"name": tên kỹ năng, "is_required": true/false}; true
+chỉ khi JD nêu bắt buộc, false cho kỹ năng ưu tiên/nice-to-have. Không suy diễn dữ liệu không có trong JD; field văn bản
 dùng chuỗi rỗng, danh sách dùng mảng rỗng và giá trị không xác định dùng null.
 """.strip()
 
@@ -34,8 +34,12 @@ def _get_client():
     if not settings.GEMINI_API_KEY:
         raise ImproperlyConfigured("GEMINI_API_KEY chưa được cấu hình.")
     from google import genai
+    from google.genai import types
 
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
+    return genai.Client(
+        api_key=settings.GEMINI_API_KEY,
+        http_options=types.HttpOptions(timeout=settings.EMBEDDING_TIMEOUT_MS),
+    )
 
 
 def _parse_json_response(text: str) -> dict:
@@ -71,53 +75,48 @@ def _normalize_data(data: dict) -> dict:
         normalized["location"] = ""
     if normalized.get("salary_negotiable") is None:
         normalized["salary_negotiable"] = False
-    seen = set()
-    skills = []
+    skill_flags = {}
+    skill_names = {}
     for value in normalized.get("skills") or []:
-        if not isinstance(value, str) or not value.strip():
+        if isinstance(value, dict):
+            name = value.get("name")
+            is_required = value.get("is_required") is True
+        else:
+            name = value
+            is_required = True
+        if not isinstance(name, str) or not name.strip():
             continue
-        key = normalize_alias(value)
-        if key not in seen:
-            seen.add(key)
-            skills.append(value.strip())
-    normalized["skills"] = skills
+        key = normalize_alias(name)
+        skill_names.setdefault(key, name.strip())
+        skill_flags[key] = skill_flags.get(key, False) or is_required
+    normalized["skills"] = list(skill_names.values())
+    normalized["_skill_required_flags"] = skill_flags
     return normalized
 
 
-def _extract_docx_text(file_data: bytes) -> str:
-    """Extract paragraph/table text from DOCX without executing embedded content."""
-    with zipfile.ZipFile(io.BytesIO(file_data)) as archive:
-        document = ET.fromstring(archive.read("word/document.xml"))
-    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-    paragraphs = []
-    for paragraph in document.findall(".//w:p", namespace):
-        text = "".join(
-            node.text or "" for node in paragraph.findall(".//w:t", namespace)
-        ).strip()
-        if text:
-            paragraphs.append(text)
-    if not paragraphs:
-        raise ValueError("File DOCX không có nội dung văn bản.")
-    return "\n".join(paragraphs)
-
-
-def _resolve_approved_skills(names: list[str]) -> tuple[list[str], list[str]]:
-    """Resolve skill names qua hàm chung resolve_savable_skill (nguồn
-    JD_PARSING). Kỹ năng lạ được TỰ TẠO ở trạng thái PENDING và nằm luôn
-    trong matched — nhất quán với luồng CV; chỉ tên rỗng/không hợp lệ mới
-    rơi vào unmatched."""
+def _resolve_approved_skills(
+    names: list[str], required_flags: dict | None = None
+) -> tuple[list[dict], list[str]]:
+    """Resolve skill names qua hàm chung resolve_savable_skill. Kỹ năng lạ
+    được tạo ở trạng thái PENDING và nằm luôn trong matched; chỉ tên rỗng
+    hoặc không hợp lệ mới rơi vào unmatched."""
     matched = []
     unmatched = []
     seen_ids = set()
     for name in names:
         try:
-            skill = resolve_savable_skill(name, Skill.Source.JD_PARSING)
+            skill = resolve_savable_skill(name)
         except ValueError:
             unmatched.append(name)
             continue
         if skill.pk not in seen_ids:
             seen_ids.add(skill.pk)
-            matched.append(str(skill.pk))
+            matched.append({
+                "id": str(skill.pk),
+                "name": skill.name,
+                "status": skill.status,
+                "is_required": (required_flags or {}).get(normalize_alias(name), True),
+            })
     return matched, unmatched
 
 
@@ -149,7 +148,11 @@ def parse_job_description(file) -> tuple[dict, dict]:
     serializer = JobDescriptionParsedDataSerializer(data=normalized)
     serializer.is_valid(raise_exception=True)
     parsed = dict(serializer.validated_data)
-    matched, unmatched = _resolve_approved_skills(parsed.get("skills", []))
-    parsed["required_skills"] = matched
+    matched, unmatched = _resolve_approved_skills(
+        parsed.get("skills", []),
+        normalized.get("_skill_required_flags"),
+    )
+    parsed["required_skills"] = [item["id"] for item in matched]
+    parsed["resolved_skills"] = matched
     parsed["unmatched_skills"] = unmatched
     return raw_data, parsed

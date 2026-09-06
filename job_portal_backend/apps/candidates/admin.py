@@ -16,8 +16,7 @@ class ExperienceInline(admin.TabularInline):
 class ResumeInline(admin.TabularInline):
     model = Resume
     extra = 0
-    fields = ("original_filename", "parse_status", "is_primary")
-    readonly_fields = ("parse_status",)
+    fields = ("original_filename", "is_primary")
 
 
 @admin.register(CandidateProfile)

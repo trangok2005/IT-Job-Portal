@@ -12,19 +12,26 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from pgvector.django import VectorField
 
-from apps.core.models import BaseModel, UUIDModel
+from apps.core.models import TimeStampedModel, UUIDModel
 from apps.candidates.models import CandidateProfile, Resume
 from apps.jobs.models import JobPost
 from integrations.gemini.embeddings import EMBEDDING_DIMENSIONS
 
 
-class JobApplication(BaseModel):
+class JobApplication(UUIDModel, TimeStampedModel):
+    class MatchStatus(models.TextChoices):
+        PENDING = "PENDING", "Đang chờ tính điểm"
+        PROCESSING = "PROCESSING", "Đang tính điểm"
+        COMPLETED = "COMPLETED", "Đã tính điểm"
+        FAILED = "FAILED", "Tính điểm thất bại"
+        INSUFFICIENT = "INSUFFICIENT", "Chưa đủ điều kiện tính điểm"
+
     class Status(models.TextChoices):
-        APPLIED = "APPLIED", "Đã ứng tuyển"
-        SHORTLISTED = "SHORTLISTED", "Đã chọn lọc"
-        INTERVIEWED = "INTERVIEWED", "Đã phỏng vấn"
+        APPLIED = "APPLIED", "Chờ xem xét"
+        SHORTLISTED = "SHORTLISTED", "Đã qua vòng xem xét"
+        INTERVIEWED = "INTERVIEWED", "Phỏng vấn"
         REJECTED = "REJECTED", "Từ chối"
-        HIRED = "HIRED", "Tuyển dụng"
+        HIRED = "HIRED", "Đã tuyển dụng"
 
     # Bảng chuyển trạng thái hợp lệ, dùng để validate ở service layer trước
     # khi save() (UC-04 E3: "Trạng thái không hợp lệ -> báo lỗi, giữ nguyên").
@@ -62,6 +69,13 @@ class JobApplication(BaseModel):
         dimensions=EMBEDDING_DIMENSIONS, null=True, blank=True, editable=False,
     )
     snapshot_created_at = models.DateTimeField(null=True, blank=True, editable=False)
+    match_status = models.CharField(
+        max_length=20,
+        choices=MatchStatus.choices,
+        default=MatchStatus.PENDING,
+    )
+    match_error = models.TextField(blank=True)
+    match_attempts = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
         db_table = "job_applications"
@@ -108,7 +122,23 @@ class ApplicationStatusHistory(UUIDModel):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name="application_status_changes",
     )
-    note = models.TextField(blank=True)
+    note = models.TextField(blank=True, help_text="Ghi chú nội bộ, không hiển thị cho ứng viên.")
+    candidate_message = models.TextField(blank=True)
+
+    class NotificationStatus(models.TextChoices):
+        NOT_REQUESTED = "NOT_REQUESTED", "Không yêu cầu"
+        PENDING = "PENDING", "Đang chờ gửi"
+        SENT = "SENT", "Đã gửi"
+        FAILED = "FAILED", "Gửi thất bại"
+
+    notification_status = models.CharField(
+        max_length=20,
+        choices=NotificationStatus.choices,
+        default=NotificationStatus.NOT_REQUESTED,
+    )
+    notification_attempts = models.PositiveSmallIntegerField(default=0)
+    notification_error = models.TextField(blank=True)
+    notification_sent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

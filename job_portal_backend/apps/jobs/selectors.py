@@ -1,31 +1,31 @@
 """jobs selectors — read-only query logic (no writes, no business mutation)."""
-from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
-from django.db.models import Case, Count, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Value, When
+from django.db.models import Case, Count, ExpressionWrapper, F, FloatField, Q, Value, When
 from django.db.models.functions import Greatest, Least, Round
 from django.utils import timezone
 from pgvector.django import CosineDistance
 
-from apps.candidates.models import CandidateProfile
+from apps.candidates.models import CandidateProfile, DEGREE_LEVEL_RANK, DegreeLevel
 from apps.companies.models import Company
 from apps.core.matching import (
+    education_score,
     experience_score,
-    recognized_degree_level,
-    required_degree_level,
     total_experience_years,
 )
 from integrations.gemini.embeddings import (
     current_candidate_embedding_signature,
     current_job_embedding_signature,
 )
-from apps.jobs.models import JobPost, JobSkill
+from apps.jobs.models import JobPost
 from apps.skills.selectors import get_active_matching_weights
+
+
+MIN_SEMANTIC_MATCH_SCORE = 50.0
 
 
 def is_public_job(job: JobPost) -> bool:
     """Kiểm tra một tin có đang hiển thị hợp lệ cho public hay không."""
     return bool(
-        job.is_active
-        and job.status == JobPost.Status.ACTIVE
+        job.status == JobPost.Status.ACTIVE
         and job.company.status == Company.Status.APPROVED
         and (job.expires_at is None or job.expires_at > timezone.now())
     )
@@ -37,7 +37,6 @@ def get_active_jobs():
         JobPost.objects.filter(
             status=JobPost.Status.ACTIVE,
             company__status=Company.Status.APPROVED,
-            is_active=True,
         )
         .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
         .select_related("company")
@@ -68,15 +67,19 @@ def filter_active_jobs(
     return qs
 
 
+def jobs_with_current_embeddings(queryset):
+    return queryset.filter(
+        embedding__isnull=False,
+        embedding_version=F("content_version"),
+        embedding_signature=current_job_embedding_signature(),
+    )
+
+
 def rank_jobs_by_query_embedding(queryset, query_embedding):
-    """Rank only current vectors by cosine similarity as specified by UC-03."""
+    """Return current vectors whose cosine match score is strictly above 50%."""
     distance = CosineDistance("embedding", query_embedding)
     return (
-        queryset.filter(
-            embedding__isnull=False,
-            embedding_version=F("content_version"),
-            embedding_signature=current_job_embedding_signature(),
-        )
+        jobs_with_current_embeddings(queryset)
         .annotate(_semantic_distance=distance)
         .annotate(
             match_score=ExpressionWrapper(
@@ -84,41 +87,29 @@ def rank_jobs_by_query_embedding(queryset, query_embedding):
                 output_field=FloatField(),
             )
         )
+        .filter(match_score__gt=MIN_SEMANTIC_MATCH_SCORE)
         .order_by("_semantic_distance", "-created_at", "-pk")
     )
 
 
-def fallback_keyword_search(queryset, keyword):
-    """PostgreSQL FTS fallback over the already hard-filtered job set."""
-    query = SearchQuery(keyword, config="simple", search_type="websearch")
-    vector = (
-        SearchVector("title", config="simple", weight="A")
-        + SearchVector("description", config="simple", weight="B")
-        + SearchVector("requirements", config="simple", weight="B")
-        + SearchVector("benefits", config="simple", weight="C")
-        + SearchVector("company__name", config="simple", weight="C")
-    )
-    matching_skill = (
-        JobSkill.objects.filter(job_id=OuterRef("pk"))
-        .annotate(_skill_search=SearchVector("skill__name", config="simple"))
-        .filter(_skill_search=query)
-    )
-    return (
-        queryset.annotate(
-            _search_vector=vector,
-            _search_rank=SearchRank(vector, query),
-            _skill_match=Exists(matching_skill),
+def basic_keyword_search(queryset, keyword):
+    """Case-insensitive keyword fallback over the hard-filtered job set."""
+    for term in keyword.split():
+        queryset = queryset.filter(
+            Q(title__icontains=term)
+            | Q(description__icontains=term)
+            | Q(requirements__icontains=term)
+            | Q(benefits__icontains=term)
+            | Q(company__name__icontains=term)
+            | Q(job_skills__skill__name__icontains=term)
         )
-        .filter(Q(_search_vector=query) | Q(_skill_match=True))
-        .order_by("-_search_rank", "-created_at", "-pk")
-    )
+    return queryset.distinct().order_by("-created_at", "-pk")
 
 
 def get_employer_jobs(user):
     """Tin tuyển dụng thuộc employer (đăng hoặc qua công ty của họ)."""
     return JobPost.objects.filter(
         Q(created_by=user) | Q(company__owner=user),
-        is_active=True,
     ).annotate(
         application_count=Count("applications", distinct=True),
     ).select_related("company").prefetch_related("job_skills__skill").order_by("-created_at")
@@ -131,7 +122,7 @@ def get_job_detail_queryset(user):
         & Q(company__status=Company.Status.APPROVED)
         & (Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
     )
-    qs = JobPost.objects.filter(is_active=True)
+    qs = JobPost.objects.all()
     if user and user.is_authenticated:
         if user.is_admin_role:
             pass
@@ -148,7 +139,7 @@ def get_job_detail_queryset(user):
 
 def get_manageable_jobs(user):
     """Giới hạn object quản trị theo owner; admin được truy cập toàn bộ."""
-    qs = JobPost.objects.filter(is_active=True)
+    qs = JobPost.objects.all()
     if not user.is_admin_role:
         qs = qs.filter(Q(created_by=user) | Q(company__owner=user))
     return qs.select_related("company").prefetch_related("job_skills__skill")
@@ -162,25 +153,43 @@ def _score_case(scores, default=0.0):
     )
 
 
-def _weighted_recommendations(queryset, semantic_score, semantic_available):
-    weights = get_active_matching_weights()
-    weighted_score = (
+def _weighted_recommendations(queryset, semantic_score, semantic_available, weights):
+    numerator = (
         F("semantic_score") * Value(float(weights.semantic))
         + F("skill_score") * Value(float(weights.skill))
         + F("experience_score") * Value(float(weights.experience))
         + F("education_score") * Value(float(weights.education))
+    )
+    denominator = (
+        Case(When(semantic_available, then=Value(float(weights.semantic))), default=Value(0.0))
+        + Case(When(_job_skill_count__gt=0, then=Value(float(weights.skill))), default=Value(0.0))
+        + Case(When(experience_level__gt="", then=Value(float(weights.experience))), default=Value(0.0))
+        + Case(
+            When(
+                required_education_level__isnull=False,
+                then=Case(
+                    When(required_education_level=DegreeLevel.NONE, then=Value(0.0)),
+                    default=Value(float(weights.education)),
+                ),
+            ),
+            default=Value(0.0),
+        )
     )
     return queryset.annotate(
         semantic_score=Case(
             When(semantic_available, then=semantic_score),
             default=Value(None),
             output_field=FloatField(),
-        )
+        ),
+        _applied_weight=ExpressionWrapper(denominator, output_field=FloatField()),
     ).annotate(
         match_score=Case(
             When(
-                semantic_score__isnull=False,
-                then=Round(Least(Value(100.0), Greatest(Value(0.0), weighted_score)), 2),
+                _applied_weight__gt=0,
+                then=Round(
+                    Least(Value(100.0), Greatest(Value(0.0), numerator / F("_applied_weight"))),
+                    2,
+                ),
             ),
             default=Value(None),
             output_field=FloatField(),
@@ -195,32 +204,75 @@ def get_recommended_jobs(profile: CandidateProfile):
         return queryset.annotate(
             match_score=Value(None, output_field=FloatField())
         ).order_by("-created_at", "-pk")
+    weights = get_active_matching_weights()
+    if weights is None:
+        return queryset.annotate(
+            match_score=Value(None, output_field=FloatField())
+        ).order_by("-created_at", "-pk")
 
     intervals = profile.experiences.values_list("start_date", "end_date", "is_current")
     total_years = total_experience_years(intervals, timezone.localdate())
-    highest_degree = max(
-        (recognized_degree_level(value) for value in profile.educations.values_list("degree", flat=True)),
-        default=0,
-    )
+    verified_levels = profile.educations.filter(
+        is_completed=True,
+        is_verified=True,
+        degree_level__isnull=False,
+    ).values_list("degree_level", flat=True)
+    highest_degree = max(verified_levels, key=DEGREE_LEVEL_RANK.get, default=None)
     education_scores = {}
     experience_scores = {}
-    for job_id, requirements, level in queryset.values_list("pk", "requirements", "experience_level"):
-        required_degree = required_degree_level(requirements)
-        education_scores[job_id] = 100.0 if not required_degree or highest_degree >= required_degree else 0.0
-        experience_scores[job_id] = experience_score(total_years, level)
+    for job_id, required_degree, level in queryset.values_list(
+        "pk", "required_education_level", "experience_level"
+    ):
+        edu_score = education_score(highest_degree, required_degree)
+        education_scores[job_id] = 0.0 if edu_score is None else edu_score * 100.0
+        experience_scores[job_id] = (
+            experience_score(total_years, level) * 100.0 if level else 0.0
+        )
 
-    profile_skill_ids = profile.candidate_skills.values("skill_id")
+    profile_skill_ids = profile.candidate_skills.filter(
+        skill__is_active=True,
+        skill__status__in=("APPROVED", "PENDING"),
+    ).values("skill_id")
+    valid_job_skill = Q(
+        job_skills__skill__is_active=True,
+        job_skills__skill__status__in=("APPROVED", "PENDING"),
+    )
     queryset = queryset.annotate(
-        _job_skill_count=Count("job_skills", distinct=True),
-        _matched_skill_count=Count(
+        _required_skill_count=Count(
             "job_skills",
-            filter=Q(job_skills__skill_id__in=profile_skill_ids),
+            filter=valid_job_skill & Q(job_skills__is_required=True),
+            distinct=True,
+        ),
+        _preferred_skill_count=Count(
+            "job_skills",
+            filter=valid_job_skill & Q(job_skills__is_required=False),
+            distinct=True,
+        ),
+        _matched_required_count=Count(
+            "job_skills",
+            filter=valid_job_skill & Q(
+                job_skills__is_required=True,
+                job_skills__skill_id__in=profile_skill_ids,
+            ),
+            distinct=True,
+        ),
+        _matched_preferred_count=Count(
+            "job_skills",
+            filter=valid_job_skill & Q(
+                job_skills__is_required=False,
+                job_skills__skill_id__in=profile_skill_ids,
+            ),
             distinct=True,
         ),
     ).annotate(
+        _job_skill_count=F("_required_skill_count") + F("_preferred_skill_count"),
         skill_score=Case(
-            When(_job_skill_count=0, then=Value(100.0)),
-            default=F("_matched_skill_count") * Value(100.0) / F("_job_skill_count"),
+            When(_job_skill_count=0, then=Value(0.0)),
+            default=(
+                (F("_matched_required_count") * Value(float(weights.required_skill_multiplier)) + F("_matched_preferred_count"))
+                * Value(100.0)
+                / (F("_required_skill_count") * Value(float(weights.required_skill_multiplier)) + F("_preferred_skill_count"))
+            ),
             output_field=FloatField(),
         ),
         experience_score=_score_case(experience_scores),
@@ -244,6 +296,7 @@ def get_recommended_jobs(profile: CandidateProfile):
             embedding_version=F("content_version"),
             embedding_signature=current_job_embedding_signature(),
         ),
+        weights,
     )
     return queryset.order_by(
         F("match_score").desc(nulls_last=True), "-created_at", "-pk"
@@ -254,11 +307,10 @@ def get_recommended_candidates(job: JobPost):
     """Rank active public candidate profiles by pure cosine similarity.
 
     Trọng số MatchingWeightConfig chỉ áp dụng cho chiều candidate -> jobs
-    và điểm chấm hồ sơ ứng tuyển (AIAnalysis); gợi ý ứng viên cho NTD
+    và điểm chấm hồ sơ ứng tuyển (ApplicationMatchResult); gợi ý ứng viên cho NTD
     giữ nguyên semantic thuần.
     """
     queryset = CandidateProfile.objects.filter(
-        is_active=True,
         is_public=True,
         user__is_active=True,
     )

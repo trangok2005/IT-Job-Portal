@@ -3,7 +3,6 @@
 import { BriefcaseBusiness, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ExperienceDto, ExperiencePayload } from "@/features/candidates/types";
@@ -61,7 +60,6 @@ export function ExperienceSection({
     const item: ExperienceDto = {
       id: editing?.id ?? crypto.randomUUID(),
       ...payload,
-      source: editing?.source ?? "MANUAL",
       created_at: editing?.created_at ?? now,
       updated_at: now,
     };
@@ -187,7 +185,6 @@ export function ExperienceSection({
                 </div>
               </div>
               {item.description && <p className="mt-3 whitespace-pre-line text-sm leading-6 text-zinc-600">{item.description}</p>}
-              {item.source === "AI_EXTRACTED" && <Badge className="mt-3">Trích xuất từ CV</Badge>}
             </div>
           ))}
         </div>

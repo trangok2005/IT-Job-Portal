@@ -100,9 +100,8 @@ class EmbeddingTextBuilderTests(TestCase):
             "Skills: Python",
         )
 
-    def test_pending_skills_in_candidate_text_but_not_job_text(self):
-        # UC-01 bước 11: skill PENDING của ứng viên vẫn tính vào text vector;
-        # pending chỉ bị loại khỏi bộ lọc SQL cứng. Phía JD giữ nguyên APPROVED-only.
+    def test_pending_skills_are_in_candidate_and_job_text(self):
+        # Active PENDING skills keep their identity and participate in matching.
         pending = Skill.objects.create(
             name="Secret Skill",
             slug="builder-pending",
@@ -115,7 +114,7 @@ class EmbeddingTextBuilderTests(TestCase):
         job_text = build_job_text(self.job)
 
         self.assertIn("Skills: Python, Secret Skill", candidate_text)
-        self.assertNotIn("Secret Skill", job_text)
+        self.assertIn("Skills: Python, Secret Skill", job_text)
 
     def test_query_text_uses_desired_job_label_and_shared_cleaner(self):
         self.assertEqual(

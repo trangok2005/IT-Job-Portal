@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: job_portal
+          POSTGRES_USER: job_portal
+          POSTGRES_PASSWORD: job_portal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U job_portal -d job_portal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DB_NAME: job_portal
+      DB_USER: job_portal
+      DB_PASSWORD: job_portal
+      DB_HOST: localhost
+      DB_PORT: 5432
+      GEMINI_API_KEY: ""
+
+    defaults:
+      run:
+        working-directory: job_portal_backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: job_portal_backend/requirements/base.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements/base.txt
+
+      - name: Run backend tests
+        run: python manage.py test --verbosity=2
+
+  frontend-lint:
+    name: Frontend lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: job_portal_frontend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: job_portal_frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend lint
+        run: npm run lint

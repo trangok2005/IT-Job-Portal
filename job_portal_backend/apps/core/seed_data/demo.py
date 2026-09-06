@@ -38,11 +38,19 @@ JOB = {
     "location": "Hà Nội",
     "salary_min": 15_000_000,
     "salary_max": 25_000_000,
-    "required_skill_slugs": ["python", "django"],
+    "skills": [
+        {"name": "Python", "is_required": True},
+        {"name": "Django", "is_required": True},
+        {"name": "Django REST Framework", "is_required": True},
+        {"name": "PostgreSQL", "is_required": False},
+        {"name": "Docker", "is_required": False},
+    ],
 }
 
 CANDIDATE_PROFILE = {
     "full_name": "Nguyễn Văn Ứng Viên",
+    "phone": "0901234567",
     "headline": "Backend Developer 2 năm kinh nghiệm",
     "summary": "Yêu thích Python/Django.",
+    "desired_position": "Backend Developer",
 }

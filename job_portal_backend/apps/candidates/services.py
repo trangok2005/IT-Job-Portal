@@ -7,26 +7,24 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.candidates.models import CandidateProfile, Education, Experience, Resume, ResumeImport
+from apps.core.qstash_client import publish_task
 from apps.skills.models import CandidateSkill, Skill
 from apps.skills.services import is_savable_skill as _is_savable_skill
 from apps.skills.services import resolve_savable_skill
 
 
-def _enqueue_task(task_name: str, *args) -> None:
-    """Chỉ đưa task vào Django-Q sau khi transaction hiện tại commit thành công."""
+def _enqueue_task(task_name: str, payload: dict) -> None:
+    """Chỉ đưa task vào QStash sau khi transaction hiện tại commit thành công."""
 
     def enqueue():
-        from django_q.tasks import async_task
-
-        async_task(task_name, *args)
+        publish_task(task_name, payload)
 
     transaction.on_commit(enqueue)
 
 
 def _resolve_candidate_skill(value) -> Skill:
-    """Resolve skill cho hồ sơ ứng viên — uỷ quyền cho hàm chung của app
-    skills, cố định nguồn CV_PARSING (tên lạ → tự tạo PENDING chờ duyệt)."""
-    return resolve_savable_skill(value, Skill.Source.CV_PARSING)
+    """Resolve skill cho hồ sơ; tên lạ được tạo PENDING chờ duyệt."""
+    return resolve_savable_skill(value)
 
 
 def _bump_profile_version(profile: CandidateProfile) -> None:
@@ -43,9 +41,11 @@ def _bump_profile_version(profile: CandidateProfile) -> None:
 def enqueue_candidate_embedding(profile: CandidateProfile) -> None:
     """Enqueue embedding cho version hiện tại sau khi transaction commit."""
     _enqueue_task(
-        "apps.candidates.tasks.generate_candidate_embedding",
-        str(profile.pk),
-        profile.profile_version,
+        "generate_candidate_embedding",
+        {
+            "profile_id": str(profile.pk),
+            "profile_version": profile.profile_version,
+        },
     )
 
 
@@ -64,7 +64,7 @@ def update_profile(profile: CandidateProfile, data: dict) -> CandidateProfile:
 @transaction.atomic
 def create_education(profile: CandidateProfile, data: dict) -> Education:
     """Thêm học vấn nhập tay và yêu cầu cập nhật embedding hồ sơ."""
-    education = Education.objects.create(candidate=profile, source="MANUAL", **data)
+    education = Education.objects.create(candidate=profile, **data)
     _bump_profile_version(profile)
     return education
 
@@ -92,7 +92,7 @@ def delete_education(education: Education) -> None:
 @transaction.atomic
 def create_experience(profile: CandidateProfile, data: dict) -> Experience:
     """Thêm kinh nghiệm nhập tay và yêu cầu cập nhật embedding hồ sơ."""
-    experience = Experience.objects.create(candidate=profile, source="MANUAL", **data)
+    experience = Experience.objects.create(candidate=profile, **data)
     _bump_profile_version(profile)
     return experience
 
@@ -121,8 +121,7 @@ def delete_experience(experience: Experience) -> None:
 def create_candidate_skill(
     profile: CandidateProfile,
     skill: Skill,
-    level: str = "",
-    years_of_experience=None,
+    years_of_experience: int | None = None,
 ) -> CandidateSkill:
     """Thêm một skill hợp lệ, không cho trùng skill đã có trong hồ sơ.
     Nhất quán với save_full_profile: nhận cả APPROVED lẫn PENDING
@@ -136,9 +135,7 @@ def create_candidate_skill(
     candidate_skill = CandidateSkill.objects.create(
         candidate=profile,
         skill=skill,
-        level=level,
         years_of_experience=years_of_experience,
-        source=CandidateSkill.Source.MANUAL,
     )
     _bump_profile_version(profile)
     return candidate_skill
@@ -241,12 +238,12 @@ def save_full_profile(profile: CandidateProfile, data: dict) -> CandidateProfile
 
     locked.educations.all().delete()
     Education.objects.bulk_create(
-        Education(candidate=locked, source="MANUAL", **item)
+        Education(candidate=locked, **item)
         for item in educations
     )
     locked.experiences.all().delete()
     Experience.objects.bulk_create(
-        Experience(candidate=locked, source="MANUAL", **item)
+        Experience(candidate=locked, **item)
         for item in experiences
     )
     locked.candidate_skills.all().delete()
@@ -261,9 +258,7 @@ def save_full_profile(profile: CandidateProfile, data: dict) -> CandidateProfile
             CandidateSkill(
                 candidate=locked,
                 skill=skill,
-                level=item.get("level", ""),
                 years_of_experience=item.get("years_of_experience"),
-                source=CandidateSkill.Source.MANUAL,
             )
         )
     CandidateSkill.objects.bulk_create(candidate_skills)
@@ -287,7 +282,10 @@ def create_resume_import(profile: CandidateProfile, file) -> ResumeImport:
         parse_status=ResumeImport.ParseStatus.PENDING,
         expires_at=timezone.now() + timezone.timedelta(hours=24),
     )
-    _enqueue_task("apps.candidates.tasks.parse_resume_import", str(resume_import.pk))
+    _enqueue_task(
+        "parse_resume_import",
+        {"resume_import_id": str(resume_import.pk)},
+    )
     return resume_import
 
 
@@ -346,8 +344,6 @@ def consume_resume_import(resume_import: ResumeImport) -> Resume:
             file=copied,
             original_filename=resume_import.original_filename,
             file_size_bytes=resume_import.file_size_bytes,
-            parse_status=Resume.ParseStatus.SUCCESS,
-            parsed_data=resume_import.parsed_data,
             is_primary=True,
         )
 

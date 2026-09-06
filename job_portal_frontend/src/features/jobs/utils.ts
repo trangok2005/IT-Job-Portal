@@ -66,7 +66,3 @@ export function formatVnd(amount: number) {
   }
   return amount.toLocaleString("vi-VN");
 }
-
-export function companyInitial(name: string) {
-  return name.trim().charAt(0).toUpperCase() || "J";
-}

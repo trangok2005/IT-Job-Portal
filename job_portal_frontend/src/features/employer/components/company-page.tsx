@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getMyCompany, resubmitCompany, updateMyCompany } from "@/features/employer/api";
-import type { CompanyDto, CompanyUpdatePayload } from "@/features/employer/types";
+import { COMPANY_STATUS_LABELS, type CompanyDto, type CompanyUpdatePayload } from "@/features/employer/types";
 
 export function CompanyPage() {
   const formRef = useRef<HTMLFormElement>(null);
@@ -94,7 +94,7 @@ export function CompanyPage() {
       <div className="flex items-center gap-3">
         <span className="grid size-11 place-items-center rounded-xl bg-primary-50 text-primary"><Building2 /></span>
         <div><h1 className="text-2xl font-bold text-zinc-900">Hồ sơ công ty</h1><p className="text-sm text-zinc-500">Thông tin xác thực trước khi đăng tin.</p></div>
-        <Badge className="ml-auto" variant={company.status === "APPROVED" ? "success" : company.status === "REJECTED" ? "accent" : "outline"}>{company.status}</Badge>
+        <Badge className="ml-auto" variant={company.status === "APPROVED" ? "success" : company.status === "REJECTED" ? "accent" : "outline"}>{COMPANY_STATUS_LABELS[company.status]}</Badge>
       </div>
       {company.rejection_reason && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><strong>Lý do:</strong> {company.rejection_reason}</div>}
       {message && <p className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700">{message}</p>}

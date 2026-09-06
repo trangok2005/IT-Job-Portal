@@ -21,7 +21,7 @@ def get_candidate_dashboard(user):
             distinct=True,
         )
     ).get(user=user)
-    counts = profile.applications.filter(is_active=True).aggregate(
+    counts = profile.applications.aggregate(
         application_count=Count("id"),
         **{
             f"status_{status.lower()}": Count("id", filter=Q(status=status))
@@ -55,7 +55,7 @@ def get_employer_dashboard(user):
             "total_applications": 0,
         }
     now = timezone.now()
-    jobs = company.job_posts.filter(is_active=True)
+    jobs = company.job_posts.all()
     job_counts = jobs.aggregate(
         jobs_total=Count("id"),
         jobs_active=Count(
@@ -67,7 +67,6 @@ def get_employer_dashboard(user):
     )
     application_counts = JobApplication.objects.filter(
         job__company=company,
-        is_active=True,
     ).aggregate(
         new_applications=Count("id", filter=Q(status=JobApplication.Status.APPLIED)),
         total_applications=Count("id"),
@@ -94,9 +93,8 @@ def get_admin_dashboard():
         "active_jobs": JobPost.objects.filter(
             status=JobPost.Status.ACTIVE,
             company__status=Company.Status.APPROVED,
-            is_active=True,
         ).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now)).count(),
-        "applications": JobApplication.objects.filter(is_active=True).count(),
+        "applications": JobApplication.objects.count(),
         "pending_skills": Skill.objects.filter(
             status=Skill.Status.PENDING, is_active=True
         ).count(),

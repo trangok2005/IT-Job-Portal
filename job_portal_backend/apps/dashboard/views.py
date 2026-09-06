@@ -4,12 +4,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema
 
-from apps.dashboard import perms, selectors, serializers
+from apps.dashboard import selectors, serializers
 from apps.jobs import services as job_services
+from common import permissions as common_permissions
 
 
 class DashboardView(APIView):
-    permission_classes = [IsAuthenticated, perms.HasDashboardRole]
+    permission_classes = [IsAuthenticated, common_permissions.HasBusinessRole]
 
     @extend_schema(
         responses=PolymorphicProxySerializer(

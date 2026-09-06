@@ -60,9 +60,10 @@ export const setUserLocked = (id: string, locked: boolean) =>
     json("POST"),
   );
 
-export const getAdminSkills = (params: AdminSkillQuery = {}) =>
+export const getAdminSkills = (params: AdminSkillQuery = {}, signal?: AbortSignal) =>
   authApiRequest<Paginated<AdminSkillDto>>(
-    `/api/skills/?${queryString({ page_size: 100, ...params })}`,
+    `/api/skills/?${queryString(params)}`,
+    { signal },
   );
 
 export const createAdminSkill = (payload: SkillCreatePayload) =>
@@ -77,14 +78,29 @@ export const reviewSkill = (id: string, action: "approve" | "reject") =>
 export const mergeSkills = (payload: SkillMergePayload) =>
   authApiRequest<AdminSkillDto>("/api/skills/merge/", json("POST", payload));
 
-export const getSkillCategories = () =>
-  authApiRequest<Paginated<SkillCategoryDto>>("/api/skill-categories/?page_size=100");
+export async function getSkillCategories(signal?: AbortSignal) {
+  const results: SkillCategoryDto[] = [];
+  let page = 1;
+  let response: Paginated<SkillCategoryDto>;
+  do {
+    response = await authApiRequest<Paginated<SkillCategoryDto>>(
+      `/api/skill-categories/?page_size=100&page=${page}`,
+      { signal },
+    );
+    results.push(...response.results);
+    page += 1;
+  } while (response.next);
+  return results;
+}
 
 export const createSkillCategory = (payload: SkillCategoryPayload) =>
   authApiRequest<SkillCategoryDto>("/api/skill-categories/", json("POST", payload));
 
 export const getWeightConfigs = () =>
   authApiRequest<Paginated<WeightConfigDto>>("/api/weight-configs/?page_size=100");
+
+export const getActiveWeightConfig = (signal?: AbortSignal) =>
+  authApiRequest<WeightConfigDto>("/api/weight-configs/active/", { signal });
 
 export const createWeightConfig = (payload: WeightConfigPayload) =>
   authApiRequest<WeightConfigDto>("/api/weight-configs/", json("POST", payload));

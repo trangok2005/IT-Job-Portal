@@ -49,6 +49,7 @@ export function SearchBar({
     const params = new URLSearchParams(window.location.search);
     if (keyword.trim()) params.set("keyword", keyword.trim());
     else params.delete("keyword");
+    params.set("tab", "all");
     params.delete("page");
     router.push(`/jobs${params.toString() ? `?${params.toString()}` : ""}`);
   };
@@ -64,7 +65,7 @@ export function SearchBar({
           <Input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="Vị trí / công ty / kỹ năng"
+            placeholder="Mô tả vị trí, kỹ năng, công việc bạn muốn.."
             aria-invalid={Boolean(error)}
             className="h-12 border-0 bg-transparent pl-10 shadow-none focus-visible:ring-0"
           />

@@ -17,17 +17,23 @@ export function UsersAdmin() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [hasPreviousPage, setHasPreviousPage] = useState(false);
+  const [query, setQuery] = useState<AdminUserQuery>({});
 
-  const load = async () => {
+  const load = async (targetPage = page, targetQuery = query) => {
     setLoading(true);
     setError(null);
     try {
       const response = await getAdminUsers({
-        search: search || undefined,
-        role: role || undefined,
-        is_active: active === "" ? undefined : active === "true",
+        ...targetQuery,
+        page: targetPage,
       });
       setItems(response.results);
+      setPage(targetPage);
+      setHasNextPage(Boolean(response.next));
+      setHasPreviousPage(Boolean(response.previous));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể tải người dùng.");
     } finally {
@@ -37,7 +43,11 @@ export function UsersAdmin() {
 
   useEffect(() => {
     getAdminUsers()
-      .then((response) => setItems(response.results))
+      .then((response) => {
+        setItems(response.results);
+        setHasNextPage(Boolean(response.next));
+        setHasPreviousPage(Boolean(response.previous));
+      })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "Không thể tải người dùng.");
       })
@@ -74,7 +84,13 @@ export function UsersAdmin() {
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          void load();
+          const nextQuery: AdminUserQuery = {
+            search: search || undefined,
+            role: role || undefined,
+            is_active: active === "" ? undefined : active === "true",
+          };
+          setQuery(nextQuery);
+          void load(1, nextQuery);
         }}
         className="mt-6 grid gap-2 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_170px_170px_auto]"
       >
@@ -154,6 +170,7 @@ export function UsersAdmin() {
           </div>
         ))}
       </div>
+      {!loading && (hasPreviousPage || hasNextPage) && <nav className="mt-6 flex items-center justify-center gap-3" aria-label="Phân trang tài khoản"><Button variant="outline" disabled={!hasPreviousPage} onClick={() => void load(page - 1)}>Trang trước</Button><span className="text-sm text-zinc-500">Trang {page}</span><Button variant="outline" disabled={!hasNextPage} onClick={() => void load(page + 1)}>Trang sau</Button></nav>}
     </div>
   );
 }

@@ -1,11 +1,8 @@
 "use client";
 
 import {
-  AlertCircle,
-  CheckCircle2,
   Download,
   FileText,
-  LoaderCircle,
   Star,
   Trash2,
   UploadCloud,
@@ -14,7 +11,11 @@ import { useRef } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { deleteResume, setPrimaryResume } from "@/features/candidates/api";
+import {
+  deleteResume,
+  getResumeDownloadURL,
+  setPrimaryResume,
+} from "@/features/candidates/api";
 import { useCandidateResumeImport } from "@/features/candidates/candidate-resume-import-provider";
 import type { ResumeDto } from "@/features/candidates/types";
 import {
@@ -22,25 +23,12 @@ import {
   ProfileSection,
   type RunProfileMutation,
 } from "@/features/candidates/components/profile-section";
-
-const statusLabels: Record<ResumeDto["parse_status"], string> = {
-  PENDING: "Đang phân tích",
-  SUCCESS: "Đã phân tích",
-  FAILED: "Phân tích lỗi",
-  SKIPPED: "Chưa phân tích",
-};
+import { openPrivateFile } from "@/lib/open-private-file";
 
 function formatSize(bytes: number | null) {
   if (!bytes) return "Không rõ dung lượng";
   if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function StatusIcon({ status }: { status: ResumeDto["parse_status"] }) {
-  if (status === "SUCCESS") return <CheckCircle2 className="size-4 text-emerald-600" />;
-  if (status === "FAILED") return <AlertCircle className="size-4 text-red-500" />;
-  if (status === "PENDING") return <LoaderCircle className="size-4 animate-spin text-accent" />;
-  return <FileText className="size-4 text-zinc-400" />;
 }
 
 export function ResumesSection({
@@ -57,7 +45,8 @@ export function ResumesSection({
   onNotice?: (message: string) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
-  const { startImport } = useCandidateResumeImport();
+  const { resumeImport, startImport } = useCandidateResumeImport();
+  const importing = resumeImport?.parse_status === "PENDING";
 
   const chooseFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -86,12 +75,21 @@ export function ResumesSection({
     await runMutation(() => deleteResume(resume.id), "Đã xóa CV.");
   };
 
+  const view = async (resume: ResumeDto) => {
+    onLocalError("");
+    try {
+      await openPrivateFile(() => getResumeDownloadURL(resume.id));
+    } catch (error) {
+      onLocalError(error instanceof Error ? error.message : "Không thể mở CV.");
+    }
+  };
+
   return (
     <ProfileSection
       id="resumes"
       icon={FileText}
       title="CV của bạn"
-      description="CV chính sẽ được dùng khi ứng tuyển và hỗ trợ AI matching."
+      description="CV hỗ trợ điền hồ sơ và có thể được chọn đính kèm khi ứng tuyển; điểm dùng hồ sơ có cấu trúc."
       action={
         <>
           <input
@@ -101,9 +99,9 @@ export function ResumesSection({
             className="hidden"
             onChange={chooseFile}
           />
-          <Button type="button" variant="accent" size="sm" disabled={pending} onClick={() => fileInput.current?.click()}>
+          <Button type="button" variant="accent" size="sm" disabled={pending || importing} onClick={() => fileInput.current?.click()}>
             <UploadCloud />
-            <span className="hidden sm:inline">Tải CV</span>
+            <span className="hidden sm:inline">{importing ? "Đang phân tích…" : "Tải CV"}</span>
           </Button>
         </>
       }
@@ -111,18 +109,18 @@ export function ResumesSection({
       <button
         type="button"
         onClick={() => fileInput.current?.click()}
-        disabled={pending}
+        disabled={pending || importing}
         className="mb-5 flex w-full flex-col items-center rounded-xl border border-dashed border-primary-200 bg-primary-50/40 px-4 py-6 text-center transition hover:border-primary hover:bg-primary-50 disabled:opacity-60"
       >
         <span className="flex size-11 items-center justify-center rounded-xl bg-white text-primary shadow-sm">
           <UploadCloud className="size-5" />
         </span>
         <span className="mt-3 text-sm font-semibold text-primary">Chọn CV từ thiết bị</span>
-        <span className="mt-1 text-xs text-zinc-500">PDF, DOC, DOCX · Tối đa 10 MB</span>
+        <span className="mt-1 text-xs text-zinc-500">PDF, DOC, DOCX · Tối đa 5 MB</span>
       </button>
 
       {!items.length ? (
-        <EmptySection>Bạn cần ít nhất một CV chính trước khi ứng tuyển.</EmptySection>
+        <EmptySection>Bạn chưa có CV chính. Vẫn có thể ứng tuyển bằng hồ sơ có cấu trúc hoàn chỉnh.</EmptySection>
       ) : (
         <div className="space-y-3">
           {items.map((resume) => (
@@ -138,17 +136,11 @@ export function ResumesSection({
                   <p className="max-w-full truncate text-sm font-semibold text-zinc-900">{resume.original_filename}</p>
                   {resume.is_primary && <Badge variant="accent"><Star className="mr-1 size-3" />CV chính</Badge>}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
-                  <span>{formatSize(resume.file_size_bytes)}</span>
-                  <span className="inline-flex items-center gap-1">
-                    <StatusIcon status={resume.parse_status} />
-                    {statusLabels[resume.parse_status]}
-                  </span>
-                </div>
+                <p className="mt-1 text-xs text-zinc-500">{formatSize(resume.file_size_bytes)}</p>
               </div>
               <div className="flex flex-wrap items-center gap-1 border-t border-zinc-100 pt-3 sm:border-0 sm:pt-0">
-                <Button asChild type="button" variant="ghost" size="sm">
-                  <a href={resume.file_url} target="_blank" rel="noreferrer"><Download />Xem</a>
+                <Button type="button" variant="ghost" size="sm" onClick={() => void view(resume)}>
+                  <Download />Xem
                 </Button>
                 {!resume.is_primary && (
                   <Button

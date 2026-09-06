@@ -40,7 +40,6 @@ class User(AbstractUser):
     # is_active reused by UC-04/E2 ("Ứng viên đã xóa hoặc khóa tài khoản")
     # inherited from AbstractUser: self.is_active
 
-    phone = models.CharField(max_length=20, blank=True, help_text="Số điện thoại liên hệ.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

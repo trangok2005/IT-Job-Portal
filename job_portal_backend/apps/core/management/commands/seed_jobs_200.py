@@ -5,7 +5,7 @@ bao quát đủ mọi giá trị enum trong JobPost model.
 
 Chạy lệnh này sẽ XÓA SẠCH toàn bộ JobPost/JobSkill hiện có rồi seed 200 tin mới
 (company + employer được tái sử dụng theo tên, idempotent). Tin ACTIVE được
-đưa vào hàng đợi Django-Q sinh embedding.
+đưa vào QStash sinh embedding.
 
     python manage.py seed_jobs_200 [--with-embeddings]
 """
@@ -14,7 +14,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
@@ -44,7 +44,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--with-embeddings",
             action="store_true",
-            help="Đưa các tin ACTIVE vào hàng đợi Django-Q sinh embedding.",
+            help="Đưa các tin ACTIVE vào QStash sinh embedding.",
         )
 
     def handle(self, *args, **options):
@@ -80,6 +80,7 @@ class Command(BaseCommand):
                     workplace_type=row["workplace_type"],
                     job_type=row["job_type"],
                     experience_level=row["experience_level"],
+                    required_education_level=row.get("required_education_level"),
                     salary_min=row["salary_min"],
                     salary_max=row["salary_max"],
                     salary_negotiable=row["salary_negotiable"],
@@ -150,15 +151,19 @@ class Command(BaseCommand):
             job.published_at = now - timedelta(days=45)
             job.expires_at = now - timedelta(days=15)
 
-    def _attach_skills(self, job: JobPost, skill_names: list, skill_cache: dict) -> None:
-        for idx, name in enumerate(skill_names):
-            skill = skill_cache.get(name)
+    def _attach_skills(self, job: JobPost, skill_specs: list, skill_cache: dict) -> None:
+        if not skill_specs or not any(item["is_required"] for item in skill_specs):
+            raise CommandError(f"Job '{job.title}' phải có ít nhất một skill bắt buộc.")
+        for spec in skill_specs:
+            skill = skill_cache.get(spec["name"])
             if skill is None:
-                continue
+                raise CommandError(
+                    f"Skill '{spec['name']}' của job '{job.title}' chưa có trong taxonomy."
+                )
             JobSkill.objects.create(
                 job=job,
                 skill=skill,
-                is_required=idx < 3,
+                is_required=spec["is_required"],
             )
 
     def _enqueue_embeddings(self, jobs_data) -> None:

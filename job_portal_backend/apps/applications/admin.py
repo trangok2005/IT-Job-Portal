@@ -6,14 +6,25 @@ from apps.applications.models import ApplicationStatusHistory, JobApplication
 class ApplicationStatusHistoryInline(admin.TabularInline):
     model = ApplicationStatusHistory
     extra = 0
-    readonly_fields = ("from_status", "to_status", "changed_by", "note", "created_at")
+    readonly_fields = (
+        "from_status",
+        "to_status",
+        "changed_by",
+        "note",
+        "candidate_message",
+        "notification_status",
+        "notification_attempts",
+        "notification_error",
+        "notification_sent_at",
+        "created_at",
+    )
     can_delete = False
 
 
 @admin.register(JobApplication)
 class JobApplicationAdmin(admin.ModelAdmin):
-    list_display = ("candidate", "job", "status", "updated_at")
-    list_filter = ("status",)
+    list_display = ("candidate", "job", "status", "match_status", "updated_at")
+    list_filter = ("status", "match_status")
     search_fields = ("candidate__full_name", "job__title")
     inlines = [ApplicationStatusHistoryInline]
     readonly_fields = (
@@ -24,6 +35,9 @@ class JobApplicationAdmin(admin.ModelAdmin):
         "candidate_embedding_snapshot",
         "job_embedding_snapshot",
         "snapshot_created_at",
+        "match_status",
+        "match_error",
+        "match_attempts",
     )
 
     def has_add_permission(self, request):

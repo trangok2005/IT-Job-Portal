@@ -1,4 +1,5 @@
 """skills serializers — only shape input/output, no business logic."""
+from decimal import Decimal
 from rest_framework import serializers
 
 from apps.skills.models import MatchingWeightConfig, Skill, SkillAlias, SkillCategory
@@ -27,7 +28,7 @@ class SkillReadSerializer(serializers.ModelSerializer):
         model = Skill
         fields = [
             "id", "name", "slug", "category", "category_name",
-            "status", "source", "merged_into", "merged_into_name",
+            "status", "merged_into", "merged_into_name",
             "is_active", "reviewed_by", "reviewed_at",
             "aliases", "created_at", "updated_at",
         ]
@@ -72,20 +73,46 @@ class MatchingWeightConfigSerializer(serializers.ModelSerializer):
             "weight_skill_overlap",
             "weight_experience_match",
             "weight_education_match",
+            "required_skill_multiplier",
             "updated_by", "updated_at", "created_at",
         ]
         read_only_fields = ["id", "updated_by", "updated_at", "created_at"]
 
     def validate(self, attrs):
-        total = sum(
-            float(attrs.get(field, getattr(self.instance, field, 0)))
+        values = [
+            Decimal(attrs.get(
+                field,
+                getattr(
+                    self.instance,
+                    field,
+                    MatchingWeightConfig._meta.get_field(field).get_default(),
+                ),
+            ))
             for field in (
                 "weight_semantic_similarity",
                 "weight_skill_overlap",
                 "weight_experience_match",
                 "weight_education_match",
             )
-        )
-        if abs(total - 1.0) > 0.001:
+        ]
+        if any(not value.is_finite() or value < 0 for value in values):
+            raise serializers.ValidationError("Các trọng số phải hữu hạn và không âm.")
+        if sum(values) != Decimal("1"):
             raise serializers.ValidationError("Tổng các trọng số phải bằng 1.0.")
+        multiplier = Decimal(
+            attrs.get(
+                "required_skill_multiplier",
+                getattr(
+                    self.instance,
+                    "required_skill_multiplier",
+                    MatchingWeightConfig._meta.get_field(
+                        "required_skill_multiplier"
+                    ).get_default(),
+                ),
+            )
+        )
+        if not multiplier.is_finite() or multiplier < 1:
+            raise serializers.ValidationError(
+                {"required_skill_multiplier": "Phải hữu hạn và không nhỏ hơn 1."}
+            )
         return attrs

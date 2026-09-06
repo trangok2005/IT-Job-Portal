@@ -1,6 +1,10 @@
 #!/bin/sh
 set -e
 
+if [ "$1" != "dev" ]; then
+  exec "$@"
+fi
+
 echo "Waiting for Postgres at ${DB_HOST:-db}:${DB_PORT:-5432}..."
 until python - <<'PY' >/dev/null 2>&1
 import os
@@ -22,13 +26,5 @@ done
 echo "Running migrations..."
 python manage.py migrate --noinput
 
-case "$1" in
-  worker)
-    echo "Starting Django-Q cluster..."
-    exec python manage.py qcluster
-    ;;
-  *)
-    echo "Starting Django dev server..."
-    exec python manage.py runserver 0.0.0.0:8000
-    ;;
-esac
+echo "Starting Django dev server..."
+exec python manage.py runserver 0.0.0.0:8000

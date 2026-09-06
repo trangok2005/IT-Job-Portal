@@ -42,7 +42,8 @@ class JDImportParseAttemptTests(TestCase):
         parse_jd.side_effect = ValueError("Gemini unavailable")
 
         for _ in range(MAX_PARSE_ATTEMPTS):
-            self.assertFalse(parse_jd_import(str(self.jd_import.id)))
+            with self.assertRaises(ValueError):
+                parse_jd_import(str(self.jd_import.id))
 
         self.assertEqual(parse_jd.call_count, MAX_PARSE_ATTEMPTS)
         self.jd_import.refresh_from_db()

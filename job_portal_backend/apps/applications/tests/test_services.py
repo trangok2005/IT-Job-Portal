@@ -15,6 +15,7 @@ from apps.candidates.models import CandidateProfile, Resume
 from apps.companies.models import Company
 from apps.jobs.models import JobPost
 from apps.skills.models import CandidateSkill, Skill
+from apps.skills.models import MatchingWeightConfig
 
 
 class ApplicationServiceTests(TestCase):
@@ -70,7 +71,7 @@ class ApplicationServiceTests(TestCase):
         CandidateSkill.objects.create(candidate=self.profile, skill=self.skill)
 
     def test_apply_creates_history_and_match_task(self):
-        with patch("django_q.tasks.async_task") as async_task:
+        with patch("apps.applications.services.publish_task") as publish_task:
             with self.captureOnCommitCallbacks(execute=True):
                 application = services.apply_to_job(
                     self.candidate_user,
@@ -87,9 +88,10 @@ class ApplicationServiceTests(TestCase):
         history = ApplicationStatusHistory.objects.get(application=application)
         self.assertEqual(history.from_status, "")
         self.assertEqual(history.to_status, JobApplication.Status.APPLIED)
-        async_task.assert_called_once_with(
-            "apps.ai_analysis.tasks.compute_application_match_score",
-            str(application.pk),
+        publish_task.assert_called_once_with(
+            "compute_application_match_score",
+            {"application_id": str(application.pk)},
+            deduplication_id=f"application-match-{application.pk}",
         )
 
     def test_incomplete_profile_cannot_apply(self):
@@ -99,10 +101,29 @@ class ApplicationServiceTests(TestCase):
         with self.assertRaisesMessage(ValueError, "chưa hoàn chỉnh"):
             services.apply_to_job(self.candidate_user, self.job)
 
+    def test_queue_publish_failure_keeps_application_for_retry(self):
+        with patch(
+            "apps.applications.services.publish_task",
+            side_effect=RuntimeError("queue unavailable"),
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                application = services.apply_to_job(self.candidate_user, self.job)
+
+        application.refresh_from_db()
+        self.assertEqual(application.match_status, JobApplication.MatchStatus.FAILED)
+        self.assertIn("queue unavailable", application.match_error)
+        self.assertTrue(JobApplication.objects.filter(pk=application.pk).exists())
+
     def test_profile_without_skill_cannot_apply(self):
         self.profile.candidate_skills.all().delete()
 
         with self.assertRaisesMessage(ValueError, "ít nhất một kỹ năng"):
+            services.apply_to_job(self.candidate_user, self.job)
+
+    def test_application_requires_an_active_weight_config(self):
+        MatchingWeightConfig.objects.update(is_active=False)
+
+        with self.assertRaisesMessage(ValueError, "Chưa có cấu hình trọng số"):
             services.apply_to_job(self.candidate_user, self.job)
 
     def test_candidate_can_apply_without_resume_attachment(self):
@@ -120,6 +141,20 @@ class ApplicationServiceTests(TestCase):
                 self.job,
                 attach_current_resume=True,
             )
+
+    def test_attaching_missing_resume_file_does_not_create_application(self):
+        self.resume.file.storage.delete(self.resume.file.name)
+
+        with self.assertRaisesMessage(ValueError, "không còn tồn tại"):
+            services.apply_to_job(
+                self.candidate_user,
+                self.job,
+                attach_current_resume=True,
+            )
+
+        self.assertFalse(
+            JobApplication.objects.filter(job=self.job, candidate=self.profile).exists()
+        )
 
     def test_candidate_cannot_apply_twice(self):
         services.apply_to_job(self.candidate_user, self.job)
@@ -168,6 +203,58 @@ class ApplicationServiceTests(TestCase):
 
         application.refresh_from_db()
         self.assertEqual(application.status, JobApplication.Status.APPLIED)
+
+    def test_stale_expected_status_keeps_current_status_and_history(self):
+        application = services.apply_to_job(self.candidate_user, self.job)
+        services.transition_application(
+            application,
+            self.employer,
+            JobApplication.Status.SHORTLISTED,
+            expected_status=JobApplication.Status.APPLIED,
+        )
+        history_count = application.status_history.count()
+
+        with self.assertRaisesMessage(ValueError, "đã được người khác xử lý"):
+            services.transition_application(
+                application,
+                self.employer,
+                JobApplication.Status.REJECTED,
+                expected_status=JobApplication.Status.APPLIED,
+            )
+
+        application.refresh_from_db()
+        self.assertEqual(application.status, JobApplication.Status.SHORTLISTED)
+        self.assertEqual(application.status_history.count(), history_count)
+
+    def test_transition_queues_email_after_commit_and_saves_messages(self):
+        application = services.apply_to_job(self.candidate_user, self.job)
+
+        with patch("apps.notifications.services.publish_task") as publish_task:
+            with self.captureOnCommitCallbacks(execute=True):
+                services.transition_application(
+                    application,
+                    self.employer,
+                    JobApplication.Status.SHORTLISTED,
+                    note="Internal note",
+                    candidate_message="Candidate message",
+                    expected_status=JobApplication.Status.APPLIED,
+                )
+
+        history = application.status_history.get(
+            to_status=JobApplication.Status.SHORTLISTED,
+        )
+        self.assertEqual(history.note, "Internal note")
+        self.assertEqual(history.candidate_message, "Candidate message")
+        self.assertEqual(
+            history.notification_status,
+            ApplicationStatusHistory.NotificationStatus.PENDING,
+        )
+        publish_task.assert_called_once_with(
+            "send_application_status_email",
+            {"history_id": str(history.pk)},
+            retries=3,
+            deduplication_id=f"application-status-{history.pk}",
+        )
 
     def test_existing_application_can_transition_after_job_closed(self):
         application = services.apply_to_job(self.candidate_user, self.job)

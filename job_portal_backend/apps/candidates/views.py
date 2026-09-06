@@ -1,6 +1,6 @@
 """candidates views — mỏng: lấy dữ liệu, gọi service/selector, trả response.
 
-Không chứa logic nghiệp vụ (xem apps/candidates/services.py, selectors.py, perms.py).
+Không chứa logic nghiệp vụ (xem apps/candidates/services.py và selectors.py).
 Chỉ cho phép ứng viên thao tác HỒ SƠ CỦA CHÍNH MÌNH (request.user).
 """
 from django.shortcuts import get_object_or_404
@@ -11,10 +11,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
 
-from apps.candidates import perms, selectors, serializers, services
+from apps.candidates import selectors, serializers, services
 from apps.candidates.models import CandidateProfile, Education, Experience, Resume, ResumeImport
 from apps.skills.models import CandidateSkill
+from common import permissions as common_permissions
 from common.throttling import UploadParseDailyThrottle, UploadParseMinuteThrottle
+from integrations.storage import create_private_file_url
 
 
 def _upload_throttles():
@@ -36,7 +38,7 @@ def _get_own(profile: CandidateProfile, model, pk):
 
 
 class CandidateMeView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     @extend_schema(responses=serializers.CandidateProfileReadSerializer)
     def get(self, request):
@@ -83,7 +85,7 @@ class CandidateMeView(APIView):
 
 
 class CandidateEducationCreateView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     @extend_schema(
         request=serializers.EducationSerializer,
@@ -101,7 +103,7 @@ class CandidateEducationCreateView(APIView):
 
 
 class CandidateEducationDetailView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     def _get_education(self, request, pk) -> Education:
         profile = _get_my_profile(request.user)
@@ -128,7 +130,7 @@ class CandidateEducationDetailView(APIView):
 
 
 class CandidateExperienceCreateView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     @extend_schema(
         request=serializers.ExperienceSerializer,
@@ -146,7 +148,7 @@ class CandidateExperienceCreateView(APIView):
 
 
 class CandidateExperienceDetailView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     def _get_experience(self, request, pk) -> Experience:
         profile = _get_my_profile(request.user)
@@ -173,7 +175,7 @@ class CandidateExperienceDetailView(APIView):
 
 
 class CandidateSkillCreateView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     @extend_schema(
         request=serializers.CandidateSkillSerializer,
@@ -187,7 +189,6 @@ class CandidateSkillCreateView(APIView):
             candidate_skill = services.create_candidate_skill(
                 profile,
                 skill=serializer.validated_data["skill"],
-                level=serializer.validated_data.get("level", ""),
                 years_of_experience=serializer.validated_data.get(
                     "years_of_experience"
                 ),
@@ -201,7 +202,7 @@ class CandidateSkillCreateView(APIView):
 
 
 class CandidateSkillDetailView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     def _get_candidate_skill(self, request, pk) -> CandidateSkill:
         profile = _get_my_profile(request.user)
@@ -233,7 +234,7 @@ class CandidateSkillDetailView(APIView):
 
 
 class CandidateResumeDetailView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     @extend_schema(responses={204: None})
     def delete(self, request, pk):
@@ -246,8 +247,20 @@ class CandidateResumeDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class CandidateResumeDownloadURLView(APIView):
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
+
+    @extend_schema(responses=serializers.PrivateFileURLSerializer)
+    def get(self, request, pk):
+        profile = _get_my_profile(request.user)
+        resume = _get_own(profile, Resume, pk)
+        data = create_private_file_url(resume.file)
+        data["url"] = request.build_absolute_uri(data["url"])
+        return Response(serializers.PrivateFileURLSerializer(data).data)
+
+
 class SetPrimaryResumeView(APIView):
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     @extend_schema(request=None, responses=serializers.ResumeSerializer)
     def post(self, request, pk):
@@ -264,7 +277,7 @@ class SetPrimaryResumeView(APIView):
 class CandidateResumeImportView(APIView):
     """Upload CV để AI parse bất đồng bộ (không block UI). Trả về import_id để polling."""
 
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     def get_throttles(self):
         # Chỉ throttle POST upload; GET polling mỗi 2s không bị chặn.
@@ -294,7 +307,7 @@ class CandidateResumeImportView(APIView):
 class CandidateResumeImportDetailView(APIView):
     """Polling endpoint để kiểm tra trạng thái parse ResumeImport."""
 
-    permission_classes = [IsAuthenticated, perms.IsCandidate]
+    permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
     @extend_schema(responses=serializers.ResumeImportSerializer)
     def get(self, request, pk):

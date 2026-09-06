@@ -24,6 +24,7 @@ export function ApplyButton({ jobId }: { jobId: string }) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [primaryResumeName, setPrimaryResumeName] = useState<string | null>(null);
   const [attachCurrentResume, setAttachCurrentResume] = useState(false);
+  const [profileEligible, setProfileEligible] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (user?.role !== "CANDIDATE" || !consumePendingApplication(jobId)) return;
@@ -48,14 +49,25 @@ export function ApplyButton({ jobId }: { jobId: string }) {
       .then((profile) => {
         if (!active) return;
         const primaryResume = profile.resumes.find((resume) => resume.is_primary);
+        const eligible = Boolean(
+          profile.full_name.trim()
+          && profile.phone.trim()
+          && profile.desired_position.trim()
+          && profile.skills.some((skill) => ["APPROVED", "PENDING"].includes(skill.skill_status)),
+        );
         setPrimaryResumeName(primaryResume?.original_filename ?? null);
         setAttachCurrentResume(Boolean(primaryResume));
+        setProfileEligible(eligible);
+        if (!eligible) {
+          setError("Hồ sơ có cấu trúc chưa hoàn chỉnh. Hãy cập nhật thông tin và ít nhất một kỹ năng trước khi ứng tuyển.");
+        }
       })
       .catch(() => {
         if (!active) return;
         setPrimaryResumeName(null);
         setAttachCurrentResume(false);
-        setError("Không thể tải CV chính. Bạn vẫn có thể ứng tuyển không kèm CV.");
+        setProfileEligible(null);
+        setError("Không thể kiểm tra hồ sơ ứng viên. Vui lòng đóng hộp thoại và thử lại.");
       })
       .finally(() => {
         if (active) setProfileLoading(false);
@@ -77,6 +89,7 @@ export function ApplyButton({ jobId }: { jobId: string }) {
     setActionError(null);
     setError(null);
     setApplicationId(null);
+    setProfileEligible(null);
     setProfileLoading(true);
     setOpen(true);
   };
@@ -147,9 +160,10 @@ export function ApplyButton({ jobId }: { jobId: string }) {
                 <label htmlFor="cover-letter" className="mt-6 block text-sm font-medium text-zinc-700">Thư giới thiệu <span className="font-normal text-zinc-400">(không bắt buộc)</span></label>
                 <textarea id="cover-letter" value={coverLetter} onChange={(event) => setCoverLetter(event.target.value)} className="mt-2 min-h-36 w-full rounded-xl border border-zinc-300 p-3.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Chia sẻ ngắn gọn vì sao bạn phù hợp với vị trí..." />
                 {error && <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
+                {profileEligible === false && <Link href="/candidate/profile" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">Cập nhật hồ sơ ứng viên</Link>}
                 <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Hủy</Button>
-                  <Button type="button" variant="accent" onClick={submit} disabled={submitting || profileLoading}>
+                  <Button type="button" variant="accent" onClick={submit} disabled={submitting || profileLoading || profileEligible !== true}>
                     {submitting ? <Loader2 className="animate-spin" /> : <Send />}Gửi hồ sơ
                   </Button>
                 </div>

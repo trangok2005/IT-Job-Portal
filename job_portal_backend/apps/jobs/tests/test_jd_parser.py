@@ -43,11 +43,16 @@ class JobDescriptionParserTests(TestCase):
                     "workplace_type": "REMOTE",
                     "job_type": "FULL_TIME",
                     "experience_level": "JUNIOR",
+                    "required_education_level": "BACHELOR",
                     "salary_min": 20000000,
                     "salary_max": 30000000,
                     "salary_negotiable": False,
                     "expires_at": None,
-                    "skills": ["Python 3", "New Framework", "python 3"],
+                    "skills": [
+                        {"name": "Python 3", "is_required": True},
+                        {"name": "New Framework", "is_required": False},
+                        {"name": "python 3", "is_required": False},
+                    ],
                 }
             )
         )
@@ -62,13 +67,20 @@ class JobDescriptionParserTests(TestCase):
         self.assertEqual(parsed["title"], "Backend Developer")
         self.assertEqual(parsed["location"], "Hồ Chí Minh")
         self.assertEqual(parsed["workplace_type"], "REMOTE")
+        self.assertEqual(parsed["required_education_level"], "BACHELOR")
         pending = Skill.objects.get(name="New Framework")
         self.assertEqual(pending.status, Skill.Status.PENDING)
-        self.assertEqual(pending.source, Skill.Source.JD_PARSING)
         # Kỹ năng lạ đã được tự tạo PENDING và nằm luôn trong matched
         # (nhất quán với luồng CV) thay vì bị bỏ vào unmatched.
         self.assertEqual(
             parsed["required_skills"], [str(python.id), str(pending.id)]
         )
         self.assertEqual(parsed["unmatched_skills"], [])
+        self.assertEqual(
+            parsed["resolved_skills"],
+            [
+                {"id": str(python.id), "name": "Python", "status": Skill.Status.APPROVED, "is_required": True},
+                {"id": str(pending.id), "name": "New Framework", "status": Skill.Status.PENDING, "is_required": False},
+            ],
+        )
         client.models.generate_content.assert_called_once()

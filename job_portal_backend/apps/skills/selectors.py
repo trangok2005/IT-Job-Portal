@@ -1,7 +1,12 @@
 """skills selectors — read-only queries (no writes / no business mutation)."""
+import re
+
 from django.db.models import Count, Q
 
-from apps.core.matching import DEFAULT_MATCHING_WEIGHTS, MatchingWeights
+from apps.core.matching import (
+    MatchingWeights,
+    normalize_matching_text,
+)
 from apps.jobs.models import JobPost
 from apps.skills.models import MatchingWeightConfig, Skill, SkillCategory
 
@@ -21,6 +26,27 @@ def get_public_skills():
         .select_related("category")
         .order_by("name")
     )
+
+
+def get_skill_ids_mentioned_in_text(value: str) -> list:
+    """Return canonical skills explicitly named in a short search query."""
+    normalized = normalize_matching_text(value)
+    if not normalized:
+        return []
+    matched = []
+    skills = get_public_skills().prefetch_related("aliases")
+    for skill in skills:
+        terms = {
+            normalize_matching_text(skill.name),
+            *(alias.normalized_text for alias in skill.aliases.all()),
+        }
+        if any(
+            term
+            and re.search(rf"(?<!\w){re.escape(term)}(?!\w)", normalized)
+            for term in terms
+        ):
+            matched.append(skill.pk)
+    return matched
 
 
 def get_hot_skills(limit=6):
@@ -44,21 +70,18 @@ def get_skill_categories():
 
 
 def get_active_weight_config():
-    config = MatchingWeightConfig.objects.filter(is_active=True).first()
-    if config is None:
-        # Mặc định lấy config đầu tiên nếu admin chưa kích hoạt config nào.
-        config = MatchingWeightConfig.objects.first()
-    return config
+    return MatchingWeightConfig.objects.filter(is_active=True).first()
 
 
 def get_active_matching_weights():
-    """Return active recommendation weights, or the documented 60/25/10/5 defaults."""
+    """Return active recommendation weights; callers handle missing config explicitly."""
     config = MatchingWeightConfig.objects.filter(is_active=True).first()
     if config is None:
-        return DEFAULT_MATCHING_WEIGHTS
+        return None
     return MatchingWeights(
         semantic=config.weight_semantic_similarity,
         skill=config.weight_skill_overlap,
         experience=config.weight_experience_match,
         education=config.weight_education_match,
+        required_skill_multiplier=config.required_skill_multiplier,
     )

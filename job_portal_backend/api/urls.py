@@ -2,10 +2,12 @@ from django.urls import include, path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenVerifyView
 
 from apps.accounts.views import ActiveUserTokenRefreshView, GoogleAuthView
+from apps.core.task_dispatcher import task_dispatcher
 from apps.core.views import HealthView
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
+    path("internal/tasks/", task_dispatcher, name="task-dispatcher"),
     path("auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("auth/token/refresh/", ActiveUserTokenRefreshView.as_view(), name="token_refresh"),
     path("auth/token/verify/", TokenVerifyView.as_view(), name="token_verify"),

@@ -1,18 +1,19 @@
-import { BrainCircuit, CheckCircle2, Search, TrendingUp } from "lucide-react";
+import { BrainCircuit, CheckCircle2 } from "lucide-react";
 
 import { LoginForm } from "@/features/auth/components/login-form";
 
 export const metadata = { title: "Đăng nhập | IT Job Portal" };
 
 const BENEFITS = [
-  "AI match việc làm phù hợp với kỹ năng của bạn",
+  "Gợi ý việc làm phù hợp với kỹ năng của bạn",
   "Cập nhật tin tuyển dụng IT mới nhất mỗi ngày",
   "Hồ sơ ứng tuyển được gợi ý tới nhà tuyển dụng phù hợp",
 ];
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const { redirect_to: redirectTo } = await searchParams;
-  const destination = Array.isArray(redirectTo) ? redirectTo[0] : redirectTo;
+  const { next, redirect_to: redirectTo } = await searchParams;
+  const requestedDestination = next ?? redirectTo;
+  const destination = Array.isArray(requestedDestination) ? requestedDestination[0] : requestedDestination;
 
   return (
     <div className="grid w-full max-w-5xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-lg shadow-zinc-900/5 md:grid-cols-2">
@@ -40,26 +41,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           </ul>
         </div>
 
-        {/* Mock job card */}
-        <div className="relative rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 font-bold">
-              T
-            </span>
-            <div>
-              <p className="text-sm font-semibold">Backend Developer (Python/Django)</p>
-              <p className="text-xs text-primary-100">TechCorp Vietnam · Hà Nội</p>
-            </div>
-          </div>
-          <div className="mt-4 flex items-center justify-between text-xs">
-            <span className="inline-flex items-center gap-1 text-accent">
-              <TrendingUp className="h-3.5 w-3.5" /> 15 - 25 triệu
-            </span>
-            <span className="inline-flex items-center gap-1 text-primary-100">
-              <Search className="h-3.5 w-3.5" /> Match 92%
-            </span>
-          </div>
-        </div>
+        <p className="relative text-sm leading-6 text-primary-100">
+          Kết quả gợi ý được tính từ hồ sơ đã lưu và dữ liệu tin tuyển dụng thực tế trong hệ thống.
+        </p>
       </div>
 
       {/* Right: card */}

@@ -15,6 +15,7 @@ from apps.companies.models import Company
 from apps.jobs import perms, selectors, serializers, services
 from apps.jobs.job_search_service import SearchFilters, search_jobs
 from apps.jobs.models import JDImport, JobPost
+from common import permissions as common_permissions
 from common.throttling import (
     JobSearchAnonThrottle,
     JobSearchUserThrottle,
@@ -64,7 +65,7 @@ class JobViewSet(
         if self.action in ["create", "parse_jd"]:
             return [IsAuthenticated(), perms.IsApprovedEmployer()]
         if self.action == "jd_import":
-            return [IsAuthenticated(), perms.IsEmployer()]
+            return [IsAuthenticated(), common_permissions.IsEmployer()]
         if self.action in [
             "update",
             "partial_update",
@@ -74,9 +75,9 @@ class JobViewSet(
         ]:
             return [IsAuthenticated(), perms.IsJobOwnerOrAdmin()]
         if self.action == "my_jobs":
-            return [IsAuthenticated(), perms.IsEmployer()]
+            return [IsAuthenticated(), common_permissions.IsEmployer()]
         if self.action == "recommended":
-            return [IsAuthenticated(), perms.IsCandidate()]
+            return [IsAuthenticated(), common_permissions.IsCandidate()]
         return [IsAuthenticated()]
 
     def get_throttles(self):

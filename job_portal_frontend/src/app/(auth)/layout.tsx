@@ -1,16 +1,15 @@
 import Link from "next/link";
+import { BrandLogo } from "@/components/layout/BrandLogo";
+import { BrandName } from "@/components/layout/BrandName";
+import { GuestOnly } from "@/features/auth/components/guest-only";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50">
-      <header className="flex h-16 items-center justify-between border-b border-zinc-100 bg-white px-4 sm:px-6">
+      <header className="flex h-20 items-center justify-between border-b border-zinc-100 bg-white px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-lg font-bold text-white">
-            J
-          </span>
-          <span className="text-lg font-bold text-primary">
-            IT<span className="text-accent">Job</span> Portal
-          </span>
+          <BrandLogo />
+          <BrandName />
         </Link>
         <Link
           href="/"
@@ -19,7 +18,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           Về trang chủ
         </Link>
       </header>
-      <main className="flex flex-1 items-center justify-center px-4 py-10">{children}</main>
+      <main className="flex flex-1 items-center justify-center px-4 py-10"><GuestOnly>{children}</GuestOnly></main>
     </div>
   );
 }

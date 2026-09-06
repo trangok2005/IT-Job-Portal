@@ -24,36 +24,18 @@ services:
     container_name: job_portal_backend
     restart: unless-stopped
     env_file:
-      - ./job_portal_backend/.env
+      - ./job_portal_backend/.env.local
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.local
       SECRET_KEY: django-insecure-local-docker-development-key-change-before-production-2026
       DB_HOST: db
       DB_PORT: "5432"
-    command: ["web"]
+      QSTASH_URL: http://host.docker.internal:8080
+    command: ["dev"]
     ports:
       - "8000:8000"
     volumes:
-      - media:/app/media
-    depends_on:
-      db:
-        condition: service_healthy
-
-  qcluster:
-    build:
-      context: ./job_portal_backend
-      dockerfile: deploy/docker/Dockerfile.backend
-    container_name: job_portal_qcluster
-    restart: unless-stopped
-    env_file:
-      - ./job_portal_backend/.env
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.local
-      SECRET_KEY: django-insecure-local-docker-development-key-change-before-production-2026
-      DB_HOST: db
-      DB_PORT: "5432"
-    command: ["worker"]
-    volumes:
+      - ./job_portal_backend:/app
       - media:/app/media
     depends_on:
       db:
@@ -68,8 +50,15 @@ services:
     restart: unless-stopped
     environment:
       API_URL: http://backend:8000
+      NODE_ENV: development
+      WATCHPACK_POLLING: "true"
+    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
     ports:
       - "3000:3000"
+    volumes:
+      - ./job_portal_frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
     depends_on:
       - backend
 
@@ -78,3 +67,7 @@ volumes:
     name: docker_pgdata
   media:
     name: docker_media
+  frontend_node_modules:
+    name: docker_frontend_node_modules
+  frontend_next:
+    name: docker_frontend_next

@@ -1,9 +1,9 @@
 """Queue regeneration after an embedding model or text-pipeline change."""
 from django.core.management.base import BaseCommand
 from django.db.models import F, Q
-from django_q.tasks import async_task
 
 from apps.candidates.models import CandidateProfile
+from apps.core.qstash_client import publish_task
 from integrations.gemini.embeddings import (
     current_candidate_embedding_signature,
     current_job_embedding_signature,
@@ -40,20 +40,24 @@ class Command(BaseCommand):
 
         profile_count = 0
         for profile in stale_profiles.iterator():
-            async_task(
-                "apps.candidates.tasks.generate_candidate_embedding",
-                str(profile.pk),
-                profile.profile_version,
+            publish_task(
+                "generate_candidate_embedding",
+                {
+                    "profile_id": str(profile.pk),
+                    "profile_version": profile.profile_version,
+                },
             )
             profile_count += 1
 
         job_count = 0
         for job in stale_jobs.iterator():
-            async_task(
-                "apps.jobs.tasks.generate_job_embedding",
-                str(job.pk),
-                job.content_version,
-                job.status != JobPost.Status.ACTIVE,
+            publish_task(
+                "generate_job_embedding",
+                {
+                    "job_id": str(job.pk),
+                    "content_version": job.content_version,
+                    "allow_closed": job.status != JobPost.Status.ACTIVE,
+                },
             )
             job_count += 1
 

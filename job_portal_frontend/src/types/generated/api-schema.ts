@@ -138,15 +138,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/applications/{id}/analysis/": {
+    "/api/applications/{id}/match-result/": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description Return explainable AI details only to the job owner or an admin. */
-        get: operations["applications_analysis_retrieve"];
+        /** @description Return the weighted match details to the job owner or an admin. */
+        get: operations["applications_match_result_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{id}/resume-download-url/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Issue a CV URL only after the application scope check succeeds. */
+        get: operations["applications_resume_download_url_retrieve"];
         put?: never;
         post?: never;
         delete?: never;
@@ -375,6 +392,22 @@ export interface paths {
         put?: never;
         post?: never;
         delete: operations["candidates_me_resumes_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/candidates/me/resumes/{id}/download-url/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["candidates_me_resumes_download_url_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -974,22 +1007,31 @@ export interface components {
             /** @default false */
             attach_current_resume: boolean;
         };
-        /** @description Audit trail chỉ đọc cho candidate và employer. */
+        /** @description Full audit trail for employers; internal notes stay private. */
         ApplicationStatusHistory: {
             /** Format: uuid */
             readonly id: string;
-            readonly from_status: components["schemas"]["StatusCb1Enum"];
-            readonly to_status: components["schemas"]["StatusCb1Enum"];
+            readonly from_status: components["schemas"]["FromStatusEnum"];
+            readonly to_status: components["schemas"]["ToStatusEnum"];
             /** Format: email */
             readonly changed_by_email: string;
+            /** @description Ghi chú nội bộ, không hiển thị cho ứng viên. */
             readonly note: string;
+            readonly candidate_message: string;
+            readonly notification_status: components["schemas"]["NotificationStatusEnum"];
+            readonly notification_attempts: number;
+            readonly notification_error: string;
+            /** Format: date-time */
+            readonly notification_sent_at: string | null;
             /** Format: date-time */
             readonly created_at: string;
         };
         /** @description Input chuyển trạng thái; APPLIED không phải trạng thái đích hợp lệ. */
         ApplicationTransitionRequest: {
             status: components["schemas"]["ApplicationTransitionStatusEnum"];
+            expected_status: components["schemas"]["ExpectedStatusEnum"];
             note?: string;
+            candidate_message?: string;
         };
         /**
          * @description * `SHORTLISTED` - SHORTLISTED
@@ -1017,12 +1059,23 @@ export interface components {
             readonly company_name: string;
             readonly submitted_resume: components["schemas"]["Resume"] | null;
             readonly cover_letter: string;
-            readonly status: components["schemas"]["StatusCb1Enum"];
-            readonly history: components["schemas"]["ApplicationStatusHistory"][];
+            readonly status: components["schemas"]["Status11aEnum"];
+            readonly match_status: components["schemas"]["MatchStatusEnum"];
+            readonly history: components["schemas"]["CandidateApplicationStatusHistory"][];
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
             readonly updated_at: string;
+        };
+        /** @description Candidate-facing history without internal notes or actor email. */
+        CandidateApplicationStatusHistory: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly from_status: components["schemas"]["FromStatusEnum"];
+            readonly to_status: components["schemas"]["ToStatusEnum"];
+            readonly candidate_message: string;
+            /** Format: date-time */
+            readonly created_at: string;
         };
         CandidateDashboard: {
             profile_completion: number;
@@ -1049,7 +1102,6 @@ export interface components {
             readonly headline: string;
             readonly summary: string;
             readonly desired_position: string;
-            readonly desired_salary_min: number | null;
             /** @description Cho phép NTD tìm thấy qua Gợi ý ứng viên phù hợp */
             readonly is_public: boolean;
             readonly profile_version: number;
@@ -1081,7 +1133,6 @@ export interface components {
             headline?: string;
             summary?: string;
             desired_position?: string;
-            desired_salary_min?: number | null;
             /** @description Cho phép NTD tìm thấy qua Gợi ý ứng viên phù hợp */
             is_public?: boolean;
             educations: components["schemas"]["EducationRequest"][];
@@ -1097,10 +1148,7 @@ export interface components {
             skill: string;
             readonly skill_name: string;
             readonly skill_status: string;
-            level?: components["schemas"]["LevelEnum"] | components["schemas"]["BlankEnum"];
-            /** Format: decimal */
-            years_of_experience?: string | null;
-            readonly source: components["schemas"]["CandidateSkillSourceEnum"];
+            years_of_experience?: number | null;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1109,9 +1157,7 @@ export interface components {
         CandidateSkillRequest: {
             /** Format: uuid */
             skill: string;
-            level?: components["schemas"]["LevelEnum"] | components["schemas"]["BlankEnum"];
-            /** Format: decimal */
-            years_of_experience?: string | null;
+            years_of_experience?: number | null;
         };
         /**
          * @description Skill input for the reviewed snapshot: accepts an approved skill id OR a
@@ -1119,17 +1165,8 @@ export interface components {
          */
         CandidateSkillSaveRequest: {
             skill: string;
-            /** @default  */
-            level: components["schemas"]["LevelEnum"] | components["schemas"]["BlankEnum"];
-            /** Format: decimal */
-            years_of_experience?: string | null;
+            years_of_experience?: number | null;
         };
-        /**
-         * @description * `AI_EXTRACTED` - AI trích xuất từ CV
-         *     * `MANUAL` - Ứng viên tự thêm
-         * @enum {string}
-         */
-        CandidateSkillSourceEnum: "AI_EXTRACTED" | "MANUAL";
         CompanyRead: {
             /** Format: uuid */
             readonly id: string;
@@ -1164,18 +1201,30 @@ export interface components {
             rejection_reason: string;
         };
         Dashboard: components["schemas"]["CandidateDashboard"] | components["schemas"]["EmployerDashboard"] | components["schemas"]["AdminDashboard"];
+        /**
+         * @description * `NONE` - Không có bằng thuộc danh mục
+         *     * `ASSOCIATE` - Cao đẳng
+         *     * `BACHELOR` - Cử nhân / Kỹ sư
+         *     * `MASTER` - Thạc sĩ
+         *     * `PHD` - Tiến sĩ
+         * @enum {string}
+         */
+        DegreeLevelEnum: "NONE" | "ASSOCIATE" | "BACHELOR" | "MASTER" | "PHD";
         Education: {
             /** Format: uuid */
             readonly id: string;
             school_name: string;
             major?: string;
             degree?: string;
+            degree_level?: (components["schemas"]["DegreeLevelEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            is_completed?: boolean;
+            /** @description Ứng viên đã xác nhận dữ liệu học vấn này. */
+            is_verified?: boolean;
             /** Format: date */
             start_date?: string | null;
             /** Format: date */
             end_date?: string | null;
             description?: string;
-            readonly source: components["schemas"]["SourceF52Enum"];
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1185,6 +1234,10 @@ export interface components {
             school_name: string;
             major?: string;
             degree?: string;
+            degree_level?: (components["schemas"]["DegreeLevelEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            is_completed?: boolean;
+            /** @description Ứng viên đã xác nhận dữ liệu học vấn này. */
+            is_verified?: boolean;
             /** Format: date */
             start_date?: string | null;
             /** Format: date */
@@ -1209,9 +1262,11 @@ export interface components {
             readonly candidate_skills: components["schemas"]["CandidateSkill"][];
             readonly submitted_resume: components["schemas"]["Resume"] | null;
             readonly cover_letter: string;
-            readonly status: components["schemas"]["StatusCb1Enum"];
+            readonly status: components["schemas"]["Status11aEnum"];
             /** Format: double */
             readonly match_score: number | null;
+            readonly match_status: components["schemas"]["MatchStatusEnum"];
+            readonly match_error: string;
             readonly history: components["schemas"]["ApplicationStatusHistory"][];
             /** Format: date-time */
             readonly created_at: string;
@@ -1237,6 +1292,7 @@ export interface components {
             readonly workplace_type: components["schemas"]["WorkplaceTypeEnum"];
             readonly job_type: components["schemas"]["JobTypeEnum"];
             readonly experience_level: components["schemas"]["ExperienceLevelEnum"];
+            readonly required_education_level: (components["schemas"]["RequiredEducationLevelEnum"] | components["schemas"]["NullEnum"]) | null;
             readonly salary_min: number | null;
             readonly salary_max: number | null;
             readonly salary_negotiable: boolean;
@@ -1256,10 +1312,11 @@ export interface components {
             readonly updated_at: string;
             readonly application_count: number;
         };
-        /** @description Stable response shape while no AI analysis has been computed. */
-        EmptyApplicationAnalysis: {
+        /** @description Stable response shape while no match result has been computed. */
+        EmptyApplicationMatchResult: {
             /** Format: decimal */
             match_score: string | null;
+            status: string | null;
             /** Format: decimal */
             semantic_similarity_score: string | null;
             /** Format: decimal */
@@ -1270,17 +1327,40 @@ export interface components {
             education_score: string | null;
             matched_skills: string[];
             missing_skills: string[];
+            criteria_applicability: {
+                [key: string]: unknown;
+            };
+            original_weights: {
+                [key: string]: unknown;
+            };
+            normalized_weights: {
+                [key: string]: unknown;
+            };
+            missing_information: {
+                [key: string]: unknown;
+            };
+            rule_version: string;
+            embedding_metadata: {
+                [key: string]: unknown;
+            };
             /** Format: uuid */
             weight_config_id: string | null;
             weight_config_name: string | null;
             embedding_model_version: string;
-            candidate_embedding_version: number | null;
-            job_embedding_version: number | null;
             /** Format: date-time */
-            computed_at: string | null;
+            created_at: string | null;
             /** Format: date-time */
             snapshot_created_at: string | null;
         };
+        /**
+         * @description * `APPLIED` - Chờ xem xét
+         *     * `SHORTLISTED` - Đã qua vòng xem xét
+         *     * `INTERVIEWED` - Phỏng vấn
+         *     * `REJECTED` - Từ chối
+         *     * `HIRED` - Đã tuyển dụng
+         * @enum {string}
+         */
+        ExpectedStatusEnum: "APPLIED" | "SHORTLISTED" | "INTERVIEWED" | "REJECTED" | "HIRED";
         Experience: {
             /** Format: uuid */
             readonly id: string;
@@ -1292,7 +1372,6 @@ export interface components {
             end_date?: string | null;
             is_current?: boolean;
             description?: string;
-            readonly source: components["schemas"]["SourceF52Enum"];
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1316,6 +1395,15 @@ export interface components {
             is_current?: boolean;
             description?: string;
         };
+        /**
+         * @description * `APPLIED` - Chờ xem xét
+         *     * `SHORTLISTED` - Đã qua vòng xem xét
+         *     * `INTERVIEWED` - Phỏng vấn
+         *     * `REJECTED` - Từ chối
+         *     * `HIRED` - Đã tuyển dụng
+         * @enum {string}
+         */
+        FromStatusEnum: "APPLIED" | "SHORTLISTED" | "INTERVIEWED" | "REJECTED" | "HIRED";
         /**
          * @description * `MALE` - Nam
          *     * `FEMALE` - Nữ
@@ -1376,6 +1464,7 @@ export interface components {
             /** @default FULL_TIME */
             job_type: components["schemas"]["JobTypeEnum"];
             experience_level?: components["schemas"]["ExperienceLevelEnum"] | components["schemas"]["BlankEnum"];
+            required_education_level?: (components["schemas"]["RequiredEducationLevelEnum"] | components["schemas"]["NullEnum"]) | null;
             salary_min?: number | null;
             salary_max?: number | null;
             /** @default false */
@@ -1385,6 +1474,7 @@ export interface components {
             skills?: string[];
             readonly required_skills: string[];
             readonly unmatched_skills: string[];
+            readonly resolved_skills: components["schemas"]["ParsedSkill"][];
         };
         JobDescriptionUploadRequest: {
             /** Format: binary */
@@ -1401,6 +1491,7 @@ export interface components {
             readonly workplace_type: components["schemas"]["WorkplaceTypeEnum"];
             readonly job_type: components["schemas"]["JobTypeEnum"];
             readonly experience_level: components["schemas"]["ExperienceLevelEnum"];
+            readonly required_education_level: (components["schemas"]["RequiredEducationLevelEnum"] | components["schemas"]["NullEnum"]) | null;
             readonly salary_min: number | null;
             readonly salary_max: number | null;
             readonly salary_negotiable: boolean;
@@ -1427,8 +1518,6 @@ export interface components {
             readonly skill_name: string;
             /** @description False = 'nice to have' */
             readonly is_required: boolean;
-            /** Format: decimal */
-            readonly min_years: string | null;
         };
         /**
          * @description * `FULL_TIME` - Toàn thời gian
@@ -1447,6 +1536,7 @@ export interface components {
             workplace_type?: components["schemas"]["WorkplaceTypeEnum"];
             job_type?: components["schemas"]["JobTypeEnum"];
             experience_level?: components["schemas"]["ExperienceLevelEnum"] | components["schemas"]["BlankEnum"];
+            required_education_level?: (components["schemas"]["RequiredEducationLevelEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
             salary_min?: number | null;
             salary_max?: number | null;
             salary_negotiable?: boolean;
@@ -1459,20 +1549,21 @@ export interface components {
             jd_import_id?: string;
         };
         /**
-         * @description * `BASIC` - Cơ bản
-         *     * `INTERMEDIATE` - Trung bình
-         *     * `ADVANCED` - Nâng cao
-         *     * `EXPERT` - Chuyên gia
-         * @enum {string}
-         */
-        LevelEnum: "BASIC" | "INTERMEDIATE" | "ADVANCED" | "EXPERT";
-        /**
          * @description * `Hồ Chí Minh` - Hồ Chí Minh
          *     * `Hà Nội` - Hà Nội
          *     * `Đà Nẵng` - Đà Nẵng
          * @enum {string}
          */
         LocationEnum: "Hồ Chí Minh" | "Hà Nội" | "Đà Nẵng";
+        /**
+         * @description * `PENDING` - Đang chờ tính điểm
+         *     * `PROCESSING` - Đang tính điểm
+         *     * `COMPLETED` - Đã tính điểm
+         *     * `FAILED` - Tính điểm thất bại
+         *     * `INSUFFICIENT` - Chưa đủ điều kiện tính điểm
+         * @enum {string}
+         */
+        MatchStatusEnum: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "INSUFFICIENT";
         MatchingWeightConfig: {
             /** Format: uuid */
             readonly id: string;
@@ -1486,6 +1577,8 @@ export interface components {
             weight_experience_match?: string;
             /** Format: decimal */
             weight_education_match?: string;
+            /** Format: decimal */
+            required_skill_multiplier?: string;
             /** Format: uuid */
             readonly updated_by: string | null;
             /** Format: date-time */
@@ -1504,7 +1597,19 @@ export interface components {
             weight_experience_match?: string;
             /** Format: decimal */
             weight_education_match?: string;
+            /** Format: decimal */
+            required_skill_multiplier?: string;
         };
+        /**
+         * @description * `NOT_REQUESTED` - Không yêu cầu
+         *     * `PENDING` - Đang chờ gửi
+         *     * `SENT` - Đã gửi
+         *     * `FAILED` - Gửi thất bại
+         * @enum {string}
+         */
+        NotificationStatusEnum: "NOT_REQUESTED" | "PENDING" | "SENT" | "FAILED";
+        /** @enum {unknown} */
+        NullEnum: null;
         PaginatedCandidateApplicationReadList: {
             /** @example 123 */
             count: number;
@@ -1655,6 +1760,22 @@ export interface components {
             previous?: string | null;
             results: components["schemas"]["User"][];
         };
+        /**
+         * @description * `PENDING` - Đang xử lý
+         *     * `PROCESSING` - Đang phân tích
+         *     * `SUCCESS` - Thành công
+         *     * `FAILED` - Thất bại
+         *     * `CONSUMED` - Đã dùng để cập nhật hồ sơ
+         * @enum {string}
+         */
+        ParseStatusEnum: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "CONSUMED";
+        ParsedSkill: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            readonly status: components["schemas"]["Status5c3Enum"];
+            readonly is_required: boolean;
+        };
         PatchedCandidateProfileUpdateRequest: {
             full_name?: string;
             phone?: string;
@@ -1668,16 +1789,13 @@ export interface components {
             headline?: string;
             summary?: string;
             desired_position?: string;
-            desired_salary_min?: number | null;
             /** @description Cho phép NTD tìm thấy qua Gợi ý ứng viên phù hợp */
             is_public?: boolean;
         };
         PatchedCandidateSkillRequest: {
             /** Format: uuid */
             skill?: string;
-            level?: components["schemas"]["LevelEnum"] | components["schemas"]["BlankEnum"];
-            /** Format: decimal */
-            years_of_experience?: string | null;
+            years_of_experience?: number | null;
         };
         /** @description Các field employer được phép tự cập nhật. status do service/admin quản lý. */
         PatchedCompanyWriteRequest: {
@@ -1694,6 +1812,10 @@ export interface components {
             school_name?: string;
             major?: string;
             degree?: string;
+            degree_level?: (components["schemas"]["DegreeLevelEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
+            is_completed?: boolean;
+            /** @description Ứng viên đã xác nhận dữ liệu học vấn này. */
+            is_verified?: boolean;
             /** Format: date */
             start_date?: string | null;
             /** Format: date */
@@ -1720,6 +1842,7 @@ export interface components {
             workplace_type?: components["schemas"]["WorkplaceTypeEnum"];
             job_type?: components["schemas"]["JobTypeEnum"];
             experience_level?: components["schemas"]["ExperienceLevelEnum"] | components["schemas"]["BlankEnum"];
+            required_education_level?: (components["schemas"]["RequiredEducationLevelEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"]) | null;
             salary_min?: number | null;
             salary_max?: number | null;
             salary_negotiable?: boolean;
@@ -1742,6 +1865,8 @@ export interface components {
             weight_experience_match?: string;
             /** Format: decimal */
             weight_education_match?: string;
+            /** Format: decimal */
+            required_skill_multiplier?: string;
         };
         PatchedSkillWriteRequest: {
             name?: string;
@@ -1750,6 +1875,12 @@ export interface components {
             /** @description Admin tạm ẩn 1 skill đã APPROVED (khác với status, dùng khi cần deprecate). */
             is_active?: boolean;
             aliases?: string[];
+        };
+        PrivateFileURL: {
+            /** Format: uri */
+            url: string;
+            /** Format: date-time */
+            expires_at: string;
         };
         RecommendedCandidate: {
             /** Format: uuid */
@@ -1772,6 +1903,7 @@ export interface components {
             readonly workplace_type: components["schemas"]["WorkplaceTypeEnum"];
             readonly job_type: components["schemas"]["JobTypeEnum"];
             readonly experience_level: components["schemas"]["ExperienceLevelEnum"];
+            readonly required_education_level: (components["schemas"]["RequiredEducationLevelEnum"] | components["schemas"]["NullEnum"]) | null;
             readonly salary_min: number | null;
             readonly salary_max: number | null;
             readonly salary_negotiable: boolean;
@@ -1804,8 +1936,6 @@ export interface components {
             first_name?: string;
             /** Họ */
             last_name?: string;
-            /** @description Số điện thoại liên hệ. */
-            phone?: string;
         };
         RegisterRequest: {
             /** Format: email */
@@ -1822,18 +1952,20 @@ export interface components {
             first_name?: string;
             /** Họ */
             last_name?: string;
-            /** @description Số điện thoại liên hệ. */
-            phone?: string;
             company_name?: string;
         };
         /**
-         * @description Một yêu cầu kỹ năng của tin tuyển dụng — nhất quán với bên Ứng viên:
-         *     nhận UUID hoặc tên thô (tên lạ tự tạo PENDING), kèm yêu cầu số năm.
+         * @description * `NONE` - Không có bằng thuộc danh mục
+         *     * `ASSOCIATE` - Cao đẳng
+         *     * `BACHELOR` - Cử nhân / Kỹ sư
+         *     * `MASTER` - Thạc sĩ
+         *     * `PHD` - Tiến sĩ
+         * @enum {string}
          */
+        RequiredEducationLevelEnum: "NONE" | "ASSOCIATE" | "BACHELOR" | "MASTER" | "PHD";
+        /** @description A required or preferred normalized skill for a job post. */
         RequiredSkillSpecRequest: {
             skill: string;
-            /** Format: decimal */
-            min_years?: string | null;
             /** @default true */
             is_required: boolean;
         };
@@ -1842,12 +1974,8 @@ export interface components {
             readonly id: string;
             readonly original_filename: string;
             readonly file_size_bytes: number | null;
-            readonly parse_status: components["schemas"]["ResumeParseStatusEnum"];
-            readonly parsed_data: components["schemas"]["ResumeParsedData"] | null;
             /** @description CV chính hiện dùng để ứng tuyển mặc định. */
             readonly is_primary: boolean;
-            /** Format: uri */
-            readonly file_url: string;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1859,39 +1987,21 @@ export interface components {
             readonly id: string;
             readonly original_filename: string;
             readonly file_size_bytes: number | null;
-            readonly parse_status: components["schemas"]["ResumeImportParseStatusEnum"];
+            readonly parse_status: components["schemas"]["ParseStatusEnum"];
             readonly parse_error_message: string;
             readonly parsed_data: components["schemas"]["ResumeParsedData"] | null;
             /** Format: date-time */
             readonly expires_at: string | null;
-            /** Format: uri */
-            readonly file_url: string;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
             readonly updated_at: string;
         };
-        /**
-         * @description * `PENDING` - Đang xử lý
-         *     * `SUCCESS` - Thành công
-         *     * `FAILED` - Thất bại
-         *     * `CONSUMED` - Đã dùng để cập nhật hồ sơ
-         * @enum {string}
-         */
-        ResumeImportParseStatusEnum: "PENDING" | "SUCCESS" | "FAILED" | "CONSUMED";
         /** @description Serializer for uploading a CV to be parsed asynchronously (ResumeImport). */
         ResumeImportUploadRequest: {
             /** Format: binary */
             file: string;
         };
-        /**
-         * @description * `PENDING` - Đang xử lý
-         *     * `SUCCESS` - Thành công
-         *     * `FAILED` - Thất bại
-         *     * `SKIPPED` - Bỏ qua
-         * @enum {string}
-         */
-        ResumeParseStatusEnum: "PENDING" | "SUCCESS" | "FAILED" | "SKIPPED";
         /** @description Validated CV data exposed for user review before profile save. */
         ResumeParsedData: {
             full_name?: string;
@@ -1943,8 +2053,7 @@ export interface components {
             readonly category: string | null;
             /** @default  */
             readonly category_name: string;
-            readonly status: components["schemas"]["SkillReadStatusEnum"];
-            readonly source: components["schemas"]["SkillReadSourceEnum"];
+            readonly status: components["schemas"]["Status5c3Enum"];
             /** Format: uuid */
             readonly merged_into: string | null;
             /** @default  */
@@ -1961,21 +2070,6 @@ export interface components {
             /** Format: date-time */
             readonly updated_at: string;
         };
-        /**
-         * @description * `CV_PARSING` - AI phát hiện khi đọc CV
-         *     * `JD_PARSING` - AI phát hiện khi đọc JD
-         *     * `ADMIN_MANUAL` - Admin tạo tay
-         * @enum {string}
-         */
-        SkillReadSourceEnum: "CV_PARSING" | "JD_PARSING" | "ADMIN_MANUAL";
-        /**
-         * @description * `PENDING` - Chờ duyệt
-         *     * `APPROVED` - Đã duyệt
-         *     * `REJECTED` - Từ chối
-         *     * `MERGED` - Đã gộp vào skill khác
-         * @enum {string}
-         */
-        SkillReadStatusEnum: "PENDING" | "APPROVED" | "REJECTED" | "MERGED";
         SkillWriteRequest: {
             name: string;
             /** Format: uuid */
@@ -1985,11 +2079,22 @@ export interface components {
             aliases?: string[];
         };
         /**
-         * @description * `AI_EXTRACTED` - AI trích xuất
-         *     * `MANUAL` - Nhập tay
+         * @description * `APPLIED` - Chờ xem xét
+         *     * `SHORTLISTED` - Đã qua vòng xem xét
+         *     * `INTERVIEWED` - Phỏng vấn
+         *     * `REJECTED` - Từ chối
+         *     * `HIRED` - Đã tuyển dụng
          * @enum {string}
          */
-        SourceF52Enum: "AI_EXTRACTED" | "MANUAL";
+        Status11aEnum: "APPLIED" | "SHORTLISTED" | "INTERVIEWED" | "REJECTED" | "HIRED";
+        /**
+         * @description * `PENDING` - Chờ duyệt
+         *     * `APPROVED` - Đã duyệt
+         *     * `REJECTED` - Từ chối
+         *     * `MERGED` - Đã gộp vào skill khác
+         * @enum {string}
+         */
+        Status5c3Enum: "PENDING" | "APPROVED" | "REJECTED" | "MERGED";
         /**
          * @description * `DRAFT` - Nháp
          *     * `ACTIVE` - Đang tuyển
@@ -1999,14 +2104,14 @@ export interface components {
          */
         Status864Enum: "DRAFT" | "ACTIVE" | "CLOSED" | "EXPIRED";
         /**
-         * @description * `APPLIED` - Đã ứng tuyển
-         *     * `SHORTLISTED` - Đã chọn lọc
-         *     * `INTERVIEWED` - Đã phỏng vấn
+         * @description * `APPLIED` - Chờ xem xét
+         *     * `SHORTLISTED` - Đã qua vòng xem xét
+         *     * `INTERVIEWED` - Phỏng vấn
          *     * `REJECTED` - Từ chối
-         *     * `HIRED` - Tuyển dụng
+         *     * `HIRED` - Đã tuyển dụng
          * @enum {string}
          */
-        StatusCb1Enum: "APPLIED" | "SHORTLISTED" | "INTERVIEWED" | "REJECTED" | "HIRED";
+        ToStatusEnum: "APPLIED" | "SHORTLISTED" | "INTERVIEWED" | "REJECTED" | "HIRED";
         TokenObtainPair: {
             readonly access: string;
             readonly refresh: string;
@@ -2034,8 +2139,6 @@ export interface components {
             readonly first_name: string;
             /** Họ */
             readonly last_name: string;
-            /** @description Số điện thoại liên hệ. */
-            readonly phone: string;
             /**
              * Kích hoạt
              * @description Chỉ định xem người dùng này phải được coi là đang hoạt động. Bạn nên bỏ chọn này thay vì xóa tài khoản.
@@ -2287,7 +2390,7 @@ export interface operations {
             };
         };
     };
-    applications_analysis_retrieve: {
+    applications_match_result_retrieve: {
         parameters: {
             query?: never;
             header?: never;
@@ -2304,7 +2407,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EmptyApplicationAnalysis"];
+                    "application/json": components["schemas"]["EmptyApplicationMatchResult"];
+                };
+            };
+        };
+    };
+    applications_resume_download_url_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this job application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivateFileURL"];
                 };
             };
         };
@@ -2732,6 +2857,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    candidates_me_resumes_download_url_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivateFileURL"];
+                };
             };
         };
     };

@@ -8,8 +8,9 @@ from uuid import UUID
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz
 
+from apps.core.qstash_client import publish_task
 from apps.skills.models import (
     CandidateSkill,
     MatchingWeightConfig,
@@ -24,7 +25,28 @@ WEIGHT_FIELDS = (
     "weight_skill_overlap",
     "weight_experience_match",
     "weight_education_match",
+    "required_skill_multiplier",
 )
+
+
+def _validate_weight_data(config, data):
+    from decimal import Decimal
+
+    weights = [
+        Decimal(str(data.get(field, getattr(config, field))))
+        for field in WEIGHT_FIELDS[:-1]
+    ]
+    multiplier = Decimal(str(
+        data.get("required_skill_multiplier", config.required_skill_multiplier)
+    ))
+    if any(not value.is_finite() or value < 0 for value in weights):
+        raise ValueError("Các trọng số phải hữu hạn và không âm.")
+    if sum(weights) != Decimal("1"):
+        raise ValueError("Tổng các trọng số phải bằng 1.0.")
+    if not multiplier.is_finite() or multiplier < 1:
+        raise ValueError("Hệ số kỹ năng bắt buộc phải hữu hạn và không nhỏ hơn 1.")
+
+
 FUZZY_SKILL_THRESHOLD = 90
 FUZZY_SKILL_MIN_LENGTH = 4
 
@@ -38,12 +60,11 @@ def is_savable_skill(skill: Skill) -> bool:
     )
 
 
-def resolve_savable_skill(value, source: str) -> Skill:
+def resolve_savable_skill(value) -> Skill:
     """Hàm resolve DUY NHẤT cho mọi luồng trích xuất (UC-01/UC-02).
 
-    Nhận Skill instance | UUID string | tên thô — ngữ cảnh chỉ khác tham số
-    ``source`` (CV_PARSING / JD_PARSING). Tên lạ chưa có trong danh mục sẽ
-    được tạo mới ở trạng thái PENDING chờ Admin duyệt (hậu điều kiện UC-03).
+    Nhận Skill instance | UUID string | tên thô. Tên lạ chưa có trong danh
+    mục sẽ được tạo mới ở trạng thái PENDING chờ Admin duyệt (hậu điều kiện UC-03).
     Raise ValueError nếu tham chiếu không hợp lệ hoặc skill bị cấm lưu.
     """
     if isinstance(value, Skill):
@@ -61,7 +82,7 @@ def resolve_savable_skill(value, source: str) -> Skill:
                 raise ValueError("Kỹ năng không hợp lệ hoặc chưa được duyệt.")
             skill = found.effective_skill
         else:
-            skill = resolve_extracted_skill(raw, source)
+            skill = resolve_extracted_skill(raw)
 
     if not is_savable_skill(skill):
         raise ValueError("Kỹ năng không hợp lệ hoặc chưa được duyệt.")
@@ -93,17 +114,15 @@ def _invalidate_linked_embeddings(candidate_ids, job_ids) -> None:
     )
 
     def enqueue():
-        from django_q.tasks import async_task
-
         for profile_id, version in candidate_versions:
-            async_task(
-                "apps.candidates.tasks.generate_candidate_embedding",
-                str(profile_id),
-                version,
+            publish_task(
+                "generate_candidate_embedding",
+                {"profile_id": str(profile_id), "profile_version": version},
             )
         for job_id, version in job_versions:
-            async_task(
-                "apps.jobs.tasks.generate_job_embedding", str(job_id), version
+            publish_task(
+                "generate_job_embedding",
+                {"job_id": str(job_id), "content_version": version},
             )
 
     transaction.on_commit(enqueue)
@@ -114,33 +133,39 @@ def _find_fuzzy_skill(normalized_name: str) -> Skill | None:
     if len(normalized_name) < FUZZY_SKILL_MIN_LENGTH:
         return None
 
-    choices = {}
-    for skill in Skill.objects.select_related("merged_into").all():
-        choices.setdefault(normalize_alias(skill.name), skill)
-    for alias in SkillAlias.objects.select_related("skill__merged_into").all():
-        choices.setdefault(alias.normalized_text, alias.skill)
+    candidates = {}
 
-    matches = process.extract(
-        normalized_name,
-        choices.keys(),
-        scorer=fuzz.ratio,
-        score_cutoff=FUZZY_SKILL_THRESHOLD,
-        limit=2,
+    def add_candidate(candidate_text: str, candidate_skill: Skill) -> None:
+        effective_skill = candidate_skill.effective_skill
+        if not is_savable_skill(effective_skill):
+            return
+
+        score = fuzz.ratio(normalized_name, candidate_text)
+        if score < FUZZY_SKILL_THRESHOLD:
+            return
+
+        current = candidates.get(effective_skill.pk)
+        if current is None or score > current[0]:
+            candidates[effective_skill.pk] = (score, effective_skill)
+
+    for skill in Skill.objects.select_related("merged_into").all():
+        add_candidate(normalize_alias(skill.name), skill)
+    for alias in SkillAlias.objects.select_related("skill__merged_into").all():
+        add_candidate(alias.normalized_text, alias.skill)
+
+    ranked = sorted(
+        candidates.values(), key=lambda candidate: candidate[0], reverse=True
     )
-    if not matches:
+    if not ranked:
         return None
 
-    best_key, best_score, _ = matches[0]
-    best_skill = choices[best_key].effective_skill
-    if len(matches) > 1:
-        second_key, second_score, _ = matches[1]
-        second_skill = choices[second_key].effective_skill
-        if second_skill.pk != best_skill.pk and best_score - second_score < 3:
-            return None
+    best_score, best_skill = ranked[0]
+    if len(ranked) > 1 and best_score - ranked[1][0] < 3:
+        return None
     return best_skill
 
 
-def resolve_extracted_skill(name: str, source: str) -> Skill:
+def resolve_extracted_skill(name: str) -> Skill:
     """Resolve exact/fuzzy taxonomy aliases or create a pending AI skill."""
     cleaned_name = name.strip()
     normalized = normalize_alias(cleaned_name)
@@ -148,23 +173,29 @@ def resolve_extracted_skill(name: str, source: str) -> Skill:
         normalized_text=normalized
     ).first()
     if alias is not None:
-        return alias.skill.effective_skill
+        effective_skill = alias.skill.effective_skill
+        if is_savable_skill(effective_skill):
+            return effective_skill
 
     skill = Skill.objects.select_related("merged_into").filter(
         name__iexact=cleaned_name
     ).first()
     if skill is not None:
-        return skill.effective_skill
+        effective_skill = skill.effective_skill
+        if is_savable_skill(effective_skill):
+            return effective_skill
 
     fuzzy_skill = _find_fuzzy_skill(normalized)
     if fuzzy_skill is not None:
         return fuzzy_skill
 
+    if skill is not None:
+        raise ValueError("Kỹ năng không hợp lệ hoặc chưa được duyệt.")
+
     return Skill.objects.create(
         name=cleaned_name,
         slug=make_unique_slug(cleaned_name),
         status=Skill.Status.PENDING,
-        source=source,
     )
 
 
@@ -219,7 +250,6 @@ def create_skill(user, name: str, category=None, aliases=None, is_active=True) -
         category=category,
         is_active=is_active,
         status=Skill.Status.APPROVED,
-        source=Skill.Source.ADMIN_MANUAL,
         reviewed_by=user,
         reviewed_at=timezone.now(),
     )
@@ -333,11 +363,25 @@ def create_category(name: str) -> SkillCategory:
 
 
 @transaction.atomic
+def create_weight_config(user, data: dict) -> MatchingWeightConfig:
+    configs = list(MatchingWeightConfig.objects.select_for_update().order_by("pk"))
+    probe = MatchingWeightConfig()
+    _validate_weight_data(probe, data)
+    if data.get("is_active"):
+        for other in configs:
+            if other.is_active:
+                other.is_active = False
+                other.save(update_fields=["is_active", "updated_at"])
+    return MatchingWeightConfig.objects.create(updated_by=user, **data)
+
+
+@transaction.atomic
 def update_weight_config(config: MatchingWeightConfig, user, data: dict) -> MatchingWeightConfig:
     configs = list(
         MatchingWeightConfig.objects.select_for_update().order_by("pk")
     )
     config = next(item for item in configs if item.pk == config.pk)
+    _validate_weight_data(config, data)
     for field in (*WEIGHT_FIELDS, "name", "is_active"):
         if field in data:
             setattr(config, field, data[field])

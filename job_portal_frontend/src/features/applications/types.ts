@@ -9,7 +9,9 @@ export type ApplicationTransitionPayload =
 export type ApplicationCreatePayload =
   components["schemas"]["ApplicationCreateRequest"];
 export type StatusHistoryDto = components["schemas"]["ApplicationStatusHistory"];
-export type SubmittedResumeDto = components["schemas"]["Resume"];
 export type CandidateApplicationDto = components["schemas"]["CandidateApplicationRead"];
 export type EmployerApplicationDto = components["schemas"]["EmployerApplicationRead"];
-export type AnalysisDto = components["schemas"]["EmptyApplicationAnalysis"];
+export type ApplicationMatchResultDto =
+  components["schemas"]["EmptyApplicationMatchResult"];
+export type MatchStatus = components["schemas"]["MatchStatusEnum"];
+export type PrivateFileURLDto = components["schemas"]["PrivateFileURL"];

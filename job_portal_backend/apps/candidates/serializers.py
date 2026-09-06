@@ -3,7 +3,6 @@ from pathlib import Path
 
 from django.conf import settings
 from rest_framework import serializers
-from drf_spectacular.utils import extend_schema_field
 
 from apps.candidates.models import CandidateProfile, Education, Experience, Resume, ResumeImport
 from apps.skills.models import CandidateSkill, Skill
@@ -14,10 +13,11 @@ class EducationSerializer(serializers.ModelSerializer):
         model = Education
         fields = [
             "id", "school_name", "major", "degree",
-            "start_date", "end_date", "description", "source",
+            "degree_level", "is_completed", "is_verified",
+            "start_date", "end_date", "description",
             "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "source", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate(self, attrs):
         """Kiểm tra khoảng thời gian bằng cả dữ liệu cũ khi PATCH."""
@@ -27,6 +27,17 @@ class EducationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"end_date": "end_date phải sau hoặc bằng start_date."}
             )
+        is_completed = attrs.get("is_completed", getattr(self.instance, "is_completed", False))
+        is_verified = attrs.get("is_verified", getattr(self.instance, "is_verified", False))
+        degree_level = attrs.get("degree_level", getattr(self.instance, "degree_level", None))
+        if is_verified and not is_completed:
+            raise serializers.ValidationError(
+                {"is_verified": "Chỉ xác nhận bằng cấp đã hoàn thành."}
+            )
+        if is_verified and degree_level is None:
+            raise serializers.ValidationError(
+                {"degree_level": "Cần chọn bậc học vấn trước khi xác nhận."}
+            )
         return attrs
 
 
@@ -35,13 +46,15 @@ class ExperienceSerializer(serializers.ModelSerializer):
         model = Experience
         fields = [
             "id", "company_name", "position",
-            "start_date", "end_date", "is_current", "description", "source",
+            "start_date", "end_date", "is_current", "description",
             "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "source", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate(self, attrs):
         """Giữ ngày làm việc nhất quán khi tạo mới và cập nhật một phần."""
+        from django.utils import timezone
+
         start_date = attrs.get("start_date", getattr(self.instance, "start_date", None))
         end_date = attrs.get("end_date", getattr(self.instance, "end_date", None))
         is_current = attrs.get("is_current", getattr(self.instance, "is_current", False))
@@ -49,6 +62,11 @@ class ExperienceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"end_date": "Không đặt end_date khi đang làm tại công ty (is_current)."})
         if start_date and end_date and start_date > end_date:
             raise serializers.ValidationError({"end_date": "end_date phải sau start_date."})
+        today = timezone.localdate()
+        if start_date and start_date > today:
+            raise serializers.ValidationError({"start_date": "Ngày bắt đầu không được ở tương lai."})
+        if end_date and end_date > today:
+            raise serializers.ValidationError({"end_date": "Ngày kết thúc không được ở tương lai."})
         return attrs
 
 
@@ -60,12 +78,11 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
     class Meta:
         model = CandidateSkill
         fields = [
-            "id", "skill", "skill_name", "skill_status", "level",
-            "years_of_experience", "source",
+            "id", "skill", "skill_name", "skill_status", "years_of_experience",
             "created_at", "updated_at",
         ]
         read_only_fields = [
-            "id", "skill_name", "skill_status", "source",
+            "id", "skill_name", "skill_status",
             "created_at", "updated_at",
         ]
 
@@ -96,7 +113,6 @@ class ResumeParsedDataSerializer(serializers.Serializer):
 class ResumeImportSerializer(serializers.ModelSerializer):
     """Serializer for ResumeImport - read-only preview after AI parsing."""
 
-    file_url = serializers.SerializerMethodField()
     parsed_data = ResumeParsedDataSerializer(read_only=True, allow_null=True)
 
     class Meta:
@@ -104,18 +120,10 @@ class ResumeImportSerializer(serializers.ModelSerializer):
         fields = [
             "id", "original_filename", "file_size_bytes",
             "parse_status", "parse_error_message", "parsed_data",
-            "expires_at", "file_url",
+            "expires_at",
             "created_at", "updated_at",
         ]
         read_only_fields = fields
-
-    @extend_schema_field(serializers.URLField())
-    def get_file_url(self, obj):
-        request = self.context.get("request")
-        url = obj.file.url
-        if request is not None:
-            return request.build_absolute_uri(url)
-        return url
 
 
 class ResumeImportUploadSerializer(serializers.Serializer):
@@ -139,30 +147,23 @@ class ResumeImportUploadSerializer(serializers.Serializer):
 
 
 class ResumeSerializer(serializers.ModelSerializer):
-    file_url = serializers.SerializerMethodField()
-    parsed_data = ResumeParsedDataSerializer(read_only=True, allow_null=True)
-
     class Meta:
         model = Resume
         fields = [
             "id", "original_filename", "file_size_bytes",
-            "parse_status", "parsed_data", "is_primary", "file_url",
+            "is_primary",
             "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "original_filename", "file_size_bytes",
-            "parse_status", "parsed_data", "is_primary", "file_url",
+            "is_primary",
             "created_at", "updated_at",
         ]
 
-    @extend_schema_field(serializers.URLField())
-    def get_file_url(self, obj):
-        """Trả URL tuyệt đối khi serializer được gọi trong request API."""
-        request = self.context.get("request")
-        url = obj.file.url
-        if request is not None:
-            return request.build_absolute_uri(url)
-        return url
+
+class PrivateFileURLSerializer(serializers.Serializer):
+    url = serializers.URLField()
+    expires_at = serializers.DateTimeField()
 
 
 class CandidateProfileReadSerializer(serializers.ModelSerializer):
@@ -178,7 +179,7 @@ class CandidateProfileReadSerializer(serializers.ModelSerializer):
         fields = [
             "id", "email", "full_name", "phone", "dob", "gender",
             "address", "avatar_url", "headline", "summary",
-            "desired_position", "desired_salary_min", "is_public",
+            "desired_position", "is_public",
             "profile_version", "embedding_version", "embedding_is_stale",
             "embedding_updated_at",
             "educations", "experiences", "skills", "resumes",
@@ -193,7 +194,7 @@ class CandidateProfileUpdateSerializer(serializers.ModelSerializer):
         fields = [
             "full_name", "phone", "dob", "gender", "address",
             "avatar_url", "headline", "summary",
-            "desired_position", "desired_salary_min", "is_public",
+            "desired_position", "is_public",
         ]
 
     def validate_dob(self, value):
@@ -209,14 +210,10 @@ class CandidateSkillSaveSerializer(serializers.Serializer):
     new raw name that will be normalized through the taxonomy on save."""
 
     skill = serializers.CharField(max_length=150)
-    level = serializers.ChoiceField(
-        choices=CandidateSkill.Level.choices,
+    years_of_experience = serializers.IntegerField(
         required=False,
-        allow_blank=True,
-        default="",
-    )
-    years_of_experience = serializers.DecimalField(
-        max_digits=4, decimal_places=1, required=False, allow_null=True
+        allow_null=True,
+        min_value=0,
     )
 
 

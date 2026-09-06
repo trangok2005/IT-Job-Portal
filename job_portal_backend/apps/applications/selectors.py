@@ -7,12 +7,12 @@ from apps.applications.models import JobApplication
 def _base_queryset():
     """Nạp sẵn dữ liệu cần cho serializer để tránh truy vấn N+1."""
     return (
-        JobApplication.objects.filter(is_active=True)
+        JobApplication.objects.all()
         .select_related(
             "job__company",
             "candidate__user",
             "resume",
-            "ai_analysis",
+            "match_result",
         )
         .prefetch_related(
             "status_history__changed_by",
@@ -43,9 +43,9 @@ def get_applications_for_user(
         qs = qs.filter(status=status)
     qs = qs.distinct()
     if ordering == "match_score":
-        return qs.order_by(F("ai_analysis__match_score").asc(nulls_last=True))
+        return qs.order_by(F("match_result__match_score").asc(nulls_last=True))
     if ordering == "-match_score":
-        return qs.order_by(F("ai_analysis__match_score").desc(nulls_last=True))
+        return qs.order_by(F("match_result__match_score").desc(nulls_last=True))
     return qs.order_by(ordering)
 
 

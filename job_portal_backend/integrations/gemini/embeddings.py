@@ -5,8 +5,9 @@ from numbers import Real
 from django.conf import settings
 
 
-EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_MODEL = settings.GEMINI_EMBEDDING_MODEL
 EMBEDDING_DIMENSIONS = 768
+EMBEDDING_CONTENT_VERSION = "matching-text-v1"
 
 
 class TaskType:
@@ -48,7 +49,10 @@ def _get_client():
 
 
 def current_embedding_signature(task_type: str) -> str:
-    return f"{EMBEDDING_MODEL}:{EMBEDDING_DIMENSIONS}:{task_type}"
+    return (
+        f"{EMBEDDING_MODEL}:{EMBEDDING_DIMENSIONS}:"
+        f"{task_type}:{EMBEDDING_CONTENT_VERSION}"
+    )
 
 
 def current_candidate_embedding_signature() -> str:

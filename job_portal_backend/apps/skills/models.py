@@ -13,6 +13,7 @@ KHÔNG để ở file rời (vd skills/candidate_skill.py) nếu không tự imp
 trong models.py hoặc khai báo lại default_app_config.
 """
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 
 from apps.core.models import BaseModel, TimeStampedModel, UUIDModel
@@ -37,11 +38,6 @@ class Skill(BaseModel):
         REJECTED = "REJECTED", "Từ chối"
         MERGED = "MERGED", "Đã gộp vào skill khác"
 
-    class Source(models.TextChoices):
-        CV_PARSING = "CV_PARSING", "AI phát hiện khi đọc CV"
-        JD_PARSING = "JD_PARSING", "AI phát hiện khi đọc JD"
-        ADMIN_MANUAL = "ADMIN_MANUAL", "Admin tạo tay"
-
     name = models.CharField(max_length=150, unique=True)
     slug = models.SlugField(max_length=170, unique=True)
     category = models.ForeignKey(
@@ -56,8 +52,6 @@ class Skill(BaseModel):
     # --- Non-blocking taxonomy: skill lạ được tạo NGAY ở trạng thái PENDING,
     # không chặn luồng lưu hồ sơ/JD. Admin duyệt sau theo lô. ---
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.APPROVED)
-    source = models.CharField(max_length=20, choices=Source.choices, default=Source.ADMIN_MANUAL)
-
     # --- Gộp trùng: khi Admin thấy 2 skill thực ra là 1 (VD "ReactJS" và
     # "React"), KHÔNG xoá skill này (sẽ cascade-xoá luôn mọi
     # CandidateSkill/JobSkill đã trỏ vào nó, làm mất dữ liệu đã hiển thị
@@ -135,10 +129,16 @@ class MatchingWeightConfig(BaseModel):
     is_active = models.BooleanField(default=False)
 
     # Weights should sum to 1.0 (validated at the serializer/service layer).
-    weight_semantic_similarity = models.DecimalField(max_digits=4, decimal_places=3, default=0.600)
-    weight_skill_overlap = models.DecimalField(max_digits=4, decimal_places=3, default=0.250)
-    weight_experience_match = models.DecimalField(max_digits=4, decimal_places=3, default=0.100)
+    weight_semantic_similarity = models.DecimalField(max_digits=4, decimal_places=3, default=0.350)
+    weight_skill_overlap = models.DecimalField(max_digits=4, decimal_places=3, default=0.400)
+    weight_experience_match = models.DecimalField(max_digits=4, decimal_places=3, default=0.200)
     weight_education_match = models.DecimalField(max_digits=4, decimal_places=3, default=0.050)
+    required_skill_multiplier = models.DecimalField(
+        max_digits=6,
+        decimal_places=3,
+        default=2,
+        validators=[MinValueValidator(1)],
+    )
 
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
@@ -154,6 +154,23 @@ class MatchingWeightConfig(BaseModel):
                 condition=models.Q(is_active=True),
                 name="unique_active_matching_weight_config",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(weight_semantic_similarity__gte=0)
+                    & models.Q(weight_skill_overlap__gte=0)
+                    & models.Q(weight_experience_match__gte=0)
+                    & models.Q(weight_education_match__gte=0)
+                    & models.Q(weight_semantic_similarity__lte=1)
+                    & models.Q(weight_skill_overlap__lte=1)
+                    & models.Q(weight_experience_match__lte=1)
+                    & models.Q(weight_education_match__lte=1)
+                ),
+                name="matching_weights_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(required_skill_multiplier__gte=1),
+                name="required_skill_multiplier_gte_one",
+            ),
         ]
 
     def __str__(self):
@@ -161,29 +178,13 @@ class MatchingWeightConfig(BaseModel):
 
 
 class CandidateSkill(UUIDModel, TimeStampedModel):
-    """UC-01: skill của ứng viên, có thể do AI trích xuất từ CV hoặc do
-    ứng viên tự thêm/sửa. Import CandidateProfile cục bộ (bên trong hàm
-    không cần vì candidates không import skills -> không có vòng lặp),
-    nhưng vẫn đặt import ở đầu module cho rõ ràng.
-    """
-
-    class Level(models.TextChoices):
-        BASIC = "BASIC", "Cơ bản"
-        INTERMEDIATE = "INTERMEDIATE", "Trung bình"
-        ADVANCED = "ADVANCED", "Nâng cao"
-        EXPERT = "EXPERT", "Chuyên gia"
-
-    class Source(models.TextChoices):
-        AI_EXTRACTED = "AI_EXTRACTED", "AI trích xuất từ CV"
-        MANUAL = "MANUAL", "Ứng viên tự thêm"
+    """Normalized skill selected for a candidate profile."""
 
     candidate = models.ForeignKey(
         "candidates.CandidateProfile", on_delete=models.CASCADE, related_name="candidate_skills",
     )
     skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name="candidate_links")
-    level = models.CharField(max_length=20, choices=Level.choices, blank=True)
-    years_of_experience = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
-    source = models.CharField(max_length=20, choices=Source.choices, default=Source.MANUAL)
+    years_of_experience = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "candidate_skills"

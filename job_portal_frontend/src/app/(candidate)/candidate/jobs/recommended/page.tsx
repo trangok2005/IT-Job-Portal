@@ -1,7 +1,5 @@
-import { RecommendedJobs } from "@/features/jobs/components/recommended-jobs";
-
-export const metadata = { title: "Việc làm phù hợp | IT Job Portal" };
+import { redirect } from "next/navigation";
 
 export default function RecommendedJobsPage() {
-  return <RecommendedJobs />;
+  redirect("/jobs?tab=recommended");
 }

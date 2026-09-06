@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+import math
 import re
 import unicodedata
 
@@ -12,14 +13,16 @@ class MatchingWeights:
     skill: Decimal
     experience: Decimal
     education: Decimal
+    required_skill_multiplier: Decimal = Decimal("2.000")
 
 
-# Used when an installation has no active MatchingWeightConfig row.
+# Defaults for newly provisioned installations; scoring still requires an active row.
 DEFAULT_MATCHING_WEIGHTS = MatchingWeights(
-    semantic=Decimal("0.600"),
-    skill=Decimal("0.250"),
-    experience=Decimal("0.100"),
+    semantic=Decimal("0.350"),
+    skill=Decimal("0.400"),
+    experience=Decimal("0.200"),
     education=Decimal("0.050"),
+    required_skill_multiplier=Decimal("2.000"),
 )
 
 EXPERIENCE_YEARS_REQUIRED = {
@@ -90,21 +93,124 @@ def required_degree_level(requirements: str) -> int:
 
 
 def total_experience_years(intervals, today: date | None = None) -> float:
-    """Sum valid intervals independently; overlapping employment is intentional."""
+    """Return the union of valid half-open employment intervals in years."""
     today = today or date.today()
-    total_days = 0
+    normalized = []
     for start_date, end_date, is_current in intervals:
         if start_date is None:
             continue
         effective_end = today if is_current else end_date
         if effective_end is None or effective_end < start_date:
             continue
-        total_days += (effective_end - start_date).days
+        normalized.append((start_date, effective_end))
+    if not normalized:
+        return 0.0
+
+    normalized.sort()
+    merged = [normalized[0]]
+    for start_date, end_date in normalized[1:]:
+        previous_start, previous_end = merged[-1]
+        if start_date <= previous_end:
+            merged[-1] = (previous_start, max(previous_end, end_date))
+        else:
+            merged.append((start_date, end_date))
+    total_days = sum((end - start).days for start, end in merged)
     return total_days / 365.25
 
 
 def experience_score(total_years: float, experience_level: str) -> float:
+    if not math.isfinite(total_years) or total_years < 0:
+        raise ValueError("Số năm kinh nghiệm phải hữu hạn và không âm.")
     required = EXPERIENCE_YEARS_REQUIRED.get(experience_level or "", 0)
     if required == 0:
-        return 100.0
-    return min(100.0, max(0.0, total_years / required * 100.0))
+        return 1.0
+    return min(1.0, total_years / required)
+
+
+def skill_match_score(candidate_skill_ids, job_skills, multiplier) -> tuple[float | None, dict]:
+    """Compute K-rho after de-duplicating by stable skill identity."""
+    multiplier = float(multiplier)
+    if not math.isfinite(multiplier) or multiplier < 1:
+        raise ValueError("Hệ số kỹ năng bắt buộc phải hữu hạn và không nhỏ hơn 1.")
+
+    candidate_ids = set(candidate_skill_ids)
+    required = {}
+    preferred = {}
+    for item in job_skills:
+        skill_id = str(item["id"])
+        if item.get("is_required", True):
+            required[skill_id] = item
+            preferred.pop(skill_id, None)
+        elif skill_id not in required:
+            preferred[skill_id] = item
+    if not required and not preferred:
+        return None, {
+            "required_count": 0,
+            "preferred_count": 0,
+            "matched_required_count": 0,
+            "matched_preferred_count": 0,
+        }
+
+    matched_required = candidate_ids & required.keys()
+    matched_preferred = candidate_ids & preferred.keys()
+    denominator = multiplier * len(required) + len(preferred)
+    score = (multiplier * len(matched_required) + len(matched_preferred)) / denominator
+    return score, {
+        "required_count": len(required),
+        "preferred_count": len(preferred),
+        "matched_required_count": len(matched_required),
+        "matched_preferred_count": len(matched_preferred),
+        "required": required,
+        "preferred": preferred,
+    }
+
+
+def education_score(candidate_level: str | None, required_level: str | None) -> float | None:
+    from apps.candidates.models import DEGREE_LEVEL_RANK, DegreeLevel
+
+    if required_level in (None, "", DegreeLevel.NONE):
+        return None
+    if required_level not in DEGREE_LEVEL_RANK:
+        raise ValueError("Bậc học vấn yêu cầu không hợp lệ.")
+    if candidate_level is None:
+        return 0.0
+    if candidate_level not in DEGREE_LEVEL_RANK:
+        raise ValueError("Bậc học vấn ứng viên không hợp lệ.")
+    gap = max(0, DEGREE_LEVEL_RANK[required_level] - DEGREE_LEVEL_RANK[candidate_level])
+    return max(0.0, 1.0 - 0.25 * gap)
+
+
+def aggregate_match_score(components: dict, weights: MatchingWeights):
+    """Normalize configured weights over applicable criteria and score 0-100."""
+    original = {
+        "semantic": Decimal(weights.semantic),
+        "skill": Decimal(weights.skill),
+        "experience": Decimal(weights.experience),
+        "education": Decimal(weights.education),
+    }
+    for name, weight in original.items():
+        if not weight.is_finite() or weight < 0:
+            raise ValueError(f"Trọng số {name} phải hữu hạn và không âm.")
+    if sum(original.values()) != Decimal("1"):
+        raise ValueError("Tổng các trọng số phải bằng 1.")
+
+    applicable = {}
+    for name, value in components.items():
+        if value is None:
+            continue
+        value = Decimal(str(value))
+        if not value.is_finite() or not Decimal("0") <= value <= Decimal("1"):
+            raise ValueError(f"Điểm thành phần {name} phải thuộc [0, 1].")
+        applicable[name] = value
+
+    denominator = sum((original[name] for name in applicable), Decimal("0"))
+    if denominator == 0:
+        return None, {name: Decimal("0") for name in original}
+    normalized = {
+        name: (original[name] / denominator if name in applicable else Decimal("0"))
+        for name in original
+    }
+    score = Decimal("100") * sum(
+        normalized[name] * value for name, value in applicable.items()
+    )
+    return score.quantize(Decimal("0.01")), normalized

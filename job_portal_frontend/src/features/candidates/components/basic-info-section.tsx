@@ -36,7 +36,6 @@ export function BasicInfoSection({
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const salary = String(form.get("desired_salary_min") ?? "").trim();
     const saved = await onSave({
       full_name: String(form.get("full_name") ?? "").trim(),
       phone: String(form.get("phone") ?? "").trim(),
@@ -47,7 +46,6 @@ export function BasicInfoSection({
       headline: String(form.get("headline") ?? "").trim(),
       summary: String(form.get("summary") ?? "").trim(),
       desired_position: String(form.get("desired_position") ?? "").trim(),
-      desired_salary_min: salary ? Number(salary) : null,
       is_public: form.get("is_public") === "on",
     });
     if (saved) setEditing(false);
@@ -85,12 +83,6 @@ export function BasicInfoSection({
               ["Giới tính", genderLabels[profile.gender]],
               ["Địa chỉ", profile.address],
               ["Vị trí mong muốn", profile.desired_position],
-              [
-                "Mức lương mong muốn",
-                profile.desired_salary_min
-                  ? `${profile.desired_salary_min.toLocaleString("vi-VN")} đ`
-                  : "Chưa cập nhật",
-              ],
             ].map(([label, value]) => (
               <div key={label}>
                 <dt className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</dt>
@@ -149,26 +141,14 @@ export function BasicInfoSection({
               placeholder="Tóm tắt kinh nghiệm, thế mạnh và mục tiêu nghề nghiệp..."
             />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <FieldLabel htmlFor="desired_position">Vị trí mong muốn *</FieldLabel>
-              <Input
-                id="desired_position"
-                name="desired_position"
-                defaultValue={profile.desired_position}
-                required
-              />
-            </div>
-            <div>
-              <FieldLabel htmlFor="desired_salary_min">Mức lương tối thiểu</FieldLabel>
-              <Input
-                id="desired_salary_min"
-                name="desired_salary_min"
-                type="number"
-                min="0"
-                defaultValue={profile.desired_salary_min ?? ""}
-              />
-            </div>
+          <div>
+            <FieldLabel htmlFor="desired_position">Vị trí mong muốn *</FieldLabel>
+            <Input
+              id="desired_position"
+              name="desired_position"
+              defaultValue={profile.desired_position}
+              required
+            />
           </div>
           <div>
             <FieldLabel htmlFor="address">Địa chỉ</FieldLabel>

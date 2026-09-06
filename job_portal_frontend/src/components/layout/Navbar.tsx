@@ -7,6 +7,8 @@ import { useState } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/layout/BrandLogo";
+import { BrandName } from "@/components/layout/BrandName";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,14 +25,13 @@ import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const PUBLIC_NAV_LINKS = [
-  { href: "/jobs", label: "Tìm việc làm" },
-  { href: "/for-employers", label: "Dành cho Nhà tuyển dụng" },
+  { href: "/", label: "Trang chủ" },
+  { href: "/jobs", label: "Tìm việc" },
 ];
 
 const ROLE_NAV_LINKS: Record<UserRole, Array<{ href: string; label: string }>> = {
   CANDIDATE: [
     { href: "/jobs", label: "Tìm việc" },
-    { href: "/candidate/jobs/recommended", label: "Việc phù hợp" },
     { href: "/candidate/profile", label: "Hồ sơ" },
     { href: "/candidate/applications", label: "Đơn ứng tuyển" },
   ],
@@ -86,7 +87,7 @@ export function Navbar() {
       {user.role === "CANDIDATE" && (
         <>
           <DropdownMenuItem asChild>
-            <Link href="/candidate/jobs/recommended">
+            <Link href="/jobs?tab=recommended">
               <Sparkles className="mr-2" /> Việc làm phù hợp
             </Link>
           </DropdownMenuItem>
@@ -106,14 +107,10 @@ export function Navbar() {
 
 return (
     <header className="sticky top-0 z-40 border-b border-zinc-100 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto flex h-20 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link href={homeHref} className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-lg font-bold text-white">
-            J
-          </span>
-          <span className="text-lg font-bold text-primary">
-            IT<span className="text-accent">Job</span> Portal
-          </span>
+          <BrandLogo />
+          <BrandName />
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">
@@ -148,7 +145,7 @@ return (
               href={resumeImport.parse_status === "SUCCESS" ? `/candidate/profile?resume_import_id=${resumeImport.id}` : "/candidate/profile"}
               className="flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 hover:border-primary-200 hover:text-primary"
             >
-              {resumeImport.parse_status === "PENDING" && <Loader2 className="size-4 animate-spin" />}
+              {["PENDING", "PROCESSING"].includes(resumeImport.parse_status) && <Loader2 className="size-4 animate-spin" />}
               {resumeImport.parse_status === "SUCCESS" && <CircleCheck className="size-4 text-emerald-600" />}
               {resumeImport.parse_status === "FAILED" && <AlertCircle className="size-4 text-red-600" />}
               {resumeImport.parse_status === "SUCCESS" ? "CV đã phân tích xong" : resumeImport.parse_status === "FAILED" ? "CV lỗi" : "Đang phân tích CV"}
@@ -172,6 +169,7 @@ return (
                   className="flex items-center gap-2 rounded-outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   aria-label="Menu tài khoản"
                 >
+                  {user.role === "CANDIDATE" && <span className="text-sm font-medium text-zinc-600">Tài khoản</span>}
                   <Avatar className="h-9 w-9">
                     <AvatarFallback>
                       {userInitials(user.first_name, user.last_name, user.email)}
@@ -239,7 +237,7 @@ return (
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2.5 text-sm font-medium text-primary"
               >
-                {resumeImport.parse_status === "PENDING" && <Loader2 className="size-4 animate-spin" />}
+                {["PENDING", "PROCESSING"].includes(resumeImport.parse_status) && <Loader2 className="size-4 animate-spin" />}
                 {resumeImport.parse_status === "SUCCESS" && <CircleCheck className="size-4" />}
                 {resumeImport.parse_status === "FAILED" && <AlertCircle className="size-4 text-red-600" />}
                 {resumeImport.parse_status === "SUCCESS" ? "CV đã phân tích xong" : resumeImport.parse_status === "FAILED" ? "CV lỗi" : "Đang phân tích CV"}

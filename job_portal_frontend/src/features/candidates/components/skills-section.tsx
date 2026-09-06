@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { getSkillOptions } from "@/features/candidates/api";
 import type {
   CandidateSkillDto,
-  CandidateSkillPayload,
   SkillOptionDto,
 } from "@/features/candidates/types";
 import {
@@ -18,16 +17,6 @@ import {
   ProfileSection,
   fieldClassName,
 } from "@/features/candidates/components/profile-section";
-
-type SkillLevel = Exclude<CandidateSkillDto["level"], undefined>;
-
-const levelLabels: Record<SkillLevel, string> = {
-  "": "Chưa đánh giá",
-  BASIC: "Cơ bản",
-  INTERMEDIATE: "Trung bình",
-  ADVANCED: "Nâng cao",
-  EXPERT: "Chuyên gia",
-};
 
 export function SkillsSection({
   items,
@@ -46,6 +35,7 @@ export function SkillsSection({
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CandidateSkillDto | null>(null);
   const [search, setSearch] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
   const deferredSearch = useDeferredValue(search);
 
   const applyPreviewSkills = useEffectEvent((skillOptions: SkillOptionDto[]) => {
@@ -64,9 +54,7 @@ export function SkillsSection({
         skill: option.id,
         skill_name: option.name,
         skill_status: (option as { status?: string }).status ?? "APPROVED",
-        level: "",
         years_of_experience: null,
-        source: "AI_EXTRACTED",
         created_at: now,
         updated_at: now,
       }));
@@ -75,9 +63,7 @@ export function SkillsSection({
       skill: name.trim(),
       skill_name: name.trim(),
       skill_status: "PENDING",
-      level: "",
       years_of_experience: null,
-      source: "AI_EXTRACTED",
       created_at: now,
       updated_at: now,
     }));
@@ -110,6 +96,7 @@ export function SkillsSection({
   const openForm = (item?: CandidateSkillDto) => {
     setEditing(item ?? null);
     setSearch("");
+    setFormError(null);
     setFormOpen(true);
   };
 
@@ -117,27 +104,33 @@ export function SkillsSection({
     setEditing(null);
     setFormOpen(false);
     setSearch("");
+    setFormError(null);
   };
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const years = String(form.get("years_of_experience") ?? "").trim();
-    const payload: CandidateSkillPayload = {
-      skill: String(form.get("skill") ?? ""),
-      level: String(form.get("level") ?? "") as SkillLevel,
-      years_of_experience: years || null,
-    };
+    const skill = String(form.get("skill") ?? "");
+    if (!editing && items.some((item) => item.skill === skill)) {
+      setFormError("Kỹ năng này đã có trong hồ sơ.");
+      return;
+    }
+    const rawYears = String(form.get("years_of_experience") ?? "");
+    const yearsOfExperience = rawYears === "" ? null : Number(rawYears);
+    if (yearsOfExperience !== null && (!Number.isInteger(yearsOfExperience) || yearsOfExperience < 0)) {
+      setFormError("Số năm kinh nghiệm phải là số nguyên không âm.");
+      return;
+    }
     const now = new Date().toISOString();
-    const option = options.find((item) => item.id === payload.skill);
+    const option = options.find((item) => item.id === skill);
     const item: CandidateSkillDto = {
       id: editing?.id ?? crypto.randomUUID(),
-      ...payload,
+      skill,
       skill_name: option?.name ?? editing?.skill_name ?? "",
       skill_status: (option as { status?: string } | undefined)?.status
         ?? editing?.skill_status
         ?? "APPROVED",
-      source: editing?.source ?? "MANUAL",
+      years_of_experience: yearsOfExperience,
       created_at: editing?.created_at ?? now,
       updated_at: now,
     };
@@ -159,7 +152,7 @@ export function SkillsSection({
       id="skills"
       icon={Sparkles}
       title="Kỹ năng chuyên môn"
-      description="Chọn kỹ năng chuẩn hóa để tăng độ chính xác khi AI matching."
+      description="Chọn kỹ năng chuẩn hóa để tăng độ chính xác khi ghép nối."
       action={
         !formOpen ? (
           <Button type="button" variant="outline" size="sm" onClick={() => openForm()}>
@@ -184,50 +177,32 @@ export function SkillsSection({
               />
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="sm:col-span-3">
-              <FieldLabel htmlFor="skill">Kỹ năng *</FieldLabel>
-              <select
-                id="skill"
-                name="skill"
-                defaultValue={editing?.skill ?? ""}
-                className={fieldClassName}
-                required
-              >
-                <option value="">Chọn kỹ năng</option>
-                {visibleOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}{option.category_name ? ` · ${option.category_name}` : ""}
-                  </option>
-                ))}
-              </select>
-              {optionsError && <p className="mt-1.5 text-xs text-red-600">{optionsError}</p>}
-            </div>
-            <div className="sm:col-span-2">
-              <FieldLabel htmlFor="skill-level">Trình độ</FieldLabel>
-              <select
-                id="skill-level"
-                name="level"
-                defaultValue={editing?.level ?? ""}
-                className={fieldClassName}
-              >
-                {Object.entries(levelLabels).map(([value, label]) => (
-                  <option key={value || "empty"} value={value}>{label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <FieldLabel htmlFor="skill-years">Số năm</FieldLabel>
-              <Input
-                id="skill-years"
-                name="years_of_experience"
-                type="number"
-                min="0"
-                step="0.5"
-                defaultValue={editing?.years_of_experience ?? ""}
-              />
-            </div>
+          <div>
+            <FieldLabel htmlFor="skill">Kỹ năng *</FieldLabel>
+            <select
+              id="skill"
+              name="skill"
+              defaultValue={editing?.skill ?? ""}
+              className={fieldClassName}
+              required
+            >
+              <option value="">Chọn kỹ năng</option>
+              {editing?.skill_status === "PENDING" && !options.some((option) => option.id === editing.skill) && (
+                <option value={editing.skill}>{editing.skill_name} (chờ duyệt)</option>
+              )}
+              {visibleOptions.filter((option) => editing?.skill === option.id || !items.some((item) => item.skill === option.id)).map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}{option.category_name ? ` · ${option.category_name}` : ""}
+                </option>
+              ))}
+            </select>
+            {optionsError && <p className="mt-1.5 text-xs text-red-600">{optionsError}</p>}
           </div>
+          <div>
+            <FieldLabel htmlFor="years-of-experience">Số năm kinh nghiệm</FieldLabel>
+            <Input id="years-of-experience" name="years_of_experience" type="number" min="0" step="1" defaultValue={editing?.years_of_experience ?? ""} placeholder="Ví dụ: 2" />
+          </div>
+          {formError && <p className="text-sm text-red-600">{formError}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={closeForm} disabled={pending}>Hủy</Button>
             <Button type="submit" disabled={pending}>{pending ? "Đang lưu..." : "Lưu kỹ năng"}</Button>
@@ -253,23 +228,26 @@ export function SkillsSection({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate text-sm font-semibold text-zinc-900">{item.skill_name}</p>
-                  {item.source === "AI_EXTRACTED" && <Badge>AI</Badge>}
-                  {item.skill_status === "PENDING" && (
-                    <Badge className="border-amber-200 bg-amber-50 text-amber-700">Chờ duyệt</Badge>
+                   {item.skill_status === "PENDING" && (
+                     <Badge className="border-amber-200 bg-amber-50 text-amber-700">Chờ duyệt</Badge>
+                   )}
+                  {item.skill_status === "REJECTED" && (
+                    <Badge className="border-red-200 bg-red-50 text-red-700">Đã từ chối</Badge>
                   )}
                   {unmatchedPreviewSkills.includes(item.skill_name) && (
                     <Badge className="border-amber-200 bg-amber-50 text-amber-700">Chưa chuẩn hóa</Badge>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  {levelLabels[item.level ?? ""]}
-                  {item.years_of_experience ? ` · ${item.years_of_experience} năm` : ""}
-                </p>
+                {item.years_of_experience !== null && item.years_of_experience !== undefined && (
+                  <p className="mt-1 text-xs text-zinc-500">{item.years_of_experience} năm kinh nghiệm</p>
+                )}
               </div>
               <div className="flex shrink-0">
-                <Button type="button" variant="ghost" size="icon" aria-label="Sửa kỹ năng" onClick={() => openForm(item)}>
-                  <Pencil />
-                </Button>
+                {item.skill_status !== "REJECTED" && (
+                  <Button type="button" variant="ghost" size="icon" aria-label="Sửa kỹ năng" onClick={() => openForm(item)}>
+                    <Pencil />
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="ghost"

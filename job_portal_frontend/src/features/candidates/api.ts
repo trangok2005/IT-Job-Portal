@@ -2,6 +2,7 @@ import { apiRequest, authApiRequest } from "@/lib/api-client";
 import type { Paginated } from "@/lib/types";
 import type {
   CandidateProfileDto,
+  PrivateFileURLDto,
   ProfileSavePayload,
   ResumeDto,
   ResumeImportDto,
@@ -15,8 +16,8 @@ function jsonInit(method: string, payload?: unknown): RequestInit {
   };
 }
 
-export const getCandidateProfile = () =>
-  authApiRequest<CandidateProfileDto>("/api/candidates/me/");
+export const getCandidateProfile = (signal?: AbortSignal) =>
+  authApiRequest<CandidateProfileDto>("/api/candidates/me/", { signal });
 
 export const saveCandidateProfile = (payload: ProfileSavePayload) =>
   authApiRequest<CandidateProfileDto>(
@@ -31,6 +32,11 @@ export const deleteResume = (id: string) =>
   authApiRequest<void>(
     `/api/candidates/me/resumes/${id}/`,
     jsonInit("DELETE"),
+  );
+
+export const getResumeDownloadURL = (id: string) =>
+  authApiRequest<PrivateFileURLDto>(
+    `/api/candidates/me/resumes/${id}/download-url/`,
   );
 
 export const setPrimaryResume = (id: string) =>

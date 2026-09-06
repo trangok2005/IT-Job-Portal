@@ -1,7 +1,9 @@
-"""Django-Q tasks cho embedding và hết hạn tin tuyển dụng."""
+"""Background tasks cho embedding và hết hạn tin tuyển dụng."""
 import logging
+from datetime import timedelta
 
-from django.db.models import F
+from django.conf import settings
+from django.db.models import F, Q
 from django.utils import timezone
 
 from integrations.gemini.embeddings import (
@@ -21,17 +23,28 @@ MAX_PARSE_ATTEMPTS = 3
 def parse_jd_import(import_id: str) -> bool:
     # Nhận lại cả FAILED để task bị re-present (crash recovery) có cơ hội thử
     # lại như UC-01; giới hạn parse_attempts vẫn là ranh giới cứng chung.
+    now = timezone.now()
+    lease_expired_at = now - timedelta(seconds=settings.TASK_PROCESSING_LEASE_SECONDS)
     claimed = JDImport.objects.filter(
         pk=import_id,
-        status__in=[JDImport.Status.PENDING, JDImport.Status.FAILED],
         parse_attempts__lt=MAX_PARSE_ATTEMPTS,
+    ).filter(
+        Q(status__in=[JDImport.Status.PENDING, JDImport.Status.FAILED])
+        | Q(status=JDImport.Status.PROCESSING, updated_at__lte=lease_expired_at)
     ).update(
         status=JDImport.Status.PROCESSING,
         parse_attempts=F("parse_attempts") + 1,
         error_message="",
+        updated_at=now,
     )
     jd_import = JDImport.objects.filter(pk=import_id).first()
     if not claimed:
+        if (
+            jd_import is not None
+            and jd_import.status == JDImport.Status.PROCESSING
+            and jd_import.parse_attempts < MAX_PARSE_ATTEMPTS
+        ):
+            raise RuntimeError("JD import is already being processed.")
         if jd_import is not None and jd_import.parse_attempts >= MAX_PARSE_ATTEMPTS:
             # Cạn lượt thử: chốt FAILED vĩnh viễn, không gọi Gemini nữa.
             JDImport.objects.filter(pk=import_id).update(
@@ -71,7 +84,7 @@ def parse_jd_import(import_id: str) -> bool:
             ),
             updated_at=timezone.now(),
         )
-        return False
+        raise
 
 
 def cleanup_expired_jd_imports() -> int:

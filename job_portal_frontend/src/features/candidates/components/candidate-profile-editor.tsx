@@ -31,10 +31,12 @@ function draftEducation(item: NonNullable<ResumePreview["educations"]>[number]):
     school_name: item.school_name,
     major: item.major ?? "",
     degree: item.degree ?? "",
+    degree_level: item.degree_level ?? null,
+    is_completed: item.is_completed ?? false,
+    is_verified: item.is_verified ?? false,
     start_date: item.start_date ?? null,
     end_date: item.end_date ?? null,
     description: item.description ?? "",
-    source: "AI_EXTRACTED",
     created_at: now,
     updated_at: now,
   };
@@ -50,7 +52,6 @@ function draftExperience(item: NonNullable<ResumePreview["experiences"]>[number]
     end_date: item.end_date ?? null,
     is_current: item.is_current ?? false,
     description: item.description ?? "",
-    source: "AI_EXTRACTED",
     created_at: now,
     updated_at: now,
   };
@@ -94,6 +95,11 @@ export function CandidateProfileEditor({
   };
 
   const save = async () => {
+    const rejectedSkills = skills.filter((item) => item.skill_status === "REJECTED");
+    if (rejectedSkills.length > 0) {
+      setError(`Hãy xóa kỹ năng đã bị từ chối trước khi lưu: ${rejectedSkills.map((item) => item.skill_name).join(", ")}.`);
+      return;
+    }
     setPending(true);
     setError(null);
     setMessage(null);
@@ -107,12 +113,14 @@ export function CandidateProfileEditor({
       headline: draftProfile.headline,
       summary: draftProfile.summary,
       desired_position: draftProfile.desired_position,
-      desired_salary_min: draftProfile.desired_salary_min,
       is_public: draftProfile.is_public,
       educations: educations.map((item) => ({
         school_name: item.school_name,
         major: item.major,
         degree: item.degree,
+        degree_level: item.degree_level ?? null,
+        is_completed: item.is_completed ?? false,
+        is_verified: item.is_verified ?? false,
         start_date: item.start_date,
         end_date: item.end_date,
         description: item.description,
@@ -127,8 +135,7 @@ export function CandidateProfileEditor({
       })),
       skills: skills.map((item) => ({
         skill: item.skill,
-        level: item.level ?? "",
-        years_of_experience: item.years_of_experience,
+        years_of_experience: item.years_of_experience ?? null,
       })),
       resume_import_id: previewImport?.id ?? null,
     };
@@ -136,7 +143,7 @@ export function CandidateProfileEditor({
     try {
       const saved = await saveCandidateProfile(payload);
       setDraftProfile(saved);
-      setMessage("Hồ sơ đã được lưu. Hệ thống đang cập nhật AI matching.");
+      setMessage("Hồ sơ đã được lưu. Hệ thống đang cập nhật dữ liệu ghép nối.");
       onSaved(saved);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể lưu hồ sơ.");

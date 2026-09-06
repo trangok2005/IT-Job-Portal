@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useState } from "react";
 
 import {
   cancelResumeImport,
@@ -14,10 +14,16 @@ import { useStatusPolling } from "@/lib/use-status-polling";
 
 const STORAGE_KEY = "active-resume-import";
 
+type CVParseStatus = ResumeImportDto["parse_status"];
+
 type CandidateResumeImportContextValue = {
   resumeImport: ResumeImportDto | null;
-  /** Poll đã tự ngắt sau 2 phút mà CV vẫn chưa xong → mời tải lại trang. */
+  /** Poll đã tự ngắt sau 2 phút mà CV vẫn chưa xong. */
   stalled: boolean;
+  /** Request gần nhất gặp lỗi mạng / khôi phục; import ID vẫn giữ trong localStorage. */
+  pollError: boolean;
+  /** Gọi GET ngay và tiếp tục polling nếu tác vụ vẫn hoạt động. */
+  retry: () => void;
   startImport: (file: File) => Promise<ResumeImportDto>;
   cancelImport: () => Promise<void>;
   clearImport: () => void;
@@ -32,41 +38,57 @@ export function CandidateResumeImportProvider({ children }: {
 }) {
   const { user } = useAuth();
   const [resumeImport, setResumeImport] = useState<ResumeImportDto | null>(null);
+  const [restoredId, setRestoredId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : localStorage.getItem(STORAGE_KEY),
+  );
 
-  const clearImport = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    setResumeImport(null);
-  };
+  const isProcessingCV = useCallback(
+    (status: CVParseStatus) => status === "PENDING" || status === "PROCESSING",
+    [],
+  );
 
-  useEffect(() => {
-    if (user?.role !== "CANDIDATE") return;
-    const id = localStorage.getItem(STORAGE_KEY);
-    if (!id) return;
-    void getResumeImport(id).then((result) => {
-      if (result.parse_status === "CONSUMED") clearImport();
-      else setResumeImport(result);
-    }).catch(clearImport);
-  }, [user?.role]);
+  const handleCVUpdate = useCallback((snapshot: ResumeImportDto) => {
+    setRestoredId(null);
+    if (snapshot.parse_status === "CONSUMED") {
+      localStorage.removeItem(STORAGE_KEY);
+      setResumeImport(null);
+      return;
+    }
+    setResumeImport(snapshot);
+  }, []);
 
-  const isPending = resumeImport?.parse_status === "PENDING";
+  const handleCVError = useCallback((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) {
+      localStorage.removeItem(STORAGE_KEY);
+      setRestoredId(null);
+      setResumeImport(null);
+    }
+  }, []);
 
-  const pollOnce = useCallback(async () => {
-    if (!resumeImport) return;
-    const result = await getResumeImport(resumeImport.id);
-    if (result.parse_status === "CONSUMED") clearImport();
-    else setResumeImport(result);
-  }, [resumeImport]);
+  const importId = resumeImport?.id ?? restoredId;
 
-  const { stalled } = useStatusPolling({
-    enabled: Boolean(isPending && resumeImport),
-    poll: pollOnce,
-    onError: clearImport,
+  const { stalled, pollError: hookPollError, retry: retryPolling } = useStatusPolling<
+    ResumeImportDto,
+    CVParseStatus
+  >({
+    enabled: user?.role === "CANDIDATE" && Boolean(importId) && (!resumeImport || isProcessingCV(resumeImport.parse_status)),
+    importId,
+    poll: getResumeImport,
+    getStatus: (snapshot) => snapshot.parse_status,
+    isProcessing: isProcessingCV,
+    onUpdate: handleCVUpdate,
+    onError: handleCVError,
   });
+
+  const retry = useCallback(() => {
+    retryPolling();
+  }, [retryPolling]);
 
   const startImport = async (file: File) => {
     try {
       const result = await parseResumeImport(file);
       localStorage.setItem(STORAGE_KEY, result.id);
+      setRestoredId(null);
       setResumeImport(result);
       return result;
     } catch (error) {
@@ -80,12 +102,30 @@ export function CandidateResumeImportProvider({ children }: {
   };
 
   const cancelImport = async () => {
-    if (resumeImport) await cancelResumeImport(resumeImport.id);
-    clearImport();
+    if (importId) await cancelResumeImport(importId);
+    localStorage.removeItem(STORAGE_KEY);
+    setRestoredId(null);
+    setResumeImport(null);
   };
 
+  const clearImport = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    setRestoredId(null);
+    setResumeImport(null);
+  }, []);
+
   return (
-    <CandidateResumeImportContext.Provider value={{ resumeImport, stalled, startImport, cancelImport, clearImport }}>
+    <CandidateResumeImportContext.Provider
+      value={{
+        resumeImport,
+        stalled,
+        pollError: hookPollError,
+        retry,
+        startImport,
+        cancelImport,
+        clearImport,
+      }}
+    >
       {children}
     </CandidateResumeImportContext.Provider>
   );
@@ -94,6 +134,8 @@ export function CandidateResumeImportProvider({ children }: {
 const NOOP_VALUE: CandidateResumeImportContextValue = {
   resumeImport: null,
   stalled: false,
+  pollError: false,
+  retry: () => {},
   startImport: async () => {
     throw new Error("CandidateResumeImportProvider is not mounted");
   },

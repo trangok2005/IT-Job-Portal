@@ -35,27 +35,3 @@ class IsJobOwnerOrAdmin(permissions.BasePermission):
         if request.user.is_admin_role:
             return True
         return obj.created_by_id == request.user.pk or obj.company.owner_id == request.user.pk
-
-
-class IsEmployer(permissions.BasePermission):
-    """Chỉ employer được xem danh sách tin thuộc công ty của mình."""
-
-    message = "Chỉ nhà tuyển dụng mới xem được danh sách tin của mình."
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.is_employer
-        )
-
-
-class IsCandidate(permissions.BasePermission):
-    """Allow recommendation jobs only to candidate accounts."""
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.is_candidate
-        )

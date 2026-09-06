@@ -7,6 +7,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.companies.models import Company
+from apps.core.qstash_client import publish_task
 from apps.jobs.models import JDImport, JobPost, JobSkill
 
 
@@ -14,12 +15,9 @@ def _enqueue_embedding(job: JobPost) -> None:
     """Enqueue embedding đúng content version sau khi transaction commit."""
 
     def enqueue():
-        from django_q.tasks import async_task
-
-        async_task(
-            "apps.jobs.tasks.generate_job_embedding",
-            str(job.pk),
-            job.content_version,
+        publish_task(
+            "generate_job_embedding",
+            {"job_id": str(job.pk), "content_version": job.content_version},
         )
 
     transaction.on_commit(enqueue)
@@ -28,9 +26,7 @@ def _enqueue_embedding(job: JobPost) -> None:
 def _enqueue_jd_parse(jd_import: JDImport) -> None:
     def enqueue():
         try:
-            from django_q.tasks import async_task
-
-            async_task("apps.jobs.tasks.parse_jd_import", str(jd_import.pk))
+            publish_task("parse_jd_import", {"import_id": str(jd_import.pk)})
         except Exception:
             JDImport.objects.filter(
                 pk=jd_import.pk, status=JDImport.Status.PENDING
@@ -76,12 +72,9 @@ def cancel_jd_import(jd_import: JDImport) -> None:
 def enqueue_job_embedding_robust(job: JobPost) -> None:
     """Best-effort enqueue for recommendation reads without failing the API."""
     try:
-        from django_q.tasks import async_task
-
-        async_task(
-            "apps.jobs.tasks.generate_job_embedding",
-            str(job.pk),
-            job.content_version,
+        publish_task(
+            "generate_job_embedding",
+            {"job_id": str(job.pk), "content_version": job.content_version},
         )
     except Exception:
         return
@@ -90,12 +83,12 @@ def enqueue_job_embedding_robust(job: JobPost) -> None:
 def enqueue_candidate_embedding_robust(profile) -> None:
     """Best-effort enqueue of a missing or stale candidate embedding."""
     try:
-        from django_q.tasks import async_task
-
-        async_task(
-            "apps.candidates.tasks.generate_candidate_embedding",
-            str(profile.pk),
-            profile.profile_version,
+        publish_task(
+            "generate_candidate_embedding",
+            {
+                "profile_id": str(profile.pk),
+                "profile_version": profile.profile_version,
+            },
         )
     except Exception:
         return
@@ -114,14 +107,13 @@ def _bump_content_version(job: JobPost) -> None:
 
 def _replace_job_skills(job: JobPost, skill_specs: list) -> None:
     """Thay danh sách skill trong cùng transaction của thao tác tạo/cập nhật.
-    Mỗi phần tử là dict {skill, min_years?, is_required?} từ serializer."""
+    Mỗi phần tử là dict {skill, is_required?} từ serializer."""
     job.job_skills.all().delete()
     JobSkill.objects.bulk_create(
         JobSkill(
             job=job,
             skill=spec["skill"],
             is_required=spec.get("is_required", True),
-            min_years=spec.get("min_years"),
         )
         for spec in skill_specs
     )
@@ -228,7 +220,7 @@ def close_job(job: JobPost) -> JobPost:
 
 
 def expire_jobs() -> int:
-    """Đánh dấu EXPIRED cho các tin ACTIVE đã qua hạn; dùng bởi lịch Django-Q."""
+    """Đánh dấu EXPIRED cho các tin ACTIVE đã qua hạn; dùng bởi lịch QStash."""
     return JobPost.objects.filter(
         status=JobPost.Status.ACTIVE,
         expires_at__lte=timezone.now(),

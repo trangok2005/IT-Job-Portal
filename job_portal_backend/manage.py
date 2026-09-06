@@ -16,6 +16,8 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         # Missing mocks must fail fast instead of consuming a real Gemini quota.
         os.environ["GEMINI_API_KEY"] = ""
+        if not any(arg.startswith("--settings") for arg in sys.argv[2:]):
+            os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings.test"
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
     try:
         from django.core.management import execute_from_command_line

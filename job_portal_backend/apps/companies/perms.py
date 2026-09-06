@@ -1,27 +1,5 @@
-"""companies permissions — business rules checked here, not in views."""
+"""Object permissions specific to companies."""
 from rest_framework import permissions
-
-
-class IsAdminRole(permissions.BasePermission):
-    message = "Chỉ admin mới thực hiện được thao tác này."
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.is_admin_role
-        )
-
-
-class IsEmployer(permissions.BasePermission):
-    message = "Chỉ nhà tuyển dụng mới quản lý hồ sơ công ty."
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.is_employer
-        )
 
 
 class IsCompanyOwner(permissions.BasePermission):

@@ -18,12 +18,13 @@ Dùng get_or_create() ở mọi bước nên chạy lại nhiều lần vẫn an
 
 Lưu ý: KHÔNG tự set embedding ở đây — sau khi seed xong, chạy tiếp lệnh
 rebuild_embeddings (bạn đã có sẵn) để đẩy các CandidateProfile mới vào
-hàng đợi Django-Q sinh embedding.
+QStash sinh embedding.
 """
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from apps.candidates.models import CandidateProfile, Education, Experience
+from apps.candidates.models import CandidateProfile, DegreeLevel, Education, Experience
+from apps.core.matching import recognized_degree_level
 from apps.core.seed_data.candidates import CANDIDATES, CATEGORY_MAP
 from apps.skills.models import Skill, CandidateSkill
 
@@ -65,34 +66,40 @@ class Command(BaseCommand):
                         "headline": data["headline"],
                         "summary": data["summary"],
                         "desired_position": data["desired_position"],
-                        "desired_salary_min": data["desired_salary_min"],
                         "address": data["address"],
                         "is_public": True,
                     },
                 )
 
                 edu = data["education"]
+                degree_rank = recognized_degree_level(edu["degree"])
+                degree_level = {
+                    1: DegreeLevel.ASSOCIATE,
+                    2: DegreeLevel.BACHELOR,
+                    3: DegreeLevel.MASTER,
+                    4: DegreeLevel.PHD,
+                }.get(degree_rank)
                 Education.objects.get_or_create(
                     candidate=profile, school_name=edu["school_name"], major=edu["major"],
-                    defaults={"degree": edu["degree"], "start_date": edu["start_date"],
-                              "end_date": edu["end_date"], "source": "MANUAL"},
+                    defaults={"degree": edu["degree"], "degree_level": degree_level,
+                              "is_completed": degree_level is not None,
+                              "is_verified": degree_level is not None,
+                              "start_date": edu["start_date"], "end_date": edu["end_date"]},
                 )
 
                 for exp in data["experiences"]:
                     Experience.objects.get_or_create(
                         candidate=profile, company_name=exp["company_name"], position=exp["position"],
                         defaults={"start_date": exp["start_date"], "end_date": exp["end_date"],
-                                  "is_current": exp["is_current"], "description": exp["description"],
-                                  "source": "MANUAL"},
+                                  "is_current": exp["is_current"], "description": exp["description"]},
                     )
 
-                for skill_name, level, years in data["skills"]:
+                for skill_name, *_ in data["skills"]:
                     skill = skill_cache.get(skill_name)
                     if skill is None:
                         continue
                     CandidateSkill.objects.get_or_create(
                         candidate=profile, skill=skill,
-                        defaults={"level": level, "years_of_experience": years, "source": "MANUAL"},
                     )
 
                 created_count += 1

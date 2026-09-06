@@ -1,5 +1,7 @@
 import json
+import io
 import tempfile
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -131,6 +133,37 @@ class ResumeParseTaskTests(TestCase):
         self.assertFalse(Education.objects.filter(candidate=self.profile).exists())
 
     @patch("apps.candidates.tasks._get_client")
+    def test_parse_docx_sends_extracted_text_to_gemini(self, get_client):
+        document_xml = b'''<?xml version="1.0" encoding="UTF-8"?>
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:body><w:p><w:r><w:t>Python Intern Developer</w:t></w:r></w:p></w:body>
+        </w:document>'''
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("word/document.xml", document_xml)
+        models = Mock()
+        models.generate_content.return_value = SimpleNamespace(
+            text=json.dumps({"educations": [], "experiences": [], "skills": []})
+        )
+        get_client.return_value = SimpleNamespace(models=models)
+        resume_import = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile(
+                "cv.docx",
+                buffer.getvalue(),
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ),
+            ),
+            original_filename="cv.docx",
+        )
+
+        parse_resume_import(str(resume_import.id))
+
+        contents = models.generate_content.call_args.kwargs["contents"]
+        self.assertEqual(contents[1], "Python Intern Developer")
+
+    @patch("apps.candidates.tasks._get_client")
     def test_parse_resume_import_stops_after_max_attempts(self, get_client):
         models = Mock()
         models.generate_content.side_effect = RuntimeError("Gemini unavailable")
@@ -163,6 +196,23 @@ class ResumeParseTaskTests(TestCase):
         ghost_id = "00000000-0000-0000-0000-000000000000"
 
         self.assertEqual(parse_resume_import(ghost_id), {})
+
+    @patch("apps.candidates.tasks._get_client")
+    def test_processing_duplicate_does_not_call_gemini(self, get_client):
+        resume_import = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile("cv.pdf", b"%PDF-1.4 test", content_type="application/pdf"),
+            original_filename="cv.pdf",
+            parse_status=ResumeImport.ParseStatus.PROCESSING,
+            parse_attempts=1,
+        )
+
+        with self.assertRaises(RuntimeError):
+            parse_resume_import(str(resume_import.id))
+
+        get_client.assert_not_called()
+        resume_import.refresh_from_db()
+        self.assertEqual(resume_import.parse_status, ResumeImport.ParseStatus.PROCESSING)
 
     def test_cleanup_removes_expired_pending_imports(self):
         from datetime import timedelta

@@ -18,7 +18,7 @@ class JobSkillSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = JobSkill
-        fields = ["id", "skill", "skill_name", "is_required", "min_years"]
+        fields = ["id", "skill", "skill_name", "is_required"]
         read_only_fields = fields
 
 
@@ -44,6 +44,7 @@ class JobReadSerializer(serializers.ModelSerializer):
             "workplace_type",
             "job_type",
             "experience_level",
+            "required_education_level",
             "salary_min",
             "salary_max",
             "salary_negotiable",
@@ -89,23 +90,13 @@ class RecommendedCandidateSerializer(serializers.Serializer):
 
 
 class RequiredSkillSpecSerializer(serializers.Serializer):
-    """Một yêu cầu kỹ năng của tin tuyển dụng — nhất quán với bên Ứng viên:
-    nhận UUID hoặc tên thô (tên lạ tự tạo PENDING), kèm yêu cầu số năm."""
+    """A required or preferred normalized skill for a job post."""
 
     skill = serializers.CharField(max_length=150)
-    min_years = serializers.DecimalField(
-        max_digits=4,
-        decimal_places=1,
-        required=False,
-        allow_null=True,
-        min_value=0,
-    )
     is_required = serializers.BooleanField(required=False, default=True)
 
     def validate(self, attrs):
-        attrs["skill"] = resolve_savable_skill(
-            attrs["skill"], Skill.Source.JD_PARSING
-        )
+        attrs["skill"] = resolve_savable_skill(attrs["skill"])
         return attrs
 
 
@@ -131,6 +122,7 @@ class JobWriteSerializer(serializers.ModelSerializer):
             "workplace_type",
             "job_type",
             "experience_level",
+            "required_education_level",
             "salary_min",
             "salary_max",
             "salary_negotiable",
@@ -207,6 +199,11 @@ class JobDescriptionParsedDataSerializer(serializers.Serializer):
         required=False,
         allow_blank=True,
     )
+    required_education_level = serializers.ChoiceField(
+        choices=JobPost._meta.get_field("required_education_level").choices,
+        required=False,
+        allow_null=True,
+    )
     salary_min = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     salary_max = serializers.IntegerField(required=False, allow_null=True, min_value=0)
     salary_negotiable = serializers.BooleanField(required=False, default=False)
@@ -229,6 +226,13 @@ class JobDescriptionParsedDataSerializer(serializers.Serializer):
         return attrs
 
 
+class ParsedSkillSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    status = serializers.ChoiceField(choices=Skill.Status.choices, read_only=True)
+    is_required = serializers.BooleanField(read_only=True)
+
+
 class JobDescriptionParseResultSerializer(JobDescriptionParsedDataSerializer):
     required_skills = serializers.ListField(
         child=serializers.UUIDField(),
@@ -238,6 +242,7 @@ class JobDescriptionParseResultSerializer(JobDescriptionParsedDataSerializer):
         child=serializers.CharField(),
         read_only=True,
     )
+    resolved_skills = ParsedSkillSerializer(many=True, read_only=True)
 
 
 class JDImportSerializer(serializers.ModelSerializer):

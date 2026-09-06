@@ -13,7 +13,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id", "email", "username", "role", "auth_provider",
-            "first_name", "last_name", "phone", "is_active", "created_at",
+            "first_name", "last_name", "is_active", "created_at",
         ]
         read_only_fields = fields
 
@@ -30,12 +30,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "email", "username", "password", "role",
-            "first_name", "last_name", "phone", "company_name",
+            "first_name", "last_name", "company_name",
         ]
         extra_kwargs = {
             "first_name": {"required": False, "allow_blank": True},
             "last_name": {"required": False, "allow_blank": True},
-            "phone": {"required": False, "allow_blank": True},
         }
 
     def validate_email(self, value):

@@ -1,13 +1,13 @@
-"""Write operations cho kết quả phân tích AI của application."""
+"""Write operations for persisted application match results."""
 from django.db import transaction
 from decimal import Decimal
 
-from apps.ai_analysis.models import AIAnalysis
+from apps.ai_analysis.models import ApplicationMatchResult
 from apps.applications.models import JobApplication
 
 
 @transaction.atomic
-def save_match_analysis(
+def save_match_result(
     application,
     match_score,
     semantic_similarity_score,
@@ -16,24 +16,31 @@ def save_match_analysis(
     education_score,
     matched_skills,
     missing_skills,
-    weight_config,
     embedding_model_version,
-    candidate_embedding_version,
-    job_embedding_version,
-) -> AIAnalysis:
+    status=ApplicationMatchResult.Status.COMPLETED,
+    criteria_applicability=None,
+    original_weights=None,
+    normalized_weights=None,
+    missing_information=None,
+    rule_version="matching-v2.2.4",
+    embedding_metadata=None,
+) -> ApplicationMatchResult:
     """Create once; retries return the successful immutable result unchanged."""
     application = (
         JobApplication.objects.select_for_update()
         .select_related("candidate", "job")
         .get(pk=application.pk)
     )
-    existing = AIAnalysis.objects.filter(application=application).first()
+    existing = ApplicationMatchResult.objects.filter(application=application).first()
     if existing is not None:
         return existing
-    return AIAnalysis.objects.create(
+    return ApplicationMatchResult.objects.create(
         application=application,
         match_score=match_score,
-        semantic_similarity_score=Decimal(str(semantic_similarity_score)),
+        status=status,
+        semantic_similarity_score=(
+            None if semantic_similarity_score is None else Decimal(str(semantic_similarity_score))
+        ),
         skill_overlap_score=(
             None if skill_overlap_score is None else Decimal(str(skill_overlap_score))
         ),
@@ -45,8 +52,11 @@ def save_match_analysis(
         ),
         matched_skills=matched_skills,
         missing_skills=missing_skills,
-        weight_config=weight_config,
         embedding_model_version=embedding_model_version,
-        candidate_embedding_version=candidate_embedding_version,
-        job_embedding_version=job_embedding_version,
+        criteria_applicability=criteria_applicability or {},
+        original_weights=original_weights or {},
+        normalized_weights=normalized_weights or {},
+        missing_information=missing_information or {},
+        rule_version=rule_version,
+        embedding_metadata=embedding_metadata or {},
     )

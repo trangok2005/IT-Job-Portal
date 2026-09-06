@@ -29,7 +29,6 @@ CANDIDATES = [
         "full_name": "Nguyễn Văn An",
         "headline": "Backend Developer (Java / Spring Boot)",
         "desired_position": "Backend Developer",
-        "desired_salary_min": 25000000,
         "address": "Cầu Giấy, Hà Nội",
         "summary": "3 năm kinh nghiệm xây dựng REST API và microservices bằng Java/Spring Boot, "
                    "quen thuộc với PostgreSQL, Docker và triển khai CI/CD cơ bản.",
@@ -50,7 +49,6 @@ CANDIDATES = [
         "full_name": "Trần Thị Bích",
         "headline": "Frontend Developer (React / TypeScript)",
         "desired_position": "Frontend Developer",
-        "desired_salary_min": 20000000,
         "address": "Quận 1, Hồ Chí Minh",
         "summary": "2.5 năm xây dựng giao diện web với React và TypeScript, chú trọng performance "
                    "và trải nghiệm người dùng, từng làm việc trực tiếp với designer theo Figma.",
@@ -70,7 +68,6 @@ CANDIDATES = [
         "full_name": "Lê Hoàng Cường",
         "headline": "Full-stack Developer (Node.js / React)",
         "desired_position": "Full-stack Developer",
-        "desired_salary_min": 28000000,
         "address": "Đống Đa, Hà Nội",
         "summary": "4 năm kinh nghiệm full-stack với Node.js/Express ở backend và React ở frontend, "
                    "từng dẫn dắt 1 nhóm 3 người trong dự án SaaS nội bộ.",
@@ -93,7 +90,6 @@ CANDIDATES = [
         "full_name": "Phạm Thị Dung",
         "headline": "QA Engineer (Manual & Automation)",
         "desired_position": "QA Engineer",
-        "desired_salary_min": 18000000,
         "address": "Thanh Xuân, Hà Nội",
         "summary": "2 năm kinh nghiệm kiểm thử phần mềm, thành thạo test case/test plan, "
                    "bắt đầu chuyển sang automation testing với Selenium.",
@@ -113,7 +109,6 @@ CANDIDATES = [
         "full_name": "Hoàng Minh Đức",
         "headline": "Mobile Developer (Flutter)",
         "desired_position": "Mobile Developer",
-        "desired_salary_min": 22000000,
         "address": "Hải Châu, Đà Nẵng",
         "summary": "2 năm phát triển ứng dụng di động cross-platform bằng Flutter, đã publish 3 app "
                    "lên cả App Store và Google Play.",
@@ -133,7 +128,6 @@ CANDIDATES = [
         "full_name": "Vũ Thị Giang",
         "headline": "Software Engineer (.NET)",
         "desired_position": "Software Engineer",
-        "desired_salary_min": 24000000,
         "address": "Quận 7, Hồ Chí Minh",
         "summary": "3 năm kinh nghiệm phát triển ứng dụng doanh nghiệp bằng C#/ASP.NET Core, "
                    "làm việc trong môi trường outsourcing cho khách hàng Nhật Bản.",
@@ -153,7 +147,6 @@ CANDIDATES = [
         "full_name": "Đỗ Quang Huy",
         "headline": "Game Developer (Unity)",
         "desired_position": "Game Developer",
-        "desired_salary_min": 19000000,
         "address": "Cầu Giấy, Hà Nội",
         "summary": "2 năm làm game mobile casual bằng Unity/C#, có kinh nghiệm tối ưu hiệu năng "
                    "cho thiết bị cấu hình thấp.",
@@ -172,7 +165,6 @@ CANDIDATES = [
         "full_name": "Bùi Thị Kim",
         "headline": "AI Engineer (Machine Learning)",
         "desired_position": "AI Engineer",
-        "desired_salary_min": 30000000,
         "address": "Hai Bà Trưng, Hà Nội",
         "summary": "2 năm kinh nghiệm xây dựng và triển khai mô hình machine learning, "
                    "quen thuộc với PyTorch và các pipeline xử lý dữ liệu bằng Pandas.",
@@ -192,7 +184,6 @@ CANDIDATES = [
         "full_name": "Ngô Văn Long",
         "headline": "Business Analyst (Fintech/Banking)",
         "desired_position": "Business Analyst",
-        "desired_salary_min": 21000000,
         "address": "Ba Đình, Hà Nội",
         "summary": "3 năm kinh nghiệm phân tích nghiệp vụ trong lĩnh vực fintech, viết BRD/SRS, "
                    "làm việc trực tiếp với đội phát triển theo mô hình Agile.",
@@ -212,7 +203,6 @@ CANDIDATES = [
         "full_name": "Đặng Thị Mai",
         "headline": "DevOps Engineer",
         "desired_position": "DevOps Engineer",
-        "desired_salary_min": 27000000,
         "address": "Quận Bình Thạnh, Hồ Chí Minh",
         "summary": "3 năm kinh nghiệm vận hành hạ tầng cloud AWS, thiết lập CI/CD pipeline "
                    "và container hóa dịch vụ với Docker/Kubernetes.",

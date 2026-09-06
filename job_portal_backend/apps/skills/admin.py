@@ -30,6 +30,7 @@ class MatchingWeightConfigAdmin(admin.ModelAdmin):
         "name", "is_active",
         "weight_semantic_similarity", "weight_skill_overlap",
         "weight_experience_match", "weight_education_match",
+        "required_skill_multiplier",
         "updated_by",
     )
     list_filter = ("is_active",)
@@ -51,6 +52,5 @@ class MatchingWeightConfigAdmin(admin.ModelAdmin):
 
 @admin.register(CandidateSkill)
 class CandidateSkillAdmin(admin.ModelAdmin):
-    list_display = ("candidate", "skill", "level", "source", "years_of_experience")
-    list_filter = ("source", "level")
+    list_display = ("candidate", "skill", "years_of_experience")
     search_fields = ("candidate__full_name", "skill__name")

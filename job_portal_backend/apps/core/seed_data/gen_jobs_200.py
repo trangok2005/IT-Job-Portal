@@ -41,6 +41,64 @@ SKILLS_BY_CATEGORY = {
     "Big Data": ["Apache Spark", "Apache Kafka", "Python", "Scala", "ETL", "SQL", "Data Engineering"],
 }
 
+CORE_SKILLS_BY_ROLE = {
+    "Java Developer": ["Java", "Spring Boot"],
+    "Frontend Developer": ["JavaScript", "TypeScript", "React"],
+    "Full-stack Developer": ["React", "Node.js", "TypeScript"],
+    "Mobile Developer": ["Flutter", "Dart"],
+    "QA / Tester": ["Manual Testing", "Test Automation"],
+    "Software Engineer (.NET/C#)": ["C#", "ASP.NET Core"],
+    "Node.js Developer": ["Node.js", "JavaScript"],
+    "PHP Developer": ["PHP", "MySQL"],
+    "Android Developer": ["Kotlin", "Android SDK"],
+    "iOS Developer": ["Swift", "iOS Development"],
+    "DevOps Engineer": ["Docker", "Kubernetes"],
+    "Cloud Engineer": ["Amazon Web Services", "Terraform"],
+    "Data Engineer": ["Python", "SQL", "Data Engineering"],
+    "Data Analyst": ["SQL", "Data Analysis"],
+    "Database Engineer / DBA": ["PostgreSQL", "MySQL"],
+    "Business Analyst": ["Agile", "Jira"],
+    "IT Project Manager": ["Quản lý dự án", "Agile"],
+    "UX/UI Designer": ["Figma", "UI Design", "UX Design"],
+    "Site Reliability Engineer": ["Linux System Administration", "Prometheus"],
+    "System Administrator": ["Linux System Administration", "Network Security"],
+    "AI / Machine Learning Engineer": ["Python", "Machine Learning"],
+    "NLP / LLM Engineer": ["Python", "Natural Language Processing", "Large Language Models"],
+    "Data Scientist (Deep Learning)": ["Python", "Deep Learning"],
+    "Game Developer": ["C#", "C++"],
+    "Security Penetration Tester": ["Penetration Testing", "Application Security"],
+    "Blockchain Engineer": ["Rust", "Go"],
+    "Embedded / Firmware Engineer": ["C", "C++"],
+    "Big Data Engineer (Spark)": ["Apache Spark", "Apache Kafka"],
+}
+
+BACKEND_STACKS = (
+    ["Python", "Django"],
+    ["Python", "FastAPI"],
+    ["Go"],
+    ["Node.js"],
+    ["PHP"],
+)
+
+BACKEND_PRIMARY_SKILLS = {
+    "Python", "Java", "Go", "Node.js", "PHP", "Ruby", "C#",
+    "Django", "Spring Boot", "FastAPI",
+}
+
+OPTIONAL_SKILLS_BY_ROLE = {
+    "Frontend Developer": ["Next.js", "Tailwind CSS", "Redux", "HTML", "CSS", "Figma", "Vite"],
+    "Full-stack Developer": ["Next.js", "PostgreSQL", "Docker", "GraphQL"],
+    "Mobile Developer": ["React Native", "Android SDK", "iOS Development"],
+    "Node.js Developer": ["TypeScript", "PostgreSQL", "Redis", "Docker", "GraphQL", "Nginx"],
+    "PHP Developer": ["PostgreSQL", "Redis", "Docker", "GraphQL", "Nginx"],
+    "Android Developer": ["Java", "Jetpack Compose", "Flutter", "Dart"],
+    "iOS Developer": ["Swift", "iOS Development", "React Native", "Flutter"],
+    "Data Engineer": ["Python", "SQL", "Pandas", "ETL", "Data Engineering"],
+    "Data Analyst": ["Python", "Pandas", "Power BI", "Tableau"],
+    "Game Developer": ["Design Patterns", "Git"],
+    "Big Data Engineer (Spark)": ["Python", "Scala", "ETL", "SQL", "Data Engineering"],
+}
+
 COMPANIES_COMMON = [
     "FPT Software", "TMA Solutions", "KMS Technology", "Rikkeisoft", "VNG Corporation",
     "Viettel Group", "MISA", "VNPT", "CMC Corporation", "DXC Technology", "AGEST Vietnam",
@@ -88,8 +146,10 @@ JOB_BLUEPRINTS = {
     "Mobile Developer": {"cat": "Mobile", "pop": "common", "mult": 12, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR", "MID_SENIOR"]},
     "QA / Tester": {"cat": "QA", "pop": "common", "mult": 14, "level_weights": ["ENTRY", "JUNIOR", "MID_SENIOR", "JUNIOR"]},
     "Software Engineer (.NET/C#)": {"cat": "Software/.NET", "pop": "common", "mult": 14, "level_weights": ["MID_SENIOR", "JUNIOR", "MID_SENIOR", "LEAD"]},
-    "Node.js / PHP Developer": {"cat": "Backend", "pop": "common", "mult": 12, "level_weights": ["JUNIOR", "JUNIOR", "MID_SENIOR"]},
-    "Android / iOS Developer": {"cat": "Mobile", "pop": "common", "mult": 6, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR"]},
+    "Node.js Developer": {"cat": "Backend", "pop": "common", "mult": 6, "level_weights": ["JUNIOR", "JUNIOR", "MID_SENIOR"]},
+    "PHP Developer": {"cat": "Backend", "pop": "common", "mult": 6, "level_weights": ["JUNIOR", "JUNIOR", "MID_SENIOR"]},
+    "Android Developer": {"cat": "Mobile", "pop": "common", "mult": 3, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR"]},
+    "iOS Developer": {"cat": "Mobile", "pop": "common", "mult": 3, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR"]},
     # ---------------- AVERAGE (60) ----------------
     "DevOps Engineer": {"cat": "DevOps", "pop": "average", "mult": 10, "level_weights": ["MID_SENIOR", "JUNIOR", "MID_SENIOR", "LEAD"]},
     "Cloud Engineer": {"cat": "Cloud", "pop": "average", "mult": 6, "level_weights": ["MID_SENIOR", "JUNIOR", "MID_SENIOR"]},
@@ -119,6 +179,27 @@ def experience_title(level):
     }[level]
 
 
+def display_role_title(base_title, core_skills):
+    if base_title != "Backend Developer":
+        return base_title
+    stack = "/".join(core_skills)
+    return f"{stack} Backend Developer"
+
+
+def optional_skill_pool(base_title, category, core_skills):
+    if base_title in OPTIONAL_SKILLS_BY_ROLE:
+        pool = OPTIONAL_SKILLS_BY_ROLE[base_title]
+    elif category == "Backend":
+        pool = [
+            skill
+            for skill in SKILLS_BY_CATEGORY[category]
+            if skill not in BACKEND_PRIMARY_SKILLS
+        ]
+    else:
+        pool = SKILLS_BY_CATEGORY[category]
+    return [skill for skill in dict.fromkeys(pool) if skill not in core_skills]
+
+
 ROLE_DESCRIPTIONS = {
     "Backend Developer": "Thiết kế, phát triển và vận hành các dịch vụ API, hệ thống xử lý nghiệp vụ phía server. Tối ưu hiệu năng, bảo mật và khả năng mở rộng của hệ thống.",
     "Java Developer": "Phát triển ứng dụng doanh nghiệp sử dụng hệ sinh thái Java/Spring Boot, viết microservices, tối ưu truy vấn cơ sở dữ liệu.",
@@ -127,8 +208,10 @@ ROLE_DESCRIPTIONS = {
     "Mobile Developer": "Phát triển ứng dụng di động đa nền tảng hoặc native, đảm bảo trải nghiệm mượt mà và hiệu năng tốt.",
     "QA / Tester": "Đảm bảo chất lượng phần mềm thông qua kiểm thử thủ công và tự động hóa, viết test case, theo dõi bug.",
     "Software Engineer (.NET/C#)": "Phát triển ứng dụng trong hệ sinh thái Microsoft .NET, tích hợp dịch vụ Azure, xây dựng API và dịch vụ nền tảng.",
-    "Node.js / PHP Developer": "Phát triển dịch vụ API và ứng dụng web với Node.js hoặc PHP, tối ưu hiệu năng và bảo trì hệ thống cũ.",
-    "Android / iOS Developer": "Phát triển ứng dụng di động native cho Android hoặc iOS, đảm bảo chất lượng và đúng chuẩn store.",
+    "Node.js Developer": "Phát triển dịch vụ API và ứng dụng web với Node.js, tối ưu hiệu năng và khả năng mở rộng.",
+    "PHP Developer": "Phát triển và bảo trì ứng dụng web PHP, thiết kế API và tối ưu truy vấn cơ sở dữ liệu.",
+    "Android Developer": "Phát triển ứng dụng Android native với Kotlin, đảm bảo chất lượng và đúng chuẩn Google Play.",
+    "iOS Developer": "Phát triển ứng dụng iOS native với Swift, đảm bảo chất lượng và đúng chuẩn App Store.",
     "DevOps Engineer": "Xây dựng hạ tầng CI/CD, tự động hóa triển khai, giám sát hệ thống, áp dụng quy trình Infrastructure as Code.",
     "Cloud Engineer": "Thiết kế và vận hành hệ thống trên AWS/GCP/Azure, tối ưu chi phí và độ sẵn sàng cao.",
     "Data Engineer": "Xây dựng pipeline xử lý dữ liệu, chuẩn hóa và vận hành data warehouse phục vụ phân tích.",
@@ -150,18 +233,19 @@ ROLE_DESCRIPTIONS = {
 }
 
 REQUIREMENTS_TEMPLATE = (
-    "- Kinh nghiệm {exp_text}"
-    "- Thành thạo: {skills}"
-    "- Hiểu biết về quy trình phát triển phần mềm, sử dụng tốt Git"
-    "- {lang_text}"
+    "- Kinh nghiệm {exp_text}\n"
+    "- Kỹ năng bắt buộc: {required_skills}\n"
+    "- Kỹ năng ưu tiên: {optional_skills}\n"
+    "- Hiểu biết về quy trình phát triển phần mềm, sử dụng tốt Git\n"
+    "- {lang_text}\n"
     "- Tư duy logic tốt, có trách nhiệm và cầu tiến"
 )
 
 BENEFITS_TEMPLATE = (
-    "- Mức lương cạnh tranh theo năng lực, thưởng dự án hấp dẫn"
-    "- Chế độ bảo hiểm đầy đủ, nghỉ phép theo quy định"
-    "- Môi trường làm việc chuyên nghiệp, có mentor và lộ trình thăng tiến"
-    "- Hoạt động team building, gym và chăm sóc sức khỏe"
+    "- Mức lương cạnh tranh theo năng lực, thưởng dự án hấp dẫn\n"
+    "- Chế độ bảo hiểm đầy đủ, nghỉ phép theo quy định\n"
+    "- Môi trường làm việc chuyên nghiệp, có mentor và lộ trình thăng tiến\n"
+    "- Hoạt động team building, gym và chăm sóc sức khỏe\n"
     "- Cơ hội làm việc với công nghệ mới và dự án toàn cầu"
 )
 
@@ -212,13 +296,21 @@ def build():
         else:
             company = rng.choice(COMPANIES_RARE)
 
+        core_skills = (
+            BACKEND_STACKS[i % len(BACKEND_STACKS)]
+            if base_title == "Backend Developer"
+            else CORE_SKILLS_BY_ROLE.get(base_title, [])
+        )
         prefix = experience_title(level)
-        title = f"{prefix}{base_title}"
-        if "Intern" in base_title:
-            pass
-        skills = list(dict.fromkeys(SKILLS_BY_CATEGORY[cfg["cat"]]))
-        rng.shuffle(skills)
-        chosen_skills = skills[: min(len(skills), 3 + rng.randint(0, 3))]
+        title = f"{prefix}{display_role_title(base_title, core_skills)}"
+        other_skills = optional_skill_pool(base_title, cfg["cat"], core_skills)
+        rng.shuffle(other_skills)
+        skill_count = min(len(core_skills) + len(other_skills), 3 + rng.randint(0, 3))
+        optional_skills = other_skills[: skill_count - len(core_skills)]
+        skill_specs = [
+            *({"name": name, "is_required": True} for name in core_skills),
+            *({"name": name, "is_required": False} for name in optional_skills),
+        ]
 
         # phân bố status: chủ yếu ACTIVE, phủ đủ DRAFT/CLOSED/EXPIRED
         if n == 3:
@@ -250,7 +342,8 @@ def build():
             "description": ROLE_DESCRIPTIONS[base_title],
             "requirements": REQUIREMENTS_TEMPLATE.format(
                 exp_text=EXP_TEXT[level],
-                skills=", ".join(chosen_skills),
+                required_skills=", ".join(core_skills),
+                optional_skills=", ".join(optional_skills) or "Không bắt buộc",
                 lang_text=LANG_TEXT[level],
             ),
             "benefits": BENEFITS_TEMPLATE,
@@ -262,7 +355,7 @@ def build():
             "salary_max": salary_max,
             "salary_negotiable": negotiable,
             "status": status,
-            "skills": chosen_skills,
+            "skills": skill_specs,
             "owner_email": email,
             "owner_username": f"hr_{cfg['pop']}_{n:03d}",
         }
@@ -273,6 +366,7 @@ def build():
         "meta": {
             "description": "200 JobPosts chuẩn hóa, phân loại theo mức độ phổ biến của vai trò: 120 phổ biến (60%), 60 trung bình (30%), 20 hiếm (10%).",
             "total": len(records),
+            "skill_schema": {"name": "string", "is_required": "boolean"},
             "popularity": {
                 "common": sum(1 for r in records if r["popularity"] == "common"),
                 "average": sum(1 for r in records if r["popularity"] == "average"),
@@ -288,7 +382,8 @@ def build():
     # enum coverage report
     from collections import Counter
     for field in ["workplace_type", "job_type", "experience_level", "location", "status"]:
-        print(field, dict(Counter(r[field] for r in records)))
+        counts = dict(Counter(r[field] for r in records))
+        print(field, json.dumps(counts, ensure_ascii=True))
 
 
 if __name__ == "__main__":

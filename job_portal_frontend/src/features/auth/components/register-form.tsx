@@ -37,18 +37,17 @@ export function RegisterForm({ initialRole = "CANDIDATE" }: { initialRole?: Regi
     const email = String(form.get("email") ?? "").trim();
     if (password.length < 8) return setError("Mật khẩu tối thiểu 8 ký tự.");
     if (password !== confirmPassword) return setError("Mật khẩu xác nhận không khớp.");
-    if (role === "EMPLOYER" && companyName.trim().length < 2) return setError("Vui lòng nhập tên công ty.");
+    if (role === "EMPLOYER" && !companyName.trim()) return setError("Vui lòng nhập tên công ty.");
     setSubmitting(true);
     setError(null);
     try {
       const names = splitName(fullName);
       const user = await signUp({
         email,
-        username: email.split("@")[0],
+        username: email,
         password,
         role,
         ...names,
-        phone: String(form.get("phone") ?? "").trim(),
         company_name: role === "EMPLOYER" ? companyName.trim() : undefined,
       });
       router.push(ROLE_HOME[user.role]);
@@ -60,7 +59,7 @@ export function RegisterForm({ initialRole = "CANDIDATE" }: { initialRole?: Regi
   };
 
   const googleCredential = async (credential: string) => {
-    if (role === "EMPLOYER" && companyName.trim().length < 2) {
+    if (role === "EMPLOYER" && !companyName.trim()) {
       setError("Nhập tên công ty trước khi tiếp tục với Google.");
       return;
     }
@@ -104,12 +103,6 @@ export function RegisterForm({ initialRole = "CANDIDATE" }: { initialRole?: Regi
           onSubmit={submit}
           submitting={submitting}
           submitLabel={`Đăng ký ${role === "CANDIDATE" ? "ứng viên" : "nhà tuyển dụng"}`}
-          afterFields={(
-            <label className="flex items-start gap-2 text-sm text-zinc-600">
-              <input type="checkbox" required className="mt-0.5 size-4 accent-primary" />
-              Tôi đồng ý với Điều khoản sử dụng và Chính sách bảo mật.
-            </label>
-          )}
         >
         <div>
           <Label htmlFor="register-name">{role === "EMPLOYER" ? "Người liên hệ" : "Họ và tên"}</Label>
@@ -121,10 +114,6 @@ export function RegisterForm({ initialRole = "CANDIDATE" }: { initialRole?: Regi
             <Input id="register-company" value={companyName} onChange={(event) => setCompanyName(event.target.value)} className="mt-1.5" required />
           </div>
         )}
-        <div>
-          <Label htmlFor="register-phone">Số điện thoại</Label>
-          <Input id="register-phone" name="phone" type="tel" autoComplete="tel" className="mt-1.5" />
-        </div>
         </AuthForm>
       </div>
       <div className="relative my-5"><div className="border-t border-zinc-200" /><span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 bg-white px-3 text-xs text-zinc-400">hoặc</span></div>

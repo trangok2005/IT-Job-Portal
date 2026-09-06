@@ -1,5 +1,6 @@
 """UC-03 orchestration: hard filters first, then semantic ranking or fallback."""
 import logging
+import re
 from dataclasses import dataclass
 
 from django.db.models import QuerySet
@@ -7,6 +8,7 @@ from django.db.models import QuerySet
 from apps.core.embedding_text_builders import build_query_text
 from apps.jobs import selectors
 from apps.jobs.models import JobPost
+from apps.skills import selectors as skill_selectors
 from integrations.gemini.embeddings import EmbeddingError, embed_query
 
 
@@ -16,6 +18,21 @@ NO_RESULTS_MESSAGE = (
     "Không tìm thấy công việc phù hợp với yêu cầu của bạn. "
     "Hãy thử bỏ bớt bộ lọc hoặc đổi từ khóa."
 )
+
+
+def normalize_basic_keyword(keyword: str) -> str:
+    """Expand common developer shorthand for deterministic basic search."""
+    return re.sub(r"\bdev\b", "developer", keyword, flags=re.IGNORECASE)
+
+
+def apply_explicit_developer_intent(queryset, keyword: str):
+    """Honor explicit "<technology> developer" intent before semantic rank."""
+    if not re.search(r"\b(dev|developer)\b", keyword, flags=re.IGNORECASE):
+        return queryset
+    queryset = queryset.filter(title__icontains="Developer")
+    for skill_id in skill_selectors.get_skill_ids_mentioned_in_text(keyword):
+        queryset = queryset.filter(job_skills__skill_id=skill_id)
+    return queryset.distinct()
 
 
 @dataclass(frozen=True)
@@ -58,6 +75,8 @@ def search_jobs(keyword: str | None, filters: SearchFilters) -> SearchResult:
         experience_level=filters.experience_level,
         salary_min=filters.salary_min,
     )
+    if has_keyword:
+        queryset = apply_explicit_developer_intent(queryset, normalized_keyword)
 
     if not has_keyword:
         mode = "FILTER_ONLY" if has_filters else "LATEST"
@@ -76,26 +95,32 @@ def search_jobs(keyword: str | None, filters: SearchFilters) -> SearchResult:
         query_vector = embed_query(query_text)
     except EmbeddingError as exc:
         logger.warning(
-            "Gemini embedding failed; using UC-03 PostgreSQL FTS fallback (%s)",
+            "Gemini embedding failed; using UC-03 basic keyword fallback (%s)",
             type(exc.__cause__ or exc).__name__,
         )
-        fallback = selectors.fallback_keyword_search(queryset, normalized_keyword)
+        fallback = selectors.basic_keyword_search(
+            queryset,
+            normalize_basic_keyword(normalized_keyword),
+        )
         return SearchResult(
             queryset=fallback,
-            mode="FALLBACK_FTS",
+            mode="FALLBACK_BASIC",
             message=None if fallback.exists() else NO_RESULTS_MESSAGE,
             fallback_used=True,
         )
 
-    ranked = selectors.rank_jobs_by_query_embedding(queryset, query_vector)
-    if not ranked.exists():
-        fallback = selectors.fallback_keyword_search(queryset, normalized_keyword)
+    if not selectors.jobs_with_current_embeddings(queryset).exists():
+        fallback = selectors.basic_keyword_search(
+            queryset,
+            normalize_basic_keyword(normalized_keyword),
+        )
         return SearchResult(
             queryset=fallback,
-            mode="FALLBACK_FTS",
+            mode="FALLBACK_BASIC",
             message=None if fallback.exists() else NO_RESULTS_MESSAGE,
             fallback_used=True,
         )
+    ranked = selectors.rank_jobs_by_query_embedding(queryset, query_vector)
     return SearchResult(
         queryset=ranked,
         mode="SEMANTIC",

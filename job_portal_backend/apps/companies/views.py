@@ -11,6 +11,7 @@ from drf_spectacular.utils import extend_schema, extend_schema_view
 
 from apps.companies import perms, selectors, serializers, services
 from apps.companies.models import Company
+from common import permissions as common_permissions
 
 
 @extend_schema_view(
@@ -27,11 +28,15 @@ class CompanyViewSet(
 
     def get_permissions(self):
         if self.action == "me":
-            return [IsAuthenticated(), perms.IsEmployer()]
+            return [IsAuthenticated(), common_permissions.IsEmployer()]
         if self.action == "resubmit":
-            return [IsAuthenticated(), perms.IsEmployer(), perms.IsCompanyOwner()]
+            return [
+                IsAuthenticated(),
+                common_permissions.IsEmployer(),
+                perms.IsCompanyOwner(),
+            ]
         # list / retrieve / approve / reject / lock
-        return [IsAuthenticated(), perms.IsAdminRole()]
+        return [IsAuthenticated(), common_permissions.IsAdmin()]
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
