@@ -1,10 +1,4 @@
-"""
-jobs/models.py
-UC-02 "Đăng tin tuyển dụng" + UC-03 "Tìm kiếm công việc".
-JobPost giữ embedding (pgvector) sinh từ JD, dùng để so khớp semantic với
-CandidateProfile.embedding. JobSkill là bảng trung gian cho các kỹ năng
-yêu cầu của tin tuyển dụng.
-"""
+"""Mô hình tin tuyển dụng, skill yêu cầu và embedding pgvector cho UC-02/03."""
 from django.conf import settings
 from django.db import models
 from pgvector.django import VectorField, HnswIndex
@@ -82,7 +76,6 @@ class JobPost(UUIDModel, TimeStampedModel):
 
     required_skills = models.ManyToManyField(Skill, through="JobSkill", related_name="job_posts")
 
-    # --- Embedding cho semantic search / matching ---
     content_version = models.PositiveIntegerField(default=1)
     embedding = VectorField(dimensions=EMBEDDING_DIMENSIONS, null=True, blank=True)
     embedding_version = models.PositiveIntegerField(default=0)

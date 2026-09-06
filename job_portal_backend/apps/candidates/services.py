@@ -1,4 +1,4 @@
-"""Write operations và business rules của UC-01 quản lý hồ sơ ứng viên."""
+"""Các thao tác ghi và quy tắc nghiệp vụ quản lý hồ sơ candidate của UC-01."""
 from pathlib import Path
 
 from django.core.files.base import File
@@ -23,12 +23,12 @@ def _enqueue_task(task_name: str, payload: dict) -> None:
 
 
 def _resolve_candidate_skill(value) -> Skill:
-    """Resolve skill cho hồ sơ; tên lạ được tạo PENDING chờ duyệt."""
+    """Phân giải skill cho hồ sơ; tạo tên lạ ở trạng thái PENDING chờ duyệt."""
     return resolve_savable_skill(value)
 
 
 def _bump_profile_version(profile: CandidateProfile) -> None:
-    """Tăng version nguyên tử và yêu cầu sinh lại embedding đúng version mới."""
+    """Tăng version nguyên tử và yêu cầu sinh lại embedding cho version mới."""
     now = timezone.now()
     CandidateProfile.objects.filter(pk=profile.pk).update(
         profile_version=F("profile_version") + 1,
@@ -39,7 +39,7 @@ def _bump_profile_version(profile: CandidateProfile) -> None:
 
 
 def enqueue_candidate_embedding(profile: CandidateProfile) -> None:
-    """Enqueue embedding cho version hiện tại sau khi transaction commit."""
+    """Đưa tác vụ embedding của version hiện tại vào hàng đợi sau khi commit."""
     _enqueue_task(
         "generate_candidate_embedding",
         {
@@ -83,7 +83,7 @@ def update_education(education: Education, data: dict) -> Education:
 
 @transaction.atomic
 def delete_education(education: Education) -> None:
-    """Xóa học vấn và làm stale embedding của hồ sơ sở hữu."""
+    """Xóa học vấn và đánh dấu embedding của hồ sơ là cũ."""
     candidate = education.candidate
     education.delete()
     _bump_profile_version(candidate)
@@ -111,7 +111,7 @@ def update_experience(experience: Experience, data: dict) -> Experience:
 
 @transaction.atomic
 def delete_experience(experience: Experience) -> None:
-    """Xóa kinh nghiệm và làm stale embedding của hồ sơ sở hữu."""
+    """Xóa kinh nghiệm và đánh dấu embedding của hồ sơ là cũ."""
     candidate = experience.candidate
     experience.delete()
     _bump_profile_version(candidate)
@@ -146,7 +146,7 @@ def update_candidate_skill(
     candidate_skill: CandidateSkill,
     data: dict,
 ) -> CandidateSkill:
-    """Sửa skill, đồng thời bảo vệ trạng thái skill và unique constraint."""
+    """Sửa skill, đồng thời bảo vệ trạng thái và ràng buộc duy nhất."""
     if not data:
         return candidate_skill
     for field, value in data.items():
@@ -179,7 +179,7 @@ def delete_candidate_skill(candidate_skill: CandidateSkill) -> None:
 
 @transaction.atomic
 def delete_resume(resume: Resume) -> None:
-    """Xóa CV/file lưu trữ và tự chọn CV mới nếu CV vừa xóa là CV chính."""
+    """Xóa CV khỏi kho lưu trữ và tự chọn CV chính mới nếu cần."""
     candidate = CandidateProfile.objects.select_for_update().get(
         pk=resume.candidate_id,
     )
@@ -215,7 +215,7 @@ def set_primary_resume(resume: Resume) -> Resume:
 
 @transaction.atomic
 def save_full_profile(profile: CandidateProfile, data: dict) -> CandidateProfile:
-    """Replace one reviewed profile snapshot and enqueue one embedding."""
+    """Thay snapshot hồ sơ đã duyệt và đưa một tác vụ embedding vào hàng đợi."""
     locked = CandidateProfile.objects.select_for_update().get(pk=profile.pk)
     educations = data.pop("educations")
     experiences = data.pop("experiences")
@@ -267,11 +267,9 @@ def save_full_profile(profile: CandidateProfile, data: dict) -> CandidateProfile
     return locked
 
 
-# --- ResumeImport services (UC-01: CV upload -> AI parse -> preview -> confirm) ---
-
 @transaction.atomic
 def create_resume_import(profile: CandidateProfile, file) -> ResumeImport:
-    """Tạo bản ghi ResumeImport tạm cho luồng parse CV bất đồng bộ.
+    """Tạo ResumeImport tạm cho luồng phân tích CV bất đồng bộ.
     Không ảnh hưởng Resume chính thức hay profile_version.
     """
     resume_import = ResumeImport.objects.create(
@@ -295,7 +293,7 @@ def mark_resume_import_parsed(
     raw_data: dict,
     parsed_data: dict | None = None,
 ) -> ResumeImport:
-    """Lưu kết quả parse từ AI vào ResumeImport (preview)."""
+    """Lưu kết quả AI phân tích vào ResumeImport để xem trước."""
     if parsed_data is None:
         parsed_data = raw_data
 
@@ -314,7 +312,7 @@ def mark_resume_import_parsed(
 
 
 def mark_resume_import_failed(resume_import: ResumeImport, error_message: str) -> ResumeImport:
-    """Ghi nhận lỗi parse ResumeImport."""
+    """Ghi nhận lỗi phân tích ResumeImport."""
     resume_import.parse_status = ResumeImport.ParseStatus.FAILED
     resume_import.parse_error_message = error_message[:2000]
     resume_import.save(
@@ -326,10 +324,9 @@ def mark_resume_import_failed(resume_import: ResumeImport, error_message: str) -
 @transaction.atomic
 def consume_resume_import(resume_import: ResumeImport) -> Resume:
     """Chuyển ResumeImport thành Resume chính thức khi user xác nhận lưu hồ sơ.
-    Tạo Resume mới is_primary=True, chuyển các Resume cũ thành is_primary=False.
+    Tạo Resume chính mới và bỏ trạng thái chính của các Resume cũ.
     Đánh dấu ResumeImport.parse_status = CONSUMED.
-    File được COPY sang storage path riêng của Resume vì bản ghi import có thể
-    bị dọn dẹp sau 24h (kèm file vật lý) — không được rủi ro mất CV chính.
+    Sao chép file sang đường dẫn riêng vì bản import có thể bị dọn sau 24 giờ.
     """
     if resume_import.parse_status != ResumeImport.ParseStatus.SUCCESS:
         raise ValueError("Chỉ có thể dùng CV đã parse thành công.")
@@ -355,8 +352,9 @@ def consume_resume_import(resume_import: ResumeImport) -> Resume:
 
 @transaction.atomic
 def delete_resume_import(resume_import: ResumeImport) -> None:
-    """Xóa ResumeImport (khi user hủy chỉnh sửa hoặc tự dọn dẹp hết hạn).
-    Bản ghi CONSUMED chỉ xóa record — file vật lý đã được copy sang Resume."""
+    """Xóa ResumeImport khi user hủy chỉnh sửa hoặc bản ghi hết hạn.
+    Với bản ghi CONSUMED, chỉ xóa bản ghi vì file đã được sao chép sang Resume.
+    """
     storage = resume_import.file.storage
     stored_name = resume_import.file.name
     consumed = resume_import.parse_status == ResumeImport.ParseStatus.CONSUMED

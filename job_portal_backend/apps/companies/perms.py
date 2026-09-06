@@ -1,4 +1,4 @@
-"""Object permissions specific to companies."""
+"""Quyền truy cập đối tượng dành riêng cho công ty."""
 from rest_framework import permissions
 
 

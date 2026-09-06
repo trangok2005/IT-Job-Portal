@@ -1,12 +1,4 @@
-"""
-applications/models.py
-UC "Ứng tuyển" (candidate) + UC-04 "Xử lý ứng tuyển" (employer).
-Trạng thái tuân theo state machine trong Charter:
-    applied -> shortlisted -> interviewed -> hired
-    applied -> rejected | shortlisted -> rejected | interviewed -> rejected
-hired/rejected là trạng thái cuối (terminal), không cho chuyển tiếp
-(UC-04 exception E3 "Trạng thái không hợp lệ").
-"""
+"""Mô hình ứng tuyển với state machine một chiều cho candidate và employer."""
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -39,8 +31,8 @@ class JobApplication(UUIDModel, TimeStampedModel):
         Status.APPLIED: {Status.SHORTLISTED, Status.REJECTED},
         Status.SHORTLISTED: {Status.INTERVIEWED, Status.REJECTED},
         Status.INTERVIEWED: {Status.HIRED, Status.REJECTED},
-        Status.HIRED: set(),       # terminal
-        Status.REJECTED: set(),    # terminal
+        Status.HIRED: set(),
+        Status.REJECTED: set(),
     }
 
     job = models.ForeignKey(JobPost, on_delete=models.CASCADE, related_name="applications")
@@ -93,7 +85,7 @@ class JobApplication(UUIDModel, TimeStampedModel):
         return f"{self.candidate.full_name} -> {self.job.title} [{self.status}]"
 
     def can_transition_to(self, new_status: str, from_status: str | None = None) -> bool:
-        """Kiểm tra transition từ trạng thái chỉ định hoặc trạng thái hiện tại."""
+        """Kiểm tra chuyển tiếp từ trạng thái chỉ định hoặc trạng thái hiện tại."""
         source_status = from_status or self.status
         return new_status in self.VALID_TRANSITIONS.get(source_status, set())
 
@@ -111,9 +103,7 @@ class JobApplication(UUIDModel, TimeStampedModel):
 
 
 class ApplicationStatusHistory(UUIDModel):
-    """Audit trail cho mỗi lần đổi trạng thái — phục vụ UC "Theo dõi trạng
-    thái ứng tuyển" (ứng viên xem lịch sử) và truy vết cho Admin/NTD.
-    """
+    """Audit trail cho mỗi lần đổi trạng thái, dùng để theo dõi và truy vết."""
 
     application = models.ForeignKey(JobApplication, on_delete=models.CASCADE, related_name="status_history")
     from_status = models.CharField(max_length=20, choices=JobApplication.Status.choices, blank=True)

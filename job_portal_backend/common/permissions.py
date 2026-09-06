@@ -1,4 +1,4 @@
-"""Role-based permissions shared across backend apps."""
+"""Các quyền theo role dùng chung cho các app backend."""
 from rest_framework.permissions import BasePermission
 
 
@@ -39,7 +39,7 @@ class IsEmployerOrAdmin(BasePermission):
 
 
 class HasBusinessRole(BasePermission):
-    """Allow authenticated users with one of the supported business roles."""
+    """Cho phép user đã xác thực có một trong các role nghiệp vụ được hỗ trợ."""
 
     def has_permission(self, request, view):
         user = request.user

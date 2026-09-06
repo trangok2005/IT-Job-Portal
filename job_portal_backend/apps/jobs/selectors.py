@@ -1,4 +1,4 @@
-"""jobs selectors — read-only query logic (no writes, no business mutation)."""
+"""Các selector chỉ đọc tin tuyển dụng, không thay đổi nghiệp vụ."""
 from django.db.models import Case, Count, ExpressionWrapper, F, FloatField, Q, Value, When
 from django.db.models.functions import Greatest, Least, Round
 from django.utils import timezone
@@ -23,7 +23,7 @@ MIN_SEMANTIC_MATCH_SCORE = 50.0
 
 
 def is_public_job(job: JobPost) -> bool:
-    """Kiểm tra một tin có đang hiển thị hợp lệ cho public hay không."""
+    """Kiểm tra tin có đủ điều kiện hiển thị công khai hay không."""
     return bool(
         job.status == JobPost.Status.ACTIVE
         and job.company.status == Company.Status.APPROVED
@@ -52,7 +52,7 @@ def filter_active_jobs(
     experience_level=None,
     salary_min=None,
 ):
-    """Apply public eligibility and UC-03 hard filters before keyword search."""
+    """Áp dụng điều kiện công khai và bộ lọc cứng UC-03 trước khi tìm từ khóa."""
     qs = get_active_jobs()
     if workplace_type:
         qs = qs.filter(workplace_type=workplace_type)
@@ -76,7 +76,7 @@ def jobs_with_current_embeddings(queryset):
 
 
 def rank_jobs_by_query_embedding(queryset, query_embedding):
-    """Return current vectors whose cosine match score is strictly above 50%."""
+    """Trả các vector hiện hành có điểm khớp cosine lớn hơn 50%."""
     distance = CosineDistance("embedding", query_embedding)
     return (
         jobs_with_current_embeddings(queryset)
@@ -93,7 +93,7 @@ def rank_jobs_by_query_embedding(queryset, query_embedding):
 
 
 def basic_keyword_search(queryset, keyword):
-    """Case-insensitive keyword fallback over the hard-filtered job set."""
+    """Tìm từ khóa fallback không phân biệt hoa thường trên tập tin đã lọc cứng."""
     for term in keyword.split():
         queryset = queryset.filter(
             Q(title__icontains=term)
@@ -116,7 +116,7 @@ def get_employer_jobs(user):
 
 
 def get_job_detail_queryset(user):
-    """Public chỉ thấy tin mở; owner/admin vẫn xem được trạng thái nội bộ."""
+    """Khách chỉ thấy tin mở; owner/admin vẫn xem được trạng thái nội bộ."""
     public_filter = (
         Q(status=JobPost.Status.ACTIVE)
         & Q(company__status=Company.Status.APPROVED)
@@ -138,7 +138,7 @@ def get_job_detail_queryset(user):
 
 
 def get_manageable_jobs(user):
-    """Giới hạn object quản trị theo owner; admin được truy cập toàn bộ."""
+    """Giới hạn đối tượng quản trị theo owner; admin được truy cập toàn bộ."""
     qs = JobPost.objects.all()
     if not user.is_admin_role:
         qs = qs.filter(Q(created_by=user) | Q(company__owner=user))
@@ -198,7 +198,7 @@ def _weighted_recommendations(queryset, semantic_score, semantic_available, weig
 
 
 def get_recommended_jobs(profile: CandidateProfile):
-    """Rank all eligible jobs by the active four-component configuration."""
+    """Xếp hạng mọi tin đủ điều kiện theo cấu hình bốn thành phần đang hoạt động."""
     queryset = get_active_jobs()
     if profile.embedding is None or profile.embedding_is_stale:
         return queryset.annotate(
@@ -304,7 +304,7 @@ def get_recommended_jobs(profile: CandidateProfile):
 
 
 def get_recommended_candidates(job: JobPost):
-    """Rank active public candidate profiles by pure cosine similarity.
+    """Xếp hạng hồ sơ candidate công khai đang hoạt động theo cosine thuần.
 
     Trọng số MatchingWeightConfig chỉ áp dụng cho chiều candidate -> jobs
     và điểm chấm hồ sơ ứng tuyển (ApplicationMatchResult); gợi ý ứng viên cho NTD

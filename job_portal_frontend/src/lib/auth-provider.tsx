@@ -16,8 +16,8 @@ import {
 import { clearAuth, getStoredUser, persistAuth } from "@/lib/auth";
 import type { LoginPayload, RegisterPayload, UserDto } from "@/lib/types";
 
-// --- Tiny external store đọc current user từ localStorage, đọc sync khi mount
-// (an toàn cho SSR: server snapshot = null). Tránh setState trong effect. ---
+// Đọc đồng bộ current user khi mount với server snapshot null để an toàn cho SSR
+// và tránh setState trong effect.
 let cachedUser: UserDto | null | undefined;
 
 function getSnapshot(): UserDto | null {

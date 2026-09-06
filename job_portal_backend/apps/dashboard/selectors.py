@@ -1,4 +1,4 @@
-"""Aggregated read queries for role-specific dashboards."""
+"""Các truy vấn tổng hợp chỉ đọc cho dashboard theo role."""
 from django.db.models import Count, Q
 from django.utils import timezone
 
@@ -13,7 +13,7 @@ from apps.skills.models import Skill
 
 
 def get_candidate_dashboard(user):
-    """Return candidate counts and at most three eligible recommendations."""
+    """Trả số liệu của candidate và tối đa ba đề xuất đủ điều kiện."""
     profile = CandidateProfile.objects.annotate(
         primary_resume_count=Count(
             "resumes",
@@ -43,7 +43,7 @@ def get_candidate_dashboard(user):
 
 
 def get_employer_dashboard(user):
-    """Return company state and aggregate job/application counts for its owner."""
+    """Trả trạng thái công ty và số tin, hồ sơ tổng hợp cho chủ sở hữu."""
     company = Company.objects.filter(owner=user).first()
     if company is None:
         return {
@@ -79,7 +79,7 @@ def get_employer_dashboard(user):
 
 
 def get_admin_dashboard():
-    """Return system-wide moderation and activity counters in aggregate queries."""
+    """Trả số liệu kiểm duyệt và hoạt động toàn hệ thống bằng truy vấn tổng hợp."""
     now = timezone.now()
     user_counts = User.objects.aggregate(
         users_total=Count("id"),

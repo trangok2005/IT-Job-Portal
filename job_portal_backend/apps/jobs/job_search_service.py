@@ -1,4 +1,4 @@
-"""UC-03 orchestration: hard filters first, then semantic ranking or fallback."""
+"""Điều phối UC-03: lọc cứng trước, sau đó xếp hạng semantic hoặc fallback."""
 import logging
 import re
 from dataclasses import dataclass
@@ -21,12 +21,12 @@ NO_RESULTS_MESSAGE = (
 
 
 def normalize_basic_keyword(keyword: str) -> str:
-    """Expand common developer shorthand for deterministic basic search."""
+    """Mở rộng cách viết tắt developer phổ biến để tìm kiếm cơ bản ổn định."""
     return re.sub(r"\bdev\b", "developer", keyword, flags=re.IGNORECASE)
 
 
 def apply_explicit_developer_intent(queryset, keyword: str):
-    """Honor explicit "<technology> developer" intent before semantic rank."""
+    """Ưu tiên ý định rõ dạng "<công nghệ> developer" trước khi xếp hạng semantic."""
     if not re.search(r"\b(dev|developer)\b", keyword, flags=re.IGNORECASE):
         return queryset
     queryset = queryset.filter(title__icontains="Developer")
@@ -64,7 +64,7 @@ class SearchResult:
 
 
 def search_jobs(keyword: str | None, filters: SearchFilters) -> SearchResult:
-    """Return one of UC-03's LATEST, FILTER_ONLY, SEMANTIC, or fallback modes."""
+    """Trả một chế độ LATEST, FILTER_ONLY, SEMANTIC hoặc fallback của UC-03."""
     normalized_keyword = (keyword or "").strip()
     has_keyword = bool(normalized_keyword)
     has_filters = not filters.is_empty()

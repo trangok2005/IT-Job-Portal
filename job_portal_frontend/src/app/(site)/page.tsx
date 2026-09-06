@@ -30,7 +30,6 @@ export default async function HomePage() {
 
   return (
     <div>
-      {/* Hero */}
       <section className="bg-gradient-to-b from-primary-50 to-white">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center px-4 pb-16 pt-16 text-center sm:px-6 sm:pt-20">
           <span className="inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white px-4 py-1.5 text-xs font-medium text-primary-700 shadow-sm">
@@ -75,7 +74,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Employer CTA */}
       <section className="bg-primary text-white">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-6 px-4 py-10 sm:px-6 md:flex-row">
           <div className="flex items-center gap-4 text-center md:text-left">
@@ -97,7 +95,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Latest jobs */}
       <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6">
         <div className="flex items-end justify-between gap-4">
           <div>

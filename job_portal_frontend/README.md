@@ -1,145 +1,94 @@
-# Cấu trúc Frontend — IT Job Portal
+# Frontend IT Job Portal
 
-> Lấy cảm hứng từ cấu trúc route thật của itviec.com (public job listing, sign-in
-> social + email, redirect sau login...), nhưng đã điều chỉnh theo đúng scope và các
-> quyết định đã chốt của dự án: KHÔNG có blog/company review/salary report, KHÔNG có
-> "Quên mật khẩu", đăng nhập/đăng ký dùng chung 1 trang cho mọi role, `/jobs` công khai
-> hoàn toàn (đã sửa lỗi từng đặt nhầm trong route group bị guard).
+Frontend của IT Job Portal được xây dựng bằng Next.js App Router, React và TypeScript. Ứng dụng cung cấp giao diện công khai và các khu vực riêng cho ứng viên, nhà tuyển dụng và quản trị viên.
 
-## Nguyên tắc routing bắt buộc
+## Yêu cầu
 
-1. Route công khai và route cần đăng nhập **không bao giờ** tách thành 2 trang riêng
-   cho cùng 1 nội dung. Chỉ có 1 trang duy nhất, hành vi thay đổi theo trạng thái đăng
-   nhập/role — không nhân đôi code, không nhân đôi route.
-2. Route group có `layout.tsx` guard theo role **chỉ** áp cho khu vực thật sự cần đăng
-   nhập (dashboard, hồ sơ, quản lý...). Trang duyệt/xem nội dung công khai (`/`, `/jobs`,
-   `/jobs/[jobId]`) đứng ngoài mọi route group bị guard.
-3. Khi 1 hành động cụ thể (không phải cả trang) cần đăng nhập — ví dụ nút "Ứng tuyển" —
-   xử lý bằng **action-level check** ngay trong component, không đẩy thành route-level
-   guard: chưa đăng nhập → điều hướng `/login?redirect_to=<url hiện tại>`, đăng nhập
-   xong quay lại đúng chỗ và tự tiếp tục hành động đó (không bắt bấm lại).
+- Node.js 20.9 trở lên; CI đang dùng Node.js 20.
+- npm với dependency được khóa trong `package-lock.json`.
+- Backend API đang hoạt động nếu cần sử dụng dữ liệu thật hoặc sinh lại OpenAPI types.
 
-## Cây thư mục
+## Cài đặt
 
-```
-job_portal_frontend/
-├── src/
-│   ├── app/
-│   │   ├── page.tsx                        # Landing — hero + thanh search + job nổi bật (PUBLIC)
-│   │   ├── layout.tsx                       # Root layout (Navbar + Footer dùng chung mọi trang)
-│   │   │
-│   │   ├── jobs/                            # PUBLIC — tách khỏi mọi route group bị guard
-│   │   │   ├── page.tsx                       # UC-03: tìm kiếm việc làm (SQL filter: vị trí,
-│   │   │   │                                  # skill + family, địa điểm, level, lương)
-│   │   │   └── [jobId]/
-│   │   │       └── page.tsx                   # Chi tiết JD; nút "Ứng tuyển" action-gate,
-│   │   │                                      # không route-gate (xem nguyên tắc #3)
-│   │   │
-│   │   ├── (auth)/                          # PUBLIC — chỉ hiện khi CHƯA đăng nhập
-│   │   │   ├── layout.tsx                     # guard ngược: nếu đã login thì redirect ra ngoài
-│   │   │   ├── login/
-│   │   │   │   └── page.tsx                    # Dùng chung mọi role; Google OAuth + Email/Password;
-│   │   │   │                                   # KHÔNG có "Quên mật khẩu"; redirect theo role sau login
-│   │   │   └── register/
-│   │   │       └── page.tsx                    # Toggle chọn role Candidate/Employer đầu form;
-│   │   │                                       # dùng chung component AuthForm với login
-│   │   │
-│   │   ├── (candidate)/                     # PROTECTED — dùng chung PublicSiteShell + role guard
-│   │   │   ├── layout.tsx
-│   │   │   ├── candidate/
-│   │   │   ├── profile/
-│   │   │   │   └── page.tsx                    # UC-01: Upload CV (AI trích xuất) / nhập thủ công
-│   │   │   └── applications/
-│   │   │       └── page.tsx                    # Theo dõi trạng thái đơn ứng tuyển (UC liên quan UC-04)
-│   │   │
-│   │   ├── (employer)/                      # PROTECTED — dùng chung PublicSiteShell + role guard
-│   │   │   ├── layout.tsx                     # Company chưa APPROVED chỉ bị chặn tạo tin mới
-│   │   │   ├── employer/
-│   │   │   │   └── page.tsx                    # Dashboard: số tin active, ứng viên mới
-│   │   │   ├── company/
-│   │   │   │   └── page.tsx                    # Hồ sơ công ty + hiển thị trạng thái duyệt
-│   │   │   └── jobs/
-│   │   │       ├── page.tsx                    # Danh sách tin đã đăng (status, số ứng viên)
-│   │   │       ├── new/
-│   │   │       │   └── page.tsx                  # Tạo tin tuyển dụng
-│   │   │       └── [jobId]/
-│   │   │           ├── edit/
-│   │   │           │   └── page.tsx               # Sửa tin
-│   │   │           └── applications/
-│   │   │               └── page.tsx               # UC-05: danh sách ứng viên, sort match_score,
-│   │   │                                          # section "Ứng viên gợi ý" gộp trong trang này
-│   │   │
-│   │   └── (admin)/                         # PROTECTED — dùng chung PublicSiteShell + role guard
-│   │       ├── layout.tsx
-│   │       ├── admin/
-│   │       │   └── page.tsx                    # Dashboard thống kê tổng
-│   │       ├── companies/
-│   │       │   └── page.tsx                    # Duyệt hồ sơ công ty (pending/approved/rejected)
-│   │       ├── users/
-│   │       │   └── page.tsx                    # Quản lý tài khoản người dùng
-│   │       └── skills/
-│   │           └── page.tsx                    # Quản trị Skill Taxonomy: CRUD skill/alias/family,
-│   │                                           # duyệt skill "pending" từ AI trích xuất, cấu hình
-│   │                                           # trọng số Business Rule Ranking
-│   │
-│   ├── features/                            # Giữ nguyên theo charter gốc — mỗi thư mục ↔ 1 app Django
-│   │   ├── auth/  companies/  candidates/  skills/  jobs/  applications/  ai-analysis/
-│   │   │   └── api.ts / types.ts / hooks.ts / components/    (không đổi so với bản trước)
-│   │
-│   ├── components/
-│   │   ├── ui/                                # shadcn/ui primitives
-│   │   ├── layout/                            # Navbar, Footer — dùng ở root layout.tsx, không
-│   │   │                                       # lặp lại trong từng route group
-│   │   └── shared/                              # JobCard, StatusBadge, dùng ở cả /jobs (public)
-│   │                                            # lẫn (employer)/jobs (protected)
-│   │
-│   ├── lib/            # api-client.ts, query-client.ts, utils.ts — không đổi
-│   ├── middleware.ts   # CHỈ áp guard role cho (candidate)/(employer)/(admin);
-│   │                    # (auth) guard ngược (đã login thì đá ra); "/" và "/jobs/*" không đụng tới
-│   └── config/env.ts
-│
-├── public/
-└── ... (giữ nguyên phần còn lại theo bản charter gốc)
+Chạy từ thư mục `job_portal_frontend`:
+
+```powershell
+npm ci
+Copy-Item .env.local.example .env.local
 ```
 
-## Bảng route — Access Control
+## Biến môi trường
 
-| Route | Truy cập | Ghi chú |
-|---|---|---|
-| `/` | Public | Landing — hero + search bar + job nổi bật |
-| `/jobs` | Public | UC-03, không cần đăng nhập |
-| `/jobs/[jobId]` | Public | Xem JD tự do; nút "Ứng tuyển" action-gate |
-| `/login` | Public (chỉ hiện khi chưa đăng nhập) | Dùng chung mọi role, redirect theo role sau login |
-| `/register` | Public (chỉ hiện khi chưa đăng nhập) | Toggle chọn role ngay trong form |
-| `/candidate/*` | Protected — CANDIDATE | Guard ở `(candidate)/layout.tsx` |
-| `/employer/*` | Protected — EMPLOYER | Guard ở `(employer)/layout.tsx`, kèm chặn phụ theo `Company.status` |
-| `/admin/*` | Protected — ADMIN | Guard ở `(admin)/layout.tsx` |
+| Biến | Phạm vi | Ý nghĩa |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | Trình duyệt | URL công khai của Django backend |
+| `API_URL` | Server | URL backend dùng bởi Server Components và proxy |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Trình duyệt | Google OAuth client ID, phải khớp với backend |
 
-## Ví dụ pattern action-level gate (redirect_to)
+Không đặt secret, API key hoặc token vào biến có tiền tố `NEXT_PUBLIC_`.
 
-```ts
-// trong component nút "Ứng tuyển" tại app/jobs/[jobId]/page.tsx
-const handleApplyClick = () => {
-  if (!user) {
-    router.push(`/login?redirect_to=${pathname}`);
-    return;
-  }
-  if (user.role !== "candidate") {
-    toast.error("Chỉ Ứng viên mới ứng tuyển được");
-    return;
-  }
-  setApplyModalOpen(true); // mở form ngay tại chỗ, không điều hướng
-};
+## Chạy development server
+
+```powershell
+npm run dev
 ```
 
-## Khác biệt có chủ đích so với ITviec (đã lược bỏ vì ngoài scope)
+Mở `http://localhost:3000`. Mặc định frontend local kết nối backend tại `http://localhost:8000` theo `.env.local.example`.
 
-- Không tách `/sign_in` và `/employer/sign_in` riêng như ITviec — dùng chung `/login`.
-- Không có mega-menu Jobs by Skill/Expertise/Title/Company/City (các trang SEO landing
-  riêng lẻ) — lọc gộp hết trong `/jobs`.
-- Không có Blog, Company Reviews, IT Salary Report, Story Hub.
-- Không có "Quên mật khẩu".
+## Kiểm tra và build
 
-Nếu sau này thêm route mới, luôn tự hỏi trước: *"route này có nội dung xem được công
-khai không, hay chỉ có hành động cần đăng nhập?"* — trả lời sai câu này chính là nguyên
-nhân gây ra lỗi `jobs/` từng bị nhét nhầm vào `(candidate)/` lúc đầu.
+```powershell
+npm run lint
+npm run typecheck
+npm run build
+```
+
+Chạy bản production đã build:
+
+```powershell
+npm run start
+```
+
+Frontend chưa có script test hoặc framework kiểm thử tự động. Không có lệnh test frontend được khai báo trong `package.json`.
+
+Khi backend đang chạy tại `http://localhost:8000`, có thể sinh lại type từ OpenAPI:
+
+```powershell
+npm run api:types
+```
+
+File `src/types/generated/api-schema.ts` là kết quả sinh tự động, không chỉnh sửa thủ công.
+
+## Cấu trúc mã nguồn
+
+```text
+src/
+|-- app/                  # Route, layout, loading và error boundary
+|-- features/             # API, type, hook và component theo domain
+|   |-- admin/
+|   |-- applications/
+|   |-- auth/
+|   |-- candidates/
+|   |-- dashboard/
+|   |-- employer/
+|   `-- jobs/
+|-- components/
+|   |-- layout/           # Navbar, Footer và public shell
+|   `-- ui/               # UI primitive dùng lại
+|-- lib/                  # API client, auth, polling và tiện ích
+|-- types/generated/      # Type sinh từ OpenAPI
+`-- proxy.ts              # Kiểm tra guest và role qua backend
+```
+
+Các route chính:
+
+- Public: `/`, `/jobs`, `/jobs/[jobId]`, `/login`, `/register`.
+- Ứng viên: `/candidate/profile`, `/candidate/applications`, `/candidate/applications/[id]`.
+- Nhà tuyển dụng: `/employer`, `/employer/company`, `/employer/jobs` và các route quản lý hồ sơ ứng tuyển.
+- Quản trị viên: `/admin`, `/admin/users`, `/admin/companies`, `/admin/skills`.
+
+## Kết nối backend
+
+Frontend chỉ giao tiếp với Django qua REST API và JSON. `src/lib/api-client.ts` xử lý request, JWT và refresh token; `src/proxy.ts` xác minh phiên và role cho các route được bảo vệ. Trình duyệt không gọi trực tiếp Gemini, QStash, Redis, SMTP hoặc Cloudflare R2.
+
+API schema được cung cấp tại `http://localhost:8000/api/schema/` và Swagger UI tại `http://localhost:8000/api/docs/` khi backend local đang chạy.

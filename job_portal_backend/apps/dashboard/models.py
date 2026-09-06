@@ -1,1 +1,1 @@
-"""Dashboard is read-only and does not own persisted models."""
+"""Dashboard chỉ đọc và không sở hữu mô hình lưu trữ nào."""

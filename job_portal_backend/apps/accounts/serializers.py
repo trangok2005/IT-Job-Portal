@@ -1,4 +1,4 @@
-"""accounts serializers — shape input/output only."""
+"""Các serializer tài khoản, chỉ định hình input/output."""
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
@@ -77,7 +77,7 @@ class AdminUserListQuerySerializer(serializers.Serializer):
 
 
 class ActiveUserTokenRefreshSerializer(TokenRefreshSerializer):
-    """Refresh only when the token's user still exists and is active."""
+    """Chỉ refresh khi user của token vẫn tồn tại và đang hoạt động."""
 
     def validate(self, attrs):
         try:

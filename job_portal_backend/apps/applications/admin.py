@@ -41,9 +41,9 @@ class JobApplicationAdmin(admin.ModelAdmin):
     )
 
     def has_add_permission(self, request):
-        """Applications must be created through the business service."""
+        """Chỉ cho phép tạo hồ sơ ứng tuyển qua service nghiệp vụ."""
         return False
 
     def has_delete_permission(self, request, obj=None):
-        """The charter has no use case for deleting an application."""
+        """Không cho phép xóa hồ sơ ứng tuyển theo đặc tả nghiệp vụ."""
         return False

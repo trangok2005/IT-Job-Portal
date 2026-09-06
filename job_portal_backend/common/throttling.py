@@ -1,9 +1,4 @@
-"""Throttling dùng chung cho toàn dự án.
-
-Tần suất cấu hình tập trung tại REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]
-(config/settings/base.py) — muốn chỉnh limit chỉ cần sửa settings,
-không đụng code class.
-"""
+"""Throttling dùng chung, với tần suất được cấu hình tập trung trong settings."""
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.throttling import SimpleRateThrottle
 
@@ -15,7 +10,7 @@ class JobSearchAnonThrottle(AnonRateThrottle):
 
 
 class AuthenticatedUserThrottle(SimpleRateThrottle):
-    """Base cho throttle chỉ áp dụng người đã đăng nhập (định danh theo pk)."""
+    """Lớp throttle cơ sở cho user đã đăng nhập, định danh theo khóa chính."""
 
     def get_cache_key(self, request, view):
         user = getattr(request, "user", None)
@@ -31,12 +26,12 @@ class JobSearchUserThrottle(AuthenticatedUserThrottle):
 
 
 class UploadParseMinuteThrottle(AuthenticatedUserThrottle):
-    """UC-01/02: mỗi user tối đa 2 lượt upload file parse Gemini/phút."""
+    """UC-01/02: mỗi user tối đa 2 lượt upload file để Gemini phân tích mỗi phút."""
 
     scope = "upload_parse_minute"
 
 
 class UploadParseDailyThrottle(AuthenticatedUserThrottle):
-    """UC-01/02: mỗi user tối đa 10 lượt upload parse/ngày (trần chi phí AI)."""
+    """UC-01/02: mỗi user tối đa 10 lượt upload để phân tích mỗi ngày."""
 
     scope = "upload_parse_daily"

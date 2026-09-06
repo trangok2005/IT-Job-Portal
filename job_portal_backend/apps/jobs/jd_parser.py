@@ -1,4 +1,4 @@
-"""Gemini-backed JD extraction used by UC-02 before a draft is created."""
+"""Trích xuất JD bằng Gemini cho UC-02 trước khi tạo bản nháp."""
 import json
 import mimetypes
 
@@ -97,9 +97,11 @@ def _normalize_data(data: dict) -> dict:
 def _resolve_approved_skills(
     names: list[str], required_flags: dict | None = None
 ) -> tuple[list[dict], list[str]]:
-    """Resolve skill names qua hàm chung resolve_savable_skill. Kỹ năng lạ
-    được tạo ở trạng thái PENDING và nằm luôn trong matched; chỉ tên rỗng
-    hoặc không hợp lệ mới rơi vào unmatched."""
+    """Phân giải tên skill bằng ``resolve_savable_skill`` dùng chung.
+
+    Skill lạ được tạo ở trạng thái PENDING và đưa vào danh sách khớp; chỉ tên
+    rỗng hoặc không hợp lệ mới được đưa vào danh sách không khớp.
+    """
     matched = []
     unmatched = []
     seen_ids = set()
@@ -121,7 +123,7 @@ def _resolve_approved_skills(
 
 
 def parse_job_description(file) -> tuple[dict, dict]:
-    """Return raw Gemini JSON and validated form-ready data."""
+    """Trả JSON thô từ Gemini và dữ liệu đã kiểm tra để điền biểu mẫu."""
     from google.genai import types
 
     from apps.jobs.serializers import JobDescriptionParsedDataSerializer

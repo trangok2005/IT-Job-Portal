@@ -1,4 +1,4 @@
-"""jobs permissions — business rules are checked here, not in views."""
+"""Quyền truy cập tin tuyển dụng; quy tắc được kiểm tra tại đây thay vì view."""
 from rest_framework import permissions
 
 from apps.companies.models import Company
@@ -6,7 +6,7 @@ from apps.jobs.models import JobPost
 
 
 class IsApprovedEmployer(permissions.BasePermission):
-    """Chỉ employer có công ty APPROVED mới được đăng tin (precondition UC-02)."""
+    """Chỉ employer có công ty APPROVED mới được đăng tin theo điều kiện UC-02."""
 
     message = "Cần có hồ sơ công ty được duyệt để đăng tin tuyển dụng."
 

@@ -1,4 +1,4 @@
-"""Persisted weighted match results captured for job applications."""
+"""Kết quả phù hợp có trọng số được lưu cho hồ sơ ứng tuyển."""
 from django.db import models
 
 from apps.core.models import UUIDModel

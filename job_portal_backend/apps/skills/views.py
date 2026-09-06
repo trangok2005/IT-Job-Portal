@@ -1,7 +1,7 @@
-"""skills views — ViewSet mỏng: gọi service/selector, trả response.
+"""ViewSet skill mỏng: gọi service/selector và trả response.
 
-UC diagram: Admin "Quản trị Skill và tiêu chí phù hợp". List công khai chỉ
-trả skill APPROVED + active; admin (role ADMIN) xem toàn bộ + duyệt/gộp.
+Danh sách công khai chỉ trả skill APPROVED đang hoạt động; admin có role ADMIN
+được xem toàn bộ, duyệt và gộp skill.
 """
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action

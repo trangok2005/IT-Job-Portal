@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Django's command-line utility for administrative tasks."""
+"""Tiện ích dòng lệnh Django cho các tác vụ quản trị."""
 import os
 import sys
 

@@ -23,47 +23,12 @@ Các luồng AI, Google Login và gửi mail chỉ hoạt động khi điền th
 `GEMINI_API_KEY`, `GOOGLE_CLIENT_ID` và các biến SMTP tương ứng. Không commit
 các file `.env.local`.
 
-## Cách 1: Backend và frontend bằng Docker
+## Khởi động PostgreSQL
 
-QStash Dev phải chạy trên máy host trong một terminal riêng:
-
-```powershell
-npx @upstash/qstash-cli dev
-```
-
-Sau đó chạy PostgreSQL, Django và Next.js:
+Docker chỉ chạy PostgreSQL 16 với pgvector:
 
 ```powershell
-docker compose up -d --build --wait
-```
-
-Backend container tự chờ PostgreSQL, chạy migration rồi khởi động Django development server. Compose cấu hình backend gọi QStash qua `host.docker.internal:8080`.
-
-Đăng ký lịch sau mỗi lần QStash Dev khởi động lại:
-
-```powershell
-docker compose exec backend python manage.py setup_qstash_schedules
-```
-
-Seed dữ liệu mẫu nếu database chưa có dữ liệu:
-
-```powershell
-docker compose exec backend python manage.py seed_demo
-```
-
-Xem log hoặc dừng hệ thống:
-
-```powershell
-docker compose logs -f backend
-docker compose down
-```
-
-## Cách 2: Chỉ PostgreSQL bằng Docker
-
-Khởi động database:
-
-```powershell
-docker compose up -d db
+docker compose up -d --wait
 ```
 
 Cài backend dependencies và chạy migration:
@@ -72,6 +37,8 @@ Cài backend dependencies và chạy migration:
 python -m pip install -r job_portal_backend/requirements/base.txt
 python job_portal_backend/manage.py migrate
 ```
+
+## Chạy ứng dụng
 
 Mở terminal thứ nhất cho QStash Dev:
 
@@ -91,6 +58,12 @@ Khi QStash và Django đã chạy, đăng ký schedules một lần:
 python job_portal_backend/manage.py setup_qstash_schedules
 ```
 
+Seed dữ liệu mẫu nếu database chưa có dữ liệu:
+
+```powershell
+python job_portal_backend/manage.py seed_demo
+```
+
 Mở terminal thứ ba cho Next.js:
 
 ```powershell
@@ -99,6 +72,12 @@ npm run dev --prefix job_portal_frontend
 ```
 
 Local Django luôn dùng `LocMemCache`; `REDIS_URL` production không được sử dụng. File CV/JD được lưu trong bucket R2 development private, không lưu dưới `MEDIA_ROOT`.
+
+Dừng database khi không sử dụng:
+
+```powershell
+docker compose down
+```
 
 ## Địa chỉ local
 
@@ -120,4 +99,3 @@ npm run lint --prefix job_portal_frontend
 npm run typecheck --prefix job_portal_frontend
 npm run build --prefix job_portal_frontend
 ```
-

@@ -1,8 +1,8 @@
-"""companies services — write operations + business rules.
+"""Các service ghi dữ liệu và áp dụng quy tắc nghiệp vụ của công ty.
 
 UC "Quản lý hồ sơ công ty" (employer) và "Duyệt hồ sơ công ty đăng ký" (admin).
-Mọi thay đổi status / nghiệp vụ phải đi qua đây, KHÔNG gọi trực tiếp save()
-tuỳ tiện trong views.
+Mọi thay đổi status hoặc nghiệp vụ phải qua đây, không gọi tùy tiện ``save()``
+trong view.
 """
 from django.utils import timezone
 
@@ -27,7 +27,7 @@ def update_company(company: Company, data: dict) -> Company:
 
 
 def approve_company(company: Company, user) -> Company:
-    """Admin duyệt hồ sơ công ty (precondition UC-02: APPROVED mới đăng tin)."""
+    """Admin duyệt hồ sơ công ty; UC-02 yêu cầu APPROVED trước khi đăng tin."""
     if company.status == Company.Status.APPROVED:
         return company
     if company.status != Company.Status.PENDING:

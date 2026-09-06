@@ -1,7 +1,7 @@
-"""candidates views — mỏng: lấy dữ liệu, gọi service/selector, trả response.
+"""View candidate mỏng: lấy dữ liệu, gọi service/selector và trả response.
 
 Không chứa logic nghiệp vụ (xem apps/candidates/services.py và selectors.py).
-Chỉ cho phép ứng viên thao tác HỒ SƠ CỦA CHÍNH MÌNH (request.user).
+Chỉ cho phép candidate thao tác hồ sơ của chính request.user.
 """
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -20,7 +20,7 @@ from integrations.storage import create_private_file_url
 
 
 def _upload_throttles():
-    """UC-01: giới hạn spam upload CV cho Gemini parse (2/phút, 10/ngày/user)."""
+    """Giới hạn tải CV để Gemini phân tích: 2 lần/phút và 10 lần/ngày/user."""
     return [UploadParseMinuteThrottle(), UploadParseDailyThrottle()]
 
 
@@ -33,7 +33,7 @@ def _get_my_profile(user) -> CandidateProfile:
 
 
 def _get_own(profile: CandidateProfile, model, pk):
-    """Chỉ tìm object con trong phạm vi hồ sơ đang đăng nhập."""
+    """Chỉ tìm đối tượng con trong phạm vi hồ sơ đang đăng nhập."""
     return get_object_or_404(model.objects.filter(candidate=profile), pk=pk)
 
 
@@ -275,7 +275,7 @@ class SetPrimaryResumeView(APIView):
 
 
 class CandidateResumeImportView(APIView):
-    """Upload CV để AI parse bất đồng bộ (không block UI). Trả về import_id để polling."""
+    """Tải CV để AI phân tích bất đồng bộ, trả import_id cho polling."""
 
     permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 
@@ -305,7 +305,7 @@ class CandidateResumeImportView(APIView):
 
 
 class CandidateResumeImportDetailView(APIView):
-    """Polling endpoint để kiểm tra trạng thái parse ResumeImport."""
+    """Endpoint polling để kiểm tra trạng thái phân tích ResumeImport."""
 
     permission_classes = [IsAuthenticated, common_permissions.IsCandidate]
 

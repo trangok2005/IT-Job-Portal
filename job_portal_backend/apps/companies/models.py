@@ -1,9 +1,4 @@
-"""
-companies/models.py
-Nhà tuyển dụng quản lý hồ sơ công ty; Admin duyệt hồ sơ công ty đăng ký
-(UC diagram: "Quản lý hồ sơ công ty", "Duyệt hồ sơ công ty đăng ký").
-UC-02 precondition depends on Company.status == APPROVED.
-"""
+"""Mô hình hồ sơ công ty do employer quản lý và admin xét duyệt."""
 from django.conf import settings
 from django.db import models
 
@@ -17,7 +12,6 @@ class Company(UUIDModel, TimeStampedModel):
         REJECTED = "REJECTED", "Từ chối"
         LOCKED = "LOCKED", "Bị khóa"
 
-    # The employer account that manages this company profile.
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -35,7 +29,6 @@ class Company(UUIDModel, TimeStampedModel):
 
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
 
-    # --- Admin approval trail (UC diagram: Admin -> Duyệt hồ sơ công ty) ---
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

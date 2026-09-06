@@ -1,4 +1,4 @@
-"""skills serializers — only shape input/output, no business logic."""
+"""Serializer định hình input/output của skill, không xử lý nghiệp vụ."""
 from decimal import Decimal
 from rest_framework import serializers
 

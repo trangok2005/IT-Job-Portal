@@ -1,4 +1,4 @@
-"""Background delivery tasks for user notifications."""
+"""Các task nền gửi thông báo cho user."""
 from django.db.models import F
 from django.utils import timezone
 
@@ -7,7 +7,7 @@ from integrations.email.smtp import send_text_email
 
 
 def send_application_status_email(history_id: str) -> bool:
-    """Send one status email; failures are persisted and re-raised for QStash."""
+    """Gửi email trạng thái; lưu lỗi và ném lại cho QStash."""
     history = (
         ApplicationStatusHistory.objects.select_related(
             "application__candidate__user",

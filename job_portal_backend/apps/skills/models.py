@@ -1,17 +1,4 @@
-"""
-skills/models.py
-UC diagram: Admin "Quản trị Skill và tiêu chí phù hợp".
-Solves Charter problem #6: "Skill trong CV và tin tuyển dụng có thể được
-biểu diễn bằng nhiều cách khác nhau" -> Skill (canonical) + SkillAlias
-(raw strings extracted by AI, normalized to a canonical Skill).
-
-Note: CandidateSkill (bảng nối candidate <-> skill) được định nghĩa ở CUỐI
-file này thay vì trong candidates/models.py để tránh circular import
-(candidates cần import Skill, nhưng Skill không cần biết về Candidate).
-Django tự phát hiện model theo module "<app>/models.py" nên phải để ở đây,
-KHÔNG để ở file rời (vd skills/candidate_skill.py) nếu không tự import nó
-trong models.py hoặc khai báo lại default_app_config.
-"""
+"""Mô hình taxonomy skill, alias, trọng số phù hợp và liên kết candidate."""
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -30,7 +17,7 @@ class SkillCategory(UUIDModel):
 
 
 class Skill(BaseModel):
-    """Canonical / normalized skill node in the taxonomy."""
+    """Nút skill canonical đã chuẩn hóa trong taxonomy."""
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Chờ duyệt"
@@ -49,10 +36,9 @@ class Skill(BaseModel):
         help_text="Admin tạm ẩn 1 skill đã APPROVED (khác với status, dùng khi cần deprecate).",
     )
 
-    # --- Non-blocking taxonomy: skill lạ được tạo NGAY ở trạng thái PENDING,
-    # không chặn luồng lưu hồ sơ/JD. Admin duyệt sau theo lô. ---
+    # Skill lạ ở trạng thái PENDING không chặn luồng lưu hồ sơ/JD.
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.APPROVED)
-    # --- Gộp trùng: khi Admin thấy 2 skill thực ra là 1 (VD "ReactJS" và
+    # Khi Admin thấy 2 skill thực ra là 1 (VD "ReactJS" và
     # "React"), KHÔNG xoá skill này (sẽ cascade-xoá luôn mọi
     # CandidateSkill/JobSkill đã trỏ vào nó, làm mất dữ liệu đã hiển thị
     # trên hồ sơ). Thay vào đó set MERGED + merged_into, và service layer
@@ -63,7 +49,6 @@ class Skill(BaseModel):
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="merged_from",
     )
 
-    # --- Audit trail duyệt, cùng pattern với Company.reviewed_by ---
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="reviewed_skills", limit_choices_to={"role": "ADMIN"},
@@ -99,9 +84,10 @@ class Skill(BaseModel):
 
 
 class SkillAlias(UUIDModel):
-    """Raw strings (as typed by users or extracted by Gemini) that map to a
-    canonical Skill, e.g. 'ReactJS', 'React.js', 'react' -> Skill('React').
-    This is the core of the Skill Normalization step in the AI pipeline.
+    """Chuỗi thô do user nhập hoặc Gemini trích xuất, ánh xạ đến Skill canonical.
+
+    Ví dụ: 'ReactJS', 'React.js', 'react' cùng ánh xạ đến Skill('React'). Đây là
+    phần cốt lõi của bước chuẩn hóa skill trong pipeline AI.
     """
 
     skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name="aliases")
@@ -119,10 +105,10 @@ class SkillAlias(UUIDModel):
 
 
 class MatchingWeightConfig(BaseModel):
-    """Admin "Quản trị tiêu chí và trọng số tính mức độ phù hợp".
-    Only one config should be is_active=True at a time; Business Rule
-    Ranking step reads the active config when combining semantic similarity
-    with rule-based signals.
+    """Cấu hình tiêu chí và trọng số tính mức độ phù hợp do admin quản trị.
+
+    Mỗi thời điểm chỉ có một cấu hình ``is_active=True``; bước xếp hạng dùng
+    cấu hình này để kết hợp độ tương đồng semantic với tín hiệu theo quy tắc.
     """
 
     name = models.CharField(max_length=150)
@@ -178,7 +164,7 @@ class MatchingWeightConfig(BaseModel):
 
 
 class CandidateSkill(UUIDModel, TimeStampedModel):
-    """Normalized skill selected for a candidate profile."""
+    """Skill đã chuẩn hóa được chọn cho hồ sơ candidate."""
 
     candidate = models.ForeignKey(
         "candidates.CandidateProfile", on_delete=models.CASCADE, related_name="candidate_skills",

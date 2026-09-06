@@ -1,4 +1,4 @@
-"""skills/utils.py — hàm chuẩn hoá tái dùng (slug duy nhất, alias normalized)."""
+"""Hàm chuẩn hóa skill dùng lại cho slug duy nhất và alias."""
 import re
 import unicodedata
 
@@ -11,10 +11,10 @@ def strip_accents(text: str) -> str:
 
 
 def normalize_alias(text: str) -> str:
-    """Compatibility-normalize, lowercase, strip accents, and fold whitespace.
+    """Chuẩn hóa tương thích, viết thường, bỏ dấu và thu gọn khoảng trắng.
 
-    Meaningful symbols are retained so short names such as C, C++, and C# do
-    not collapse to the same normalization key.
+    Giữ các ký hiệu có nghĩa để tên ngắn như C, C++ và C# không cùng trở thành
+    một khóa chuẩn hóa.
     """
     return re.sub(r"\s+", " ", strip_accents(text).strip().casefold())
 

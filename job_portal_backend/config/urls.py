@@ -1,4 +1,4 @@
-"""Root URLconf."""
+"""Cấu hình URL gốc."""
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin

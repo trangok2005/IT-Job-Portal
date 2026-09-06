@@ -1,4 +1,3 @@
-# Base settings shared across all environments.
 import os
 from pathlib import Path
 
@@ -84,9 +83,6 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-# ---------------------------------------------------------------------------
-# Database (PostgreSQL + pgvector)
-# ---------------------------------------------------------------------------
 if os.getenv("DATABASE_URL"):
     DATABASES = {
         "default": dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=60)
@@ -106,9 +102,6 @@ else:
 
 AUTH_USER_MODEL = "accounts.User"
 
-# ---------------------------------------------------------------------------
-# DRF + JWT
-# ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -137,9 +130,7 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
     "upload_parse_daily": "10/day",
 }
 
-# ---------------------------------------------------------------------------
 # Cache defaults to process-local storage. Production overrides this explicitly.
-# ---------------------------------------------------------------------------
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -171,9 +162,6 @@ SIMPLE_JWT = {
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
-# ---------------------------------------------------------------------------
-# SMTP notifications
-# ---------------------------------------------------------------------------
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
     "django.core.mail.backends.smtp.EmailBackend",
@@ -187,16 +175,11 @@ EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "IT Job Portal <no-reply@example.com>")
 
-# ---------------------------------------------------------------------------
 # CORS is configured per environment.
-# ---------------------------------------------------------------------------
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
 
-# ---------------------------------------------------------------------------
-# Media / files (resumes, JD uploads)
-# ---------------------------------------------------------------------------
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 STORAGES = {
@@ -229,18 +212,12 @@ R2_STORAGE_OPTIONS = {
     "file_overwrite": False,
 }
 
-# ---------------------------------------------------------------------------
-# Gemini AI
-# ---------------------------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_PARSER_MODEL = os.getenv("GEMINI_PARSER_MODEL", "gemini-3.6-flash")
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
 EMBEDDING_TIMEOUT_MS = int(os.getenv("EMBEDDING_TIMEOUT_MS", "10000"))
 TASK_PROCESSING_LEASE_SECONDS = int(os.getenv("TASK_PROCESSING_LEASE_SECONDS", "60"))
 
-# ---------------------------------------------------------------------------
-# i18n / timezone
-# ---------------------------------------------------------------------------
 LANGUAGE_CODE = "vi"
 TIME_ZONE = os.getenv("TIME_ZONE", "Asia/Ho_Chi_Minh")
 USE_I18N = True

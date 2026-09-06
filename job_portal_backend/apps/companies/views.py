@@ -1,4 +1,4 @@
-"""companies views — ViewSet mỏng: gọi service/selector, trả response.
+"""ViewSet công ty mỏng: gọi service/selector và trả response.
 
 Không chứa logic nghiệp vụ (xem apps/companies/services.py, selectors.py, perms.py).
 """
@@ -22,7 +22,7 @@ class CompanyViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
-    """list/retrieve dành cho admin duyệt; me dành cho employer chủ sở hữu."""
+    """`list`/`retrieve` dành cho admin xét duyệt; `me` dành cho employer sở hữu."""
 
     serializer_class = serializers.CompanyReadSerializer
 
@@ -35,7 +35,6 @@ class CompanyViewSet(
                 common_permissions.IsEmployer(),
                 perms.IsCompanyOwner(),
             ]
-        # list / retrieve / approve / reject / lock
         return [IsAuthenticated(), common_permissions.IsAdmin()]
 
     def get_queryset(self):

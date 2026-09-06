@@ -1,4 +1,4 @@
-"""jobs views — ViewSet mỏng: gọi service/selector, trả response.
+"""ViewSet tin tuyển dụng mỏng: gọi service/selector và trả response.
 
 Không chứa logic nghiệp vụ (xem apps/jobs/services.py, selectors.py, perms.py).
 """
@@ -49,10 +49,10 @@ class JobViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Chỉ expose các endpoint cần thiết theo UC — KHÔNG có destroy.
+    """Chỉ cung cấp các endpoint cần thiết theo UC, không có `destroy`.
 
-    Ràng buộc cứng: API dư = sai. Charter không có UC xoá tin tuyển dụng,
-    nên không mở `destroy`. Tin đóng/ngừng nhận hồ sơ dùng action `close`.
+    Đặc tả không có UC xóa tin tuyển dụng; tin ngừng nhận hồ sơ dùng action
+    `close`.
     """
     serializer_class = serializers.JobReadSerializer
     filter_backends = [filters.OrderingFilter]
@@ -81,9 +81,9 @@ class JobViewSet(
         return [IsAuthenticated()]
 
     def get_throttles(self):
-        """Throttle có chủ đích theo action:
-        - list: tìm kiếm công khai (anon 5/phút, user 10/phút) — UC-03 E3
-        - parse_jd: upload JD cho Gemini parse (2/phút, 10/ngày) — UC-02
+        """Giới hạn tần suất theo action:
+        - list: tìm kiếm công khai, khách 5 lần/phút, user 10 lần/phút.
+        - parse_jd: tải JD để Gemini phân tích, 2 lần/phút, 10 lần/ngày.
         """
         if self.action == "list":
             return [JobSearchAnonThrottle(), JobSearchUserThrottle()]
@@ -161,7 +161,7 @@ class JobViewSet(
         )
 
     def create(self, request, *args, **kwargs):
-        """Trả read serializer để response gồm company và skill vừa tạo."""
+        """Trả serializer đọc để response gồm công ty và skill vừa tạo."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -173,7 +173,7 @@ class JobViewSet(
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
-        """Chuyển toàn bộ mutation sang service và giữ status ngoài input."""
+        """Chuyển toàn bộ thao tác thay đổi sang service và loại status khỏi input."""
         job = self.get_object()
         services.update_job(
             job,
@@ -185,7 +185,7 @@ class JobViewSet(
         )
 
     def update(self, request, *args, **kwargs):
-        """Cập nhật bằng write serializer nhưng luôn trả response read đầy đủ."""
+        """Cập nhật bằng serializer ghi nhưng luôn trả response đọc đầy đủ."""
         partial = kwargs.pop("partial", False)
         job = self.get_object()
         serializer = self.get_serializer(job, data=request.data, partial=partial)
@@ -222,7 +222,7 @@ class JobViewSet(
         parser_classes=[MultiPartParser],
     )
     def parse_jd(self, request):
-        """Persist a temporary JD import and enqueue Gemini parsing."""
+        """Lưu JD import tạm và đưa tác vụ phân tích Gemini vào hàng đợi."""
         upload = serializers.JobDescriptionUploadSerializer(data=request.data)
         upload.is_valid(raise_exception=True)
         try:
@@ -282,7 +282,7 @@ class JobViewSet(
     @extend_schema(responses=serializers.RecommendedJobSerializer(many=True))
     @action(methods=["get"], detail=False)
     def recommended(self, request):
-        """Rank eligible jobs for the candidate and tolerate unavailable AI."""
+        """Xếp hạng tin phù hợp cho candidate và vẫn hoạt động khi AI gián đoạn."""
         profile = request.user.candidate_profile
         if profile.embedding is None or profile.embedding_is_stale:
             services.enqueue_candidate_embedding_robust(profile)
@@ -295,7 +295,7 @@ class JobViewSet(
     @extend_schema(responses=serializers.RecommendedCandidateSerializer(many=True))
     @action(methods=["get"], detail=True, url_path="recommended-candidates")
     def recommended_candidates(self, request, pk=None):
-        """Return safe public candidate summaries ranked for an owned job."""
+        """Trả tóm tắt candidate công khai an toàn, xếp hạng cho tin sở hữu."""
         job = self.get_object()
         self.check_object_permissions(request, job)
         if job.embedding is None or job.embedding_is_stale:

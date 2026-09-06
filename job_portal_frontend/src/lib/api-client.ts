@@ -45,7 +45,7 @@ async function readResponse<T>(res: Response, path: string): Promise<T> {
       const body = await res.json();
       message = getErrorMessage(body) ?? message;
     } catch {
-      // fall back to default message
+      // Retain the HTTP fallback when the error body is not valid JSON.
     }
     throw new ApiError(res.status, message);
   }
@@ -178,10 +178,6 @@ export function getJobs(params: JobListParams = {}, signal?: AbortSignal): Promi
 export function getJob(id: string) {
   return request<JobDto>(`/api/jobs/${id}/`);
 }
-
-// ---------------------------------------------------------------------------
-// Auth
-// ---------------------------------------------------------------------------
 
 export const login = (payload: LoginPayload) =>
   request<AuthTokens>("/api/auth/token/", { method: "POST", body: JSON.stringify(payload) });

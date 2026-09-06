@@ -1,4 +1,4 @@
-from .base import * 
+from .base import *
 
 DEBUG = False
 SECRET_KEY = "test-only-secret-key-at-least-32-bytes-long"

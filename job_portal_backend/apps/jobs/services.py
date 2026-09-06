@@ -1,4 +1,4 @@
-"""Write operations và business rules của UC-02 đăng tin tuyển dụng."""
+"""Các thao tác ghi và quy tắc nghiệp vụ đăng tin tuyển dụng của UC-02."""
 from datetime import timedelta
 from pathlib import Path
 
@@ -12,7 +12,7 @@ from apps.jobs.models import JDImport, JobPost, JobSkill
 
 
 def _enqueue_embedding(job: JobPost) -> None:
-    """Enqueue embedding đúng content version sau khi transaction commit."""
+    """Đưa embedding đúng content version vào hàng đợi sau khi commit."""
 
     def enqueue():
         publish_task(
@@ -70,7 +70,7 @@ def cancel_jd_import(jd_import: JDImport) -> None:
 
 
 def enqueue_job_embedding_robust(job: JobPost) -> None:
-    """Best-effort enqueue for recommendation reads without failing the API."""
+    """Cố đưa task vào hàng đợi khi đọc gợi ý nhưng không làm API thất bại."""
     try:
         publish_task(
             "generate_job_embedding",
@@ -81,7 +81,7 @@ def enqueue_job_embedding_robust(job: JobPost) -> None:
 
 
 def enqueue_candidate_embedding_robust(profile) -> None:
-    """Best-effort enqueue of a missing or stale candidate embedding."""
+    """Cố đưa embedding candidate bị thiếu hoặc cũ vào hàng đợi."""
     try:
         publish_task(
             "generate_candidate_embedding",
@@ -106,8 +106,9 @@ def _bump_content_version(job: JobPost) -> None:
 
 
 def _replace_job_skills(job: JobPost, skill_specs: list) -> None:
-    """Thay danh sách skill trong cùng transaction của thao tác tạo/cập nhật.
-    Mỗi phần tử là dict {skill, is_required?} từ serializer."""
+    """Thay danh sách skill trong cùng transaction tạo hoặc cập nhật.
+    Mỗi phần tử là dict ``{skill, is_required?}`` từ serializer.
+    """
     job.job_skills.all().delete()
     JobSkill.objects.bulk_create(
         JobSkill(

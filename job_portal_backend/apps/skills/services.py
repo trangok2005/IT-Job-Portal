@@ -1,7 +1,7 @@
-"""skills services — write operations + business rules (Admin quản trị Skill).
+"""Các service ghi dữ liệu và áp dụng quy tắc quản trị skill.
 
-Mọi thay đổi status / gộp skill / trọng số đều đi qua đây, KHÔNG gọi save()
-tuỳ tiện trong views.
+Mọi thay đổi status, gộp skill hoặc trọng số phải qua đây; không gọi tùy tiện
+``save()`` trong view.
 """
 from uuid import UUID
 
@@ -61,11 +61,11 @@ def is_savable_skill(skill: Skill) -> bool:
 
 
 def resolve_savable_skill(value) -> Skill:
-    """Hàm resolve DUY NHẤT cho mọi luồng trích xuất (UC-01/UC-02).
+    """Hàm phân giải duy nhất cho mọi luồng trích xuất của UC-01/UC-02.
 
-    Nhận Skill instance | UUID string | tên thô. Tên lạ chưa có trong danh
-    mục sẽ được tạo mới ở trạng thái PENDING chờ Admin duyệt (hậu điều kiện UC-03).
-    Raise ValueError nếu tham chiếu không hợp lệ hoặc skill bị cấm lưu.
+    Nhận Skill, chuỗi UUID hoặc tên thô. Tên lạ được tạo ở trạng thái PENDING
+    chờ admin duyệt. Phát sinh ValueError nếu tham chiếu không hợp lệ hoặc
+    skill không được phép lưu.
     """
     if isinstance(value, Skill):
         skill = value.effective_skill
@@ -90,7 +90,7 @@ def resolve_savable_skill(value) -> Skill:
 
 
 def _invalidate_linked_embeddings(candidate_ids, job_ids) -> None:
-    """Version and requeue vectors whose canonical skill text changed."""
+    """Tăng version và xếp lại hàng đợi cho vector có tên skill canonical đổi."""
     from apps.candidates.models import CandidateProfile
     from apps.jobs.models import JobPost
 
@@ -129,7 +129,7 @@ def _invalidate_linked_embeddings(candidate_ids, job_ids) -> None:
 
 
 def _find_fuzzy_skill(normalized_name: str) -> Skill | None:
-    """Return one unambiguous near-match; short names require exact aliases."""
+    """Trả một fuzzy match rõ ràng; tên ngắn phải exact match với alias."""
     if len(normalized_name) < FUZZY_SKILL_MIN_LENGTH:
         return None
 
@@ -166,7 +166,7 @@ def _find_fuzzy_skill(normalized_name: str) -> Skill | None:
 
 
 def resolve_extracted_skill(name: str) -> Skill:
-    """Resolve exact/fuzzy taxonomy aliases or create a pending AI skill."""
+    """Phân giải alias bằng exact/fuzzy match hoặc tạo skill AI chờ duyệt."""
     cleaned_name = name.strip()
     normalized = normalize_alias(cleaned_name)
     alias = SkillAlias.objects.select_related("skill__merged_into").filter(
@@ -241,7 +241,7 @@ def _create_alias(skill: Skill, alias_text: str) -> SkillAlias:
 
 
 def create_skill(user, name: str, category=None, aliases=None, is_active=True) -> Skill:
-    """Admin tạo tay skill APPROVED + sinh slug unique."""
+    """Admin tạo thủ công skill APPROVED và sinh slug duy nhất."""
     if Skill.objects.filter(name__iexact=name).exists():
         raise ValueError("Skill đã tồn tại.")
     skill = Skill.objects.create(
@@ -289,9 +289,11 @@ def update_skill(skill: Skill, user, name=None, category=None, is_active=None, a
 
 @transaction.atomic
 def merge_skills(user, source_ids: list, target_id) -> Skill:
-    """Gộp các skill trùng về 1 đích. KHÔNG xoá skill nguồn (giữ audit trail,
-    tránh cascade mất CandidateSkill/JobSkill đang hiển thị trên hồ sơ) mà
-    rewrite FK sang đích rồi đánh dấu nguồn là MERGED + merged_into."""
+    """Gộp các skill trùng vào một đích nhưng giữ nguồn làm audit trail.
+
+    Viết lại FK sang đích để tránh cascade mất CandidateSkill/JobSkill, rồi
+    đánh dấu nguồn là MERGED và đặt ``merged_into``.
+    """
     from apps.jobs.models import JobSkill
 
     target = Skill.objects.get(pk=target_id)

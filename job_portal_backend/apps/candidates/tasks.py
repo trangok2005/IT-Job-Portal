@@ -1,4 +1,4 @@
-"""Background tasks xử lý CV và embedding hồ sơ ứng viên."""
+"""Các task nền xử lý CV và embedding hồ sơ candidate."""
 import json
 import logging
 import mimetypes
@@ -26,7 +26,7 @@ MAX_PARSE_ATTEMPTS = 3
 
 
 def _claim_parse_attempt(record_id: str) -> bool:
-    """Claim exactly one delivery so concurrent callbacks cannot parse twice."""
+    """Nhận đúng một lượt giao để các callback đồng thời không phân tích hai lần."""
     now = timezone.now()
     lease_expired_at = now - timedelta(seconds=settings.TASK_PROCESSING_LEASE_SECONDS)
     claimed = ResumeImport.objects.filter(
@@ -65,7 +65,7 @@ dùng chuỗi rỗng, ngày dùng null và danh sách dùng mảng rỗng khi th
 
 
 def _get_client():
-    """Khởi tạo Gemini client và báo lỗi cấu hình rõ ràng cho task runner."""
+    """Khởi tạo Gemini client và báo lỗi cấu hình rõ ràng cho trình chạy task."""
     if not settings.GEMINI_API_KEY:
         raise ImproperlyConfigured("GEMINI_API_KEY chưa được cấu hình.")
     from google import genai
@@ -78,7 +78,7 @@ def _get_client():
 
 
 def _parse_json_response(text: str) -> dict:
-    """Loại bỏ code fence phổ biến trước khi giải mã JSON Gemini trả về."""
+    """Loại bỏ code fence thường gặp trước khi giải mã JSON từ Gemini."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.removeprefix("```json").removeprefix("```")
@@ -90,8 +90,9 @@ def _parse_json_response(text: str) -> dict:
 
 
 def _normalize_parsed_data(data: dict) -> dict:
-    """Đổi null từ Gemini về giá trị hợp lệ cho các field model không-null.
-    Bỏ qua entry thiếu required field (school_name / company_name + position)."""
+    """Đổi null từ Gemini thành giá trị hợp lệ cho các field không nhận null.
+    Bỏ qua mục thiếu field bắt buộc: school_name hoặc company_name và position.
+    """
     normalized = dict(data)
     for field in ("full_name", "phone", "headline", "summary"):
         if normalized.get(field) is None:
@@ -108,7 +109,6 @@ def _normalize_parsed_data(data: dict) -> dict:
             if not isinstance(item, dict):
                 continue
 
-            # Skip entry thiếu field bắt buộc theo model
             if collection == "educations" and not item.get("school_name"):
                 logger.warning("Bỏ qua education thiếu school_name: %s", item)
                 continue
@@ -137,7 +137,7 @@ def _normalize_parsed_data(data: dict) -> dict:
 
 
 def parse_resume_import(resume_import_id: str) -> dict:
-    """Gửi CV (ResumeImport) lên Gemini, lưu kết quả parse vào ResumeImport."""
+    """Gửi CV lên Gemini và lưu kết quả phân tích vào ResumeImport."""
     from google.genai import types
 
     from apps.candidates import serializers, services
@@ -231,7 +231,7 @@ def parse_resume_import(resume_import_id: str) -> dict:
 
 
 def generate_candidate_embedding(profile_id: str, profile_version: int) -> bool:
-    """Sinh embedding và chỉ lưu nếu profile chưa đổi sang version mới hơn."""
+    """Sinh embedding và chỉ lưu nếu hồ sơ chưa chuyển sang version mới hơn."""
     profile = (
         CandidateProfile.objects.filter(pk=profile_id)
         .prefetch_related(
@@ -263,10 +263,10 @@ def generate_candidate_embedding(profile_id: str, profile_version: int) -> bool:
 
 
 def cleanup_expired_resume_imports() -> int:
-    """Hậu điều kiện UC-01: bản ghi ResumeImport không được dùng trong 24h
-    sẽ bị xóa (kèm file vật lý) để giải phóng dung lượng DB/storage.
-    PENDING quá hạn cũng xóa: đó là task mồ côi (worker chết hoặc task mất);
-    hàm parse đã có guard .first() nên không crash nếu đụng bản ghi vừa xóa.
+    """Xóa ResumeImport không dùng trong 24 giờ cùng file để giải phóng lưu trữ.
+
+    Bản PENDING quá hạn cũng bị xóa vì là task mồ côi; hàm phân tích dùng
+    ``.first()`` nên không lỗi nếu bản ghi vừa bị xóa.
     """
     from apps.candidates import services
 

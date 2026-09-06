@@ -1,4 +1,4 @@
-"""skills selectors — read-only queries (no writes / no business mutation)."""
+"""Các selector chỉ đọc dữ liệu skill, không thay đổi nghiệp vụ."""
 import re
 
 from django.db.models import Count, Q
@@ -29,7 +29,7 @@ def get_public_skills():
 
 
 def get_skill_ids_mentioned_in_text(value: str) -> list:
-    """Return canonical skills explicitly named in a short search query."""
+    """Trả các skill canonical được nêu rõ trong truy vấn tìm kiếm ngắn."""
     normalized = normalize_matching_text(value)
     if not normalized:
         return []
@@ -74,7 +74,7 @@ def get_active_weight_config():
 
 
 def get_active_matching_weights():
-    """Return active recommendation weights; callers handle missing config explicitly."""
+    """Trả trọng số gợi ý đang hoạt động; bên gọi tự xử lý khi thiếu cấu hình."""
     config = MatchingWeightConfig.objects.filter(is_active=True).first()
     if config is None:
         return None

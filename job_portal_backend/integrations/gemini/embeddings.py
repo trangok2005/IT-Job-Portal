@@ -1,4 +1,4 @@
-"""The only project module allowed to call Gemini's embedding model."""
+"""Module duy nhất trong dự án được gọi mô hình embedding của Gemini."""
 import math
 from numbers import Real
 
@@ -11,7 +11,7 @@ EMBEDDING_CONTENT_VERSION = "matching-text-v1"
 
 
 class TaskType:
-    """Gemini task_type phân biệt vai trò văn bản, không phân biệt use case.
+    """Gemini task_type phân biệt vai trò văn bản, không phân biệt trường hợp sử dụng.
 
     UC-01/UC-02 index nội dung tĩnh (document); UC-03 nhúng câu truy vấn
     tức thời (query). Vector hai loại này không trộn lẫn được.
@@ -29,11 +29,11 @@ _client = None
 
 
 class EmbeddingError(Exception):
-    """A stable domain error for API, timeout, quota, and invalid vectors."""
+    """Loại lỗi nghiệp vụ ổn định cho API, timeout, quota và vector không hợp lệ."""
 
 
 def _get_client():
-    """Create the SDK client lazily so non-semantic branches need no API key."""
+    """Khởi tạo SDK client khi cần để nhánh phi ngữ nghĩa không cần API key."""
     global _client
     if _client is None:
         if not settings.GEMINI_API_KEY:
@@ -64,7 +64,7 @@ def current_job_embedding_signature() -> str:
 
 
 def generate_embedding(text: str, *, task_type: str = TaskType.DOCUMENT) -> list[float]:
-    """Generate one validated vector from already-normalized text."""
+    """Tạo một vector đã kiểm tra từ văn bản đã chuẩn hóa."""
     if task_type not in TaskType.choices():
         raise EmbeddingError(f"task_type không hợp lệ: {task_type}")
     if not text or not text.strip():
@@ -102,10 +102,10 @@ def generate_embedding(text: str, *, task_type: str = TaskType.DOCUMENT) -> list
 
 
 def embed_document(text: str) -> list[float]:
-    """UC-01/UC-02: nhúng nội dung được index sẵn (hồ sơ, tin tuyển dụng)."""
+    """UC-01/UC-02: tạo embedding cho nội dung được index sẵn."""
     return generate_embedding(text, task_type=TaskType.DOCUMENT)
 
 
 def embed_query(text: str) -> list[float]:
-    """UC-03: nhúng câu truy vấn tìm kiếm tức thời (RETRIEVAL_QUERY)."""
+    """UC-03: tạo embedding cho câu truy vấn tìm kiếm tức thời."""
     return generate_embedding(text, task_type=TaskType.QUERY)

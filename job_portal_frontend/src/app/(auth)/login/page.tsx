@@ -17,7 +17,6 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
   return (
     <div className="grid w-full max-w-5xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-lg shadow-zinc-900/5 md:grid-cols-2">
-      {/* Left: illustration */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-primary-800 via-primary-600 to-primary-500 p-10 text-white md:flex">
         <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10" />
         <div className="absolute -bottom-20 -left-10 h-64 w-64 rounded-full bg-accent/20" />
@@ -46,7 +45,6 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </p>
       </div>
 
-      {/* Right: card */}
       <div className="flex flex-col justify-center p-8 sm:p-12">
         <h1 className="text-2xl font-bold text-zinc-900">Đăng nhập</h1>
         <p className="mt-1 text-sm text-zinc-500">

@@ -1,4 +1,4 @@
-"""Background tasks cho embedding và hết hạn tin tuyển dụng."""
+"""Các task nền xử lý embedding và hết hạn tin tuyển dụng."""
 import logging
 from datetime import timedelta
 
@@ -101,7 +101,7 @@ def generate_job_embedding(
     content_version: int,
     allow_closed: bool = False,
 ) -> bool:
-    """Sinh embedding, chống task stale; cho phép tin đã đóng khi chấm hồ sơ."""
+    """Sinh embedding, bỏ task cũ; cho phép tin đã đóng khi chấm hồ sơ."""
     allowed_statuses = [JobPost.Status.ACTIVE]
     if allow_closed:
         allowed_statuses.extend([JobPost.Status.CLOSED, JobPost.Status.EXPIRED])
@@ -129,7 +129,7 @@ def generate_job_embedding(
 
 
 def expire_jobs() -> int:
-    """Task định kỳ gọi service để chuyển các tin quá hạn sang EXPIRED."""
+    """Task định kỳ gọi service để chuyển tin quá hạn sang EXPIRED."""
     from apps.jobs.services import expire_jobs as expire_jobs_service
 
     return expire_jobs_service()

@@ -1,4 +1,4 @@
-"""candidates serializers — chỉ định hình input/output, không chứa logic nghiệp vụ."""
+"""Serializer định hình input/output của candidate, không xử lý nghiệp vụ."""
 from pathlib import Path
 
 from django.conf import settings
@@ -96,7 +96,7 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
 
 
 class ResumeParsedDataSerializer(serializers.Serializer):
-    """Validated CV data exposed for user review before profile save."""
+    """Dữ liệu CV đã kiểm tra để user xem lại trước khi lưu hồ sơ."""
 
     full_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
     phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
@@ -111,7 +111,7 @@ class ResumeParsedDataSerializer(serializers.Serializer):
 
 
 class ResumeImportSerializer(serializers.ModelSerializer):
-    """Serializer for ResumeImport - read-only preview after AI parsing."""
+    """Serializer chỉ đọc để xem trước ResumeImport sau khi AI phân tích."""
 
     parsed_data = ResumeParsedDataSerializer(read_only=True, allow_null=True)
 
@@ -127,7 +127,7 @@ class ResumeImportSerializer(serializers.ModelSerializer):
 
 
 class ResumeImportUploadSerializer(serializers.Serializer):
-    """Serializer for uploading a CV to be parsed asynchronously (ResumeImport)."""
+    """Serializer tải CV lên để phân tích bất đồng bộ thành ResumeImport."""
 
     file = serializers.FileField(write_only=True)
 
@@ -206,8 +206,10 @@ class CandidateProfileUpdateSerializer(serializers.ModelSerializer):
 
 
 class CandidateSkillSaveSerializer(serializers.Serializer):
-    """Skill input for the reviewed snapshot: accepts an approved skill id OR a
-    new raw name that will be normalized through the taxonomy on save."""
+    """Input skill cho snapshot đã duyệt: nhận ID đã duyệt hoặc tên thô mới.
+
+    Tên thô được chuẩn hóa theo taxonomy khi lưu.
+    """
 
     skill = serializers.CharField(max_length=150)
     years_of_experience = serializers.IntegerField(
@@ -218,7 +220,7 @@ class CandidateSkillSaveSerializer(serializers.Serializer):
 
 
 class CandidateProfileSaveSerializer(CandidateProfileUpdateSerializer):
-    """A complete user-reviewed profile snapshot saved atomically."""
+    """Snapshot hồ sơ đầy đủ do user duyệt, được lưu nguyên tử."""
 
     educations = EducationSerializer(many=True)
     experiences = ExperienceSerializer(many=True)

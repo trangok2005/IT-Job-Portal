@@ -1,4 +1,4 @@
-"""companies selectors — read-only query logic (no writes, no business mutation)."""
+"""Các selector chỉ đọc dữ liệu công ty, không thay đổi nghiệp vụ."""
 from apps.companies.models import Company
 
 

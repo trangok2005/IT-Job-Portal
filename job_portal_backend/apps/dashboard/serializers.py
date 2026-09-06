@@ -1,4 +1,4 @@
-"""Role-specific dashboard response shapes."""
+"""Định dạng output dashboard theo role."""
 from rest_framework import serializers
 
 from apps.jobs.serializers import RecommendedJobSerializer

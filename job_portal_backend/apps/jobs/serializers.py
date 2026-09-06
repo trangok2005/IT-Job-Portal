@@ -1,4 +1,4 @@
-"""jobs serializers — only shape input/output, no business logic."""
+"""Serializer định hình input/output của tin tuyển dụng, không xử lý nghiệp vụ."""
 from pathlib import Path
 import re
 
@@ -85,12 +85,12 @@ class RecommendedCandidateSerializer(serializers.Serializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_skills(self, obj):
-        """Return only safe canonical skill names from the prefetched profile."""
+        """Chỉ trả tên skill canonical an toàn từ hồ sơ đã prefetch."""
         return [link.skill.name for link in obj.candidate_skills.all()]
 
 
 class RequiredSkillSpecSerializer(serializers.Serializer):
-    """A required or preferred normalized skill for a job post."""
+    """Skill đã chuẩn hóa, thuộc nhóm bắt buộc hoặc ưu tiên của tin tuyển dụng."""
 
     skill = serializers.CharField(max_length=150)
     is_required = serializers.BooleanField(required=False, default=True)
@@ -101,7 +101,7 @@ class RequiredSkillSpecSerializer(serializers.Serializer):
 
 
 class JobWriteSerializer(serializers.ModelSerializer):
-    """Employer-created fields. ``status`` is managed via service layer."""
+    """Các field do employer tạo; ``status`` được quản lý qua service."""
 
     required_skills = RequiredSkillSpecSerializer(many=True, required=False, write_only=True)
     publish_immediately = serializers.BooleanField(
@@ -264,7 +264,7 @@ class JDImportSerializer(serializers.ModelSerializer):
 
 
 class JobListQuerySerializer(serializers.Serializer):
-    """Validate query params trước khi truyền xuống selector tìm kiếm."""
+    """Kiểm tra tham số truy vấn trước khi truyền cho selector tìm kiếm."""
 
     # UC-03 E4: từ khóa chỉ được chứa chữ/số (kể cả tiếng Việt có dấu),
     # khoảng trắng và ký tự kỹ thuật xuất hiện trong tên skill
@@ -293,7 +293,6 @@ class JobListQuerySerializer(serializers.Serializer):
 
     def validate_keyword(self, value: str) -> str:
         """UC-03 E4: từ khóa sai định dạng -> 400, không gọi AI search."""
-        # Gộp nhiều khoảng trắng liên tiếp thành một.
         normalized = re.sub(r"\s+", " ", value).strip()
         if not normalized:
             return ""

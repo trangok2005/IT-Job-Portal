@@ -1,19 +1,4 @@
-"""
-candidates/models.py
-UC-01 "Quản lý hồ sơ ứng viên". Covers:
-  - CandidateProfile: thông tin hồ sơ + embedding vector (pgvector) dùng cho
-    semantic search (UC-03) và tính Match Score (UC-04).
-  - Education / Experience: dữ liệu có cấu trúc được ứng viên xác nhận.
-  - ResumeImport: bản ghi tạm lưu file CV + kết quả parse từ Gemini.
-    Dùng cho luồng Non-blocking UI: upload -> parse ngầm -> preview -> user confirm.
-    Tự hết hạn sau 24h nếu không được consume. Không ảnh hưởng Resume chính thức.
-  - Resume: file CV chính thức đã được user xác nhận (is_primary=True).
-
-Yêu cầu cài: pip install pgvector
-INSTALLED_APPS cần "pgvector" KHÔNG bắt buộc, nhưng DB phải có extension:
-    CREATE EXTENSION IF NOT EXISTS vector;
-(thường chạy bằng migration RunSQL, xem ai_analysis/migrations note ở README)
-"""
+"""Mô hình hồ sơ candidate, dữ liệu CV và embedding pgvector cho UC-01."""
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -67,11 +52,11 @@ class CandidateProfile(UUIDModel, TimeStampedModel):
     desired_position = models.CharField(max_length=255, blank=True)
     is_public = models.BooleanField(default=True, help_text="Cho phép NTD tìm thấy qua Gợi ý ứng viên phù hợp")
 
-    # --- Versioning: mỗi lần cập nhật hồ sơ đáng kể -> tăng version và
+    # Mỗi lần cập nhật hồ sơ đáng kể phải tăng version và
     # đánh dấu cần tính lại embedding (đáp ứng "profile_version" trong đặc tả).
     profile_version = models.PositiveIntegerField(default=1)
 
-    # --- Embedding cho semantic search (UC-03) và match score (UC-04) ---
+    # Embedding được dùng cho cả semantic search và match score.
     embedding = VectorField(dimensions=EMBEDDING_DIMENSIONS, null=True, blank=True)
     embedding_version = models.PositiveIntegerField(
         default=0, help_text="profile_version tại thời điểm embedding được tính, dùng để biết embedding có 'stale' hay không.",
@@ -104,7 +89,7 @@ class CandidateProfile(UUIDModel, TimeStampedModel):
 
     @property
     def is_complete(self):
-        """Hồ sơ đủ điều kiện ứng tuyển khi có liên hệ và ít nhất một skill."""
+        """Hồ sơ đủ điều kiện ứng tuyển khi có thông tin liên hệ và ít nhất một skill."""
         required_fields = (self.full_name, self.phone, self.desired_position)
         return bool(
             all(value and value.strip() for value in required_fields)
@@ -183,11 +168,10 @@ class Experience(UUIDModel, TimeStampedModel):
 
 
 class ResumeImport(UUIDModel, TimeStampedModel):
-    """Bản ghi tạm cho luồng upload CV -> AI parse -> preview -> user confirm (UC-01).
-    Tách riêng khỏi Resume (CV chính thức) để:
-    - Không ghi đè hồ sơ chính khi user chỉ preview.
-    - Tự dọn dẹp sau 24h nếu user không confirm (expires_at).
-    - Cho phép user thử nhiều CV khác nhau trước khi quyết định lưu.
+    """Bản ghi tạm cho luồng tải CV, AI phân tích, xem trước rồi user xác nhận.
+
+    Bản ghi tách khỏi Resume để không ghi đè hồ sơ khi chỉ xem trước, tự hết
+    hạn sau 24 giờ và cho phép user thử nhiều CV trước khi lưu.
     """
 
     class ParseStatus(models.TextChoices):

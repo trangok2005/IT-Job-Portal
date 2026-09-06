@@ -1,9 +1,4 @@
-"""
-accounts/models.py
-Custom User model. Supports 3 roles per Project Charter: Ứng viên, Nhà tuyển
-dụng, Admin. Also supports Google OAuth sign-in (UC diagram: Google OAuth ->
-Đăng nhập) alongside classic email/password + JWT.
-"""
+"""Mô hình user hỗ trợ ba role nghiệp vụ, mật khẩu/JWT và Google OAuth."""
 import uuid
 
 from django.contrib.auth.models import AbstractUser
@@ -11,9 +6,7 @@ from django.db import models
 
 
 class User(AbstractUser):
-    """Auth is handled by JWT (SimpleJWT) + Google OAuth per Project Charter
-    section 7 (Kiến trúc và công nghệ dự kiến).
-    """
+    """User xác thực bằng JWT (SimpleJWT) hoặc Google OAuth."""
 
     class Role(models.TextChoices):
         CANDIDATE = "CANDIDATE", "Ứng viên"
@@ -26,7 +19,6 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.CANDIDATE)
 
-    # --- Google OAuth (UC diagram: actor "Google OAuth" -> "Đăng nhập") ---
     google_sub = models.CharField(
         max_length=255, unique=True, null=True, blank=True,
         help_text="Google account 'sub' claim, set on first Google sign-in.",

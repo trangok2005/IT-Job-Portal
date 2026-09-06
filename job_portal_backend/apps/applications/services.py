@@ -1,4 +1,4 @@
-"""Write operations và state machine của nghiệp vụ ứng tuyển."""
+"""Các thao tác ghi và state machine của nghiệp vụ ứng tuyển."""
 from pathlib import Path
 
 from django.conf import settings
@@ -25,7 +25,7 @@ from integrations.gemini.embeddings import (
 
 
 def _enqueue_match_score(application: JobApplication) -> None:
-    """Chỉ enqueue tính match score sau khi hồ sơ ứng tuyển commit thành công."""
+    """Chỉ đưa tác vụ tính điểm vào hàng đợi sau khi hồ sơ commit thành công."""
 
     def enqueue():
         try:
@@ -50,7 +50,7 @@ def apply_to_job(
     cover_letter: str = "",
     attach_current_resume: bool = False,
 ) -> JobApplication:
-    """Create one application and freeze every input used by its AI score."""
+    """Tạo hồ sơ ứng tuyển và đóng băng mọi input dùng để tính điểm AI."""
     if not user.is_candidate or not user.is_active:
         raise ValueError("Chỉ ứng viên đang hoạt động mới được ứng tuyển.")
 

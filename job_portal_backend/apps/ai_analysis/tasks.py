@@ -1,4 +1,4 @@
-"""Background task tính match score từ snapshot bất biến của application."""
+"""Task nền tính điểm phù hợp từ snapshot bất biến của hồ sơ ứng tuyển."""
 import math
 from datetime import date
 from decimal import Decimal
@@ -32,7 +32,7 @@ from integrations.gemini.embeddings import (
 
 
 def _cosine_similarity(left, right) -> float:
-    """Calculate cosine only for finite, non-zero vectors of configured size."""
+    """Tính độ tương đồng cosine cho vector hữu hạn, khác zero và đúng số chiều."""
     if len(left) != EMBEDDING_DIMENSIONS or len(right) != EMBEDDING_DIMENSIONS:
         raise ValueError("Embedding snapshot sai số chiều.")
     if any(not math.isfinite(value) for value in (*left, *right)):
@@ -100,7 +100,7 @@ def _job_embedding(application: JobApplication):
 
 
 def _save_legacy_snapshot_result(application, similarity) -> None:
-    """Finish already-persisted pre-v2 snapshots with their original rule."""
+    """Hoàn tất snapshot trước v2 đã lưu bằng quy tắc gốc của chúng."""
     profile_snapshot = application.profile_snapshot
     job_snapshot = application.job_snapshot
     candidate_skill_ids = {item["id"] for item in profile_snapshot["skills"]}
@@ -337,7 +337,7 @@ def _compute_application_match_score(application_id: str) -> bool:
 
 
 def compute_application_match_score(application_id: str) -> bool:
-    """Expose processing failures separately from recruitment status."""
+    """Tách lỗi xử lý khỏi trạng thái tuyển dụng."""
     claimed = JobApplication.objects.filter(pk=application_id).update(
         match_status=JobApplication.MatchStatus.PROCESSING,
         match_error="",
@@ -373,7 +373,7 @@ def compute_application_match_score(application_id: str) -> bool:
 
 
 def retry_incomplete_application_matches() -> int:
-    """Re-publish applications left pending/failed without asking users to reapply."""
+    """Phát hành lại task cho hồ sơ đang chờ hoặc lỗi mà không cần ứng tuyển lại."""
     from apps.core.qstash_client import publish_task
 
     application_ids = list(
