@@ -11,3 +11,7 @@ python manage.py migrate --noinput
 if [ "${RUN_RENDER_SEED:-false}" = "true" ]; then
     python manage.py seed_render_demo
 fi
+
+if [ "${RUN_REBUILD_EMBEDDINGS:-false}" = "true" ]; then
+    python manage.py rebuild_embeddings --stagger-seconds 5
+fi

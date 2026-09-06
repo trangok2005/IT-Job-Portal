@@ -37,3 +37,16 @@ class SeedRenderDemoTests(TestCase):
             User.objects.filter(email__in=[item["email"] for item in CANDIDATES]).count(),
             10,
         )
+
+        with patch(
+            "apps.core.management.commands.rebuild_embeddings.publish_task"
+        ) as publish_task:
+            call_command(
+                "rebuild_embeddings",
+                stagger_seconds=5,
+                stdout=StringIO(),
+            )
+
+        self.assertEqual(publish_task.call_count, 60)
+        self.assertIsNone(publish_task.call_args_list[0].kwargs["delay"])
+        self.assertEqual(publish_task.call_args_list[-1].kwargs["delay"], 295)

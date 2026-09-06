@@ -20,8 +20,17 @@ class Command(BaseCommand):
             action="store_true",
             help="Queue every Candidate and non-draft Job after a dev text-builder change.",
         )
+        parser.add_argument(
+            "--stagger-seconds",
+            type=int,
+            default=0,
+            help="Delay consecutive QStash messages to avoid bursting provider quotas.",
+        )
 
     def handle(self, *args, **options):
+        stagger_seconds = options["stagger_seconds"]
+        if stagger_seconds < 0:
+            raise ValueError("--stagger-seconds must be zero or greater.")
         candidate_signature = current_candidate_embedding_signature()
         job_signature = current_job_embedding_signature()
         stale_profiles = CandidateProfile.objects.all()
@@ -46,11 +55,13 @@ class Command(BaseCommand):
                     "profile_id": str(profile.pk),
                     "profile_version": profile.profile_version,
                 },
+                delay=profile_count * stagger_seconds or None,
             )
             profile_count += 1
 
         job_count = 0
         for job in stale_jobs.iterator():
+            queue_position = profile_count + job_count
             publish_task(
                 "generate_job_embedding",
                 {
@@ -58,6 +69,7 @@ class Command(BaseCommand):
                     "content_version": job.content_version,
                     "allow_closed": job.status != JobPost.Status.ACTIVE,
                 },
+                delay=queue_position * stagger_seconds or None,
             )
             job_count += 1
 

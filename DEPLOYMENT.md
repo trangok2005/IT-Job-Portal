@@ -53,6 +53,7 @@ For a disposable demo database, add these Render variables before one backend de
 
 ```text
 RUN_RENDER_SEED=true
+RUN_REBUILD_EMBEDDINGS=true
 SEED_ADMIN_EMAIL=admin.demo@jobportal.local
 SEED_ADMIN_PASSWORD=<strong unique password>
 SEED_EMPLOYER_EMAIL=employer.demo@jobportal.local
@@ -60,9 +61,9 @@ SEED_EMPLOYER_PASSWORD=<strong unique password>
 SEED_CANDIDATE_PASSWORD=<shared strong demo-candidate password>
 ```
 
-The build runs `seed_render_demo` after migrations and creates or updates the skill taxonomy, 50 active jobs under one approved company, 10 complete candidate profiles, one employer, and one admin. It does not enqueue embeddings during the build and does not print passwords.
+The build runs `seed_render_demo` after migrations and creates or updates the skill taxonomy, 50 active jobs under one approved company, 10 complete candidate profiles, one employer, and one admin. It does not print passwords. `RUN_REBUILD_EMBEDDINGS=true` then queues only stale/missing vectors through QStash, staggering messages by five seconds to avoid bursting Gemini quotas.
 
-After the first successful deploy, immediately remove `RUN_RENDER_SEED` or set it to `false`. The command is idempotent and will not duplicate its records, but leaving the flag enabled resets demo passwords and rewrites the seeded records on every deploy. Do not use these demo accounts for real production data.
+After the first successful deploy, immediately remove both `RUN_RENDER_SEED` and `RUN_REBUILD_EMBEDDINGS`, or set them to `false`. The seed command is idempotent and will not duplicate its records, but leaving the flags enabled resets demo passwords, rewrites seeded records, and checks/enqueues embeddings on every deploy. Do not use these demo accounts for real production data.
 
 ## QStash Production
 
