@@ -25,7 +25,7 @@ async function getAuthenticatedUser(access: string): Promise<AuthenticatedUser |
     const response = await fetch(`${API_URL}/api/accounts/me/`, {
       headers: { Authorization: `Bearer ${access}` },
       cache: "no-store",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(30000),
     });
     if (!response.ok) return null;
     return await response.json() as AuthenticatedUser;
@@ -41,7 +41,7 @@ async function refreshAccessToken(refresh: string): Promise<string | null> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh }),
       cache: "no-store",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(30000),
     });
     if (!response.ok) return null;
     const data = await response.json() as { access?: string };
