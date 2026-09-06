@@ -9,7 +9,7 @@ load_dotenv(_BACKEND_DIR / ".env.local")
 os.environ.setdefault("QSTASH_DEV", "true")
 os.environ.setdefault("BACKEND_PUBLIC_URL", "http://127.0.0.1:8000")
 
-from .base import *  # noqa: E402,F401,F403
+from .base import *
 
 DEBUG = True
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,backend")

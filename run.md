@@ -1,4 +1,4 @@
-# Chạy local
+﻿# Chạy local
 
 ## Chuẩn bị lần đầu
 
@@ -121,4 +121,3 @@ npm run typecheck --prefix job_portal_frontend
 npm run build --prefix job_portal_frontend
 ```
 
-Hướng dẫn production Render/Vercel nằm trong `DEPLOYMENT.md`.

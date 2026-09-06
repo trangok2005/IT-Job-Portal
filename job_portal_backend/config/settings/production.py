@@ -106,3 +106,45 @@ else:
     SECURE_HSTS_SECONDS = 0
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
+# Render captures stdout/stderr. Keep DEBUG disabled while exposing request and
+# application tracebacks needed to diagnose production failures.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "production": {
+            "format": "{asctime} {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "production",
+            "stream": "ext://sys.stderr",
+        },
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "apps": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "common": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "integrations": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}

@@ -45,7 +45,8 @@ class ProductionSettingsTests(SimpleTestCase):
                 "-c",
                 (
                     "from config.settings import production as s; "
-                    "print(s.DEBUG, s.CACHES['default']['LOCATION'])"
+                    "print(s.DEBUG, s.CACHES['default']['LOCATION'], "
+                    "s.LOGGING['loggers']['django.request']['handlers'])"
                 ),
             ],
             cwd=settings.BASE_DIR,
@@ -60,6 +61,7 @@ class ProductionSettingsTests(SimpleTestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("False rediss://", result.stdout)
+        self.assertIn("['console']", result.stdout)
 
     def test_missing_required_variable_fails_fast(self):
         result = self.run_import({"SECRET_KEY": ""})
