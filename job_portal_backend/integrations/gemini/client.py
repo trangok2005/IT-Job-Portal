@@ -1,4 +1,3 @@
-"""Client lazy dùng chung cho các tích hợp Gemini."""
 from functools import lru_cache
 
 from django.conf import settings
@@ -6,7 +5,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 
 class GeminiConfigurationError(ImproperlyConfigured):
-    """Gemini chưa được cấu hình cho thao tác được yêu cầu."""
+    """Gemini chưa được cấu hình"""
 
 
 class GeminiRequestError(Exception):

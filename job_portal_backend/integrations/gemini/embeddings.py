@@ -22,7 +22,7 @@ class TaskType:
 
 
 class EmbeddingError(Exception):
-    """Loại lỗi nghiệp vụ ổn định cho API, timeout, quota và vector không hợp lệ."""
+    """Loại lỗi nghiệp vụ cho API, timeout, quota và vector không hợp lệ."""
 
 
 def current_embedding_signature(task_type: str) -> str:
@@ -72,17 +72,17 @@ def generate_embedding(text: str, *, task_type: str = TaskType.DOCUMENT) -> list
             f"kỳ vọng {EMBEDDING_DIMENSIONS} chiều."
         )
     if any(not isinstance(value, Real) or not math.isfinite(value) for value in vector):
-        raise EmbeddingError("Embedding chứa giá trị không hợp lệ.")
+        raise EmbeddingError("Embedding chứa giá trị không hợp lệ")
     if not any(value != 0 for value in vector):
-        raise EmbeddingError("Embedding không được là zero vector.")
+        raise EmbeddingError("Embedding không được là zero vector")
     return vector
 
 
 def embed_document(text: str) -> list[float]:
-    """UC-01/UC-02: tạo embedding cho nội dung được index sẵn."""
+    """tạo embedding cho nội dung cv/jd sẵn"""
     return generate_embedding(text, task_type=TaskType.DOCUMENT)
 
 
 def embed_query(text: str) -> list[float]:
-    """UC-03: tạo embedding cho câu truy vấn tìm kiếm tức thời."""
+    """tạo embedding cho câu truy vấn tìm kiếm tức thời"""
     return generate_embedding(text, task_type=TaskType.QUERY)

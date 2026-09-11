@@ -15,7 +15,7 @@ class ParsedDocumentResult:
 
 
 def parse_json_object_response(response: Any) -> dict:
-    """Đọc JSON object từ response Gemini, chấp nhận code fence bao ngoài."""
+    """Đọc JSON object từ response Gemini, chấp nhận code fence bao ngoài"""
     if response is None:
         raise StructuredOutputError("Gemini không trả về response.")
 
