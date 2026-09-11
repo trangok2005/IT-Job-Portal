@@ -114,7 +114,7 @@ class MatchingWeightConfig(BaseModel):
     name = models.CharField(max_length=150)
     is_active = models.BooleanField(default=False)
 
-    # Weights should sum to 1.0 (validated at the serializer/service layer).
+    # Tổng trọng số phải bằng 1.0 (được kiểm tra tại tầng serializer/service).
     weight_semantic_similarity = models.DecimalField(max_digits=4, decimal_places=3, default=0.350)
     weight_skill_overlap = models.DecimalField(max_digits=4, decimal_places=3, default=0.400)
     weight_experience_match = models.DecimalField(max_digits=4, decimal_places=3, default=0.200)

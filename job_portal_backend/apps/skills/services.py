@@ -10,7 +10,6 @@ from django.db.models import F
 from django.utils import timezone
 from rapidfuzz import fuzz
 
-from apps.core.qstash_client import publish_task
 from apps.skills.models import (
     CandidateSkill,
     MatchingWeightConfig,
@@ -19,6 +18,7 @@ from apps.skills.models import (
     SkillCategory,
 )
 from apps.skills.utils import make_unique_slug, normalize_alias
+from integrations.qstash.publisher import publish_task
 
 WEIGHT_FIELDS = (
     "weight_semantic_similarity",

@@ -14,7 +14,7 @@ def main():
             except Exception:
                 pass
     if len(sys.argv) > 1 and sys.argv[1] == "test":
-        # Missing mocks must fail fast instead of consuming a real Gemini quota.
+        # Mock bị thiếu phải báo lỗi ngay thay vì tiêu tốn quota Gemini thật.
         os.environ["GEMINI_API_KEY"] = ""
         if not any(arg.startswith("--settings") for arg in sys.argv[2:]):
             os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings.test"

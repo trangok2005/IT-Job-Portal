@@ -1,4 +1,4 @@
-"""Pure helpers for the rule-based recommendation components."""
+"""Các hàm hỗ trợ thuần túy cho thành phần gợi ý dựa trên quy tắc."""
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -16,7 +16,7 @@ class MatchingWeights:
     required_skill_multiplier: Decimal = Decimal("2.000")
 
 
-# Defaults for newly provisioned installations; scoring still requires an active row.
+# Giá trị mặc định cho bản cài đặt mới; việc chấm điểm vẫn cần một bản ghi đang active.
 DEFAULT_MATCHING_WEIGHTS = MatchingWeights(
     semantic=Decimal("0.350"),
     skill=Decimal("0.400"),
@@ -69,7 +69,7 @@ def normalize_matching_text(value: str) -> str:
 
 
 def recognized_degree_level(value: str) -> int:
-    """Return the highest recognized degree in free-form candidate data."""
+    """Trả về bậc học vấn cao nhất nhận diện được trong dữ liệu tự do của ứng viên."""
     normalized = normalize_matching_text(value)
     for level in sorted(_DEGREE_PATTERNS, reverse=True):
         if any(re.search(pattern, normalized) for pattern in _DEGREE_PATTERNS[level]):
@@ -78,7 +78,7 @@ def recognized_degree_level(value: str) -> int:
 
 
 def required_degree_level(requirements: str) -> int:
-    """Conservatively find an explicit degree requirement, or zero if absent."""
+    """Tìm thận trọng yêu cầu học vấn rõ ràng, hoặc trả về 0 nếu không có."""
     normalized = normalize_matching_text(requirements)
     if any(re.search(pattern, normalized) for pattern in _NO_DEGREE_PATTERNS):
         return 0
@@ -93,7 +93,7 @@ def required_degree_level(requirements: str) -> int:
 
 
 def total_experience_years(intervals, today: date | None = None) -> float:
-    """Return the union of valid half-open employment intervals in years."""
+    """Trả về hợp các khoảng thời gian làm việc nửa mở hợp lệ, tính theo năm."""
     today = today or date.today()
     normalized = []
     for start_date, end_date, is_current in intervals:
@@ -128,7 +128,7 @@ def experience_score(total_years: float, experience_level: str) -> float:
 
 
 def skill_match_score(candidate_skill_ids, job_skills, multiplier) -> tuple[float | None, dict]:
-    """Compute K-rho after de-duplicating by stable skill identity."""
+    """Tính K-rho sau khi loại trùng theo định danh skill ổn định."""
     multiplier = float(multiplier)
     if not math.isfinite(multiplier) or multiplier < 1:
         raise ValueError("Hệ số kỹ năng bắt buộc phải hữu hạn và không nhỏ hơn 1.")
@@ -181,7 +181,7 @@ def education_score(candidate_level: str | None, required_level: str | None) -> 
 
 
 def aggregate_match_score(components: dict, weights: MatchingWeights):
-    """Normalize configured weights over applicable criteria and score 0-100."""
+    """Chuẩn hóa trọng số trên các tiêu chí áp dụng và tính điểm từ 0 đến 100."""
     original = {
         "semantic": Decimal(weights.semantic),
         "skill": Decimal(weights.skill),

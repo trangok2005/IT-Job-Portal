@@ -1,25 +1,26 @@
 ﻿from datetime import timedelta
 from unittest.mock import patch
 
-from django.urls import reverse
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
+from apps.applications.models import JobApplication
 from apps.candidates.models import CandidateProfile
 from apps.companies.models import Company
+from apps.jobs.models import JDImport, JobPost, JobSkill
+from apps.jobs.tasks import parse_jd_import
+from apps.skills.models import CandidateSkill, Skill
 from integrations.gemini.embeddings import (
+    EmbeddingError,
     current_candidate_embedding_signature,
     current_job_embedding_signature,
 )
-from apps.jobs.models import JDImport, JobPost, JobSkill
-from apps.jobs.tasks import parse_jd_import
-from apps.applications.models import JobApplication
-from apps.skills.models import CandidateSkill, Skill
-from django.core.cache import cache
-from integrations.gemini.embeddings import EmbeddingError
+from integrations.gemini.structured_output import ParsedDocumentResult
 
 
 class JobApiTests(APITestCase):
@@ -249,11 +250,11 @@ class JobApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
-    @patch("apps.jobs.jd_parser.parse_job_description")
+    @patch("apps.jobs.tasks.parse_job_description")
     def test_parse_jd_throttled_after_two_uploads_per_minute(self, parse_jd):
-        parse_jd.return_value = (
-            {"title": "Python Developer", "skills": []},
-            {"title": "Python Developer"},
+        parse_jd.return_value = ParsedDocumentResult(
+            raw_data={"title": "Python Developer", "skills": []},
+            validated_data={"title": "Python Developer"},
         )
         self.client.force_authenticate(user=self.employer)
 
@@ -602,18 +603,17 @@ class JobApiTests(APITestCase):
         self.assertIsNotNone(response.data["published_at"])
         enqueue_embedding.assert_called_once()
 
-    @patch("apps.jobs.jd_parser.parse_job_description")
+    @patch("apps.jobs.tasks.parse_job_description")
     def test_approved_employer_can_parse_jd_without_creating_draft(self, parse_jd):
-        parse_jd.return_value = (
-            {"title": "Python Developer", "skills": ["Django"]},
-            {
+        parse_jd.return_value = ParsedDocumentResult(
+            raw_data={"title": "Python Developer", "skills": ["Django"]},
+            validated_data={
                 "title": "Python Developer",
                 "description": "Build APIs",
                 "job_type": JobPost.JobType.FULL_TIME,
                 "experience_level": JobPost.ExperienceLevel.JUNIOR,
                 "salary_negotiable": True,
-                "required_skills": [str(self.skill.id)],
-                "unmatched_skills": [],
+                "skills": ["Django"],
             },
         )
         self.client.force_authenticate(self.employer)

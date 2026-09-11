@@ -1,9 +1,9 @@
-"""Queue regeneration after an embedding model or text-pipeline change."""
+"""Đưa tác vụ tái tạo vào queue sau khi đổi embedding model hoặc text pipeline."""
 from django.core.management.base import BaseCommand
 from django.db.models import F, Q
 
 from apps.candidates.models import CandidateProfile
-from apps.core.qstash_client import publish_task
+from integrations.qstash.publisher import publish_task
 from integrations.gemini.embeddings import (
     current_candidate_embedding_signature,
     current_job_embedding_signature,

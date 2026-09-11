@@ -1,7 +1,3 @@
-"""ViewSet tin tuyển dụng mỏng: gọi service/selector và trả response.
-
-Không chứa logic nghiệp vụ (xem apps/jobs/services.py, selectors.py, perms.py).
-"""
 import logging
 
 from rest_framework import filters, mixins, status, viewsets
@@ -49,11 +45,6 @@ class JobViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Chỉ cung cấp các endpoint cần thiết theo UC, không có `destroy`.
-
-    Đặc tả không có UC xóa tin tuyển dụng; tin ngừng nhận hồ sơ dùng action
-    `close`.
-    """
     serializer_class = serializers.JobReadSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ["created_at", "salary_min", "salary_max"]

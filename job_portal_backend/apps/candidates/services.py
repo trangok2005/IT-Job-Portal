@@ -7,10 +7,10 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.candidates.models import CandidateProfile, Education, Experience, Resume, ResumeImport
-from apps.core.qstash_client import publish_task
 from apps.skills.models import CandidateSkill, Skill
 from apps.skills.services import is_savable_skill as _is_savable_skill
 from apps.skills.services import resolve_savable_skill
+from integrations.qstash.publisher import publish_task
 
 
 def _enqueue_task(task_name: str, payload: dict) -> None:

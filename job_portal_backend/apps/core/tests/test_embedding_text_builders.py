@@ -101,7 +101,7 @@ class EmbeddingTextBuilderTests(TestCase):
         )
 
     def test_pending_skills_are_in_candidate_and_job_text(self):
-        # Active PENDING skills keep their identity and participate in matching.
+        # Skill PENDING đang active giữ nguyên định danh và tham gia đối sánh.
         pending = Skill.objects.create(
             name="Secret Skill",
             slug="builder-pending",

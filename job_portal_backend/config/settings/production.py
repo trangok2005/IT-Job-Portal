@@ -107,8 +107,8 @@ else:
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
-# Render captures stdout/stderr. Keep DEBUG disabled while exposing request and
-# application tracebacks needed to diagnose production failures.
+# Render thu thập stdout/stderr. Giữ DEBUG tắt nhưng vẫn hiển thị traceback của request
+# và application cần thiết để chẩn đoán lỗi production.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

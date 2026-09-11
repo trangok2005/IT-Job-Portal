@@ -7,8 +7,49 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.companies.models import Company
-from apps.core.qstash_client import publish_task
 from apps.jobs.models import JDImport, JobPost, JobSkill
+from apps.skills.services import resolve_savable_skill
+from apps.skills.utils import normalize_alias
+from integrations.qstash.publisher import publish_task
+
+
+def build_jd_parse_result(parsed_data: dict) -> dict:
+    """Phân giải tên skill đã trích xuất và tạo cấu trúc preview JD hiện có."""
+    from apps.jobs.serializers import JobDescriptionParseResultSerializer
+
+    parsed = dict(parsed_data)
+    required_flags = parsed.pop("_skill_required_flags", {})
+    matched = []
+    matched_indexes = {}
+    unmatched = []
+    for name in parsed.get("skills", []):
+        try:
+            skill = resolve_savable_skill(name)
+        except ValueError:
+            unmatched.append(name)
+            continue
+
+        is_required = required_flags.get(normalize_alias(name), True)
+        matched_index = matched_indexes.get(skill.pk)
+        if matched_index is None:
+            matched_indexes[skill.pk] = len(matched)
+            matched.append(
+                {
+                    "id": str(skill.pk),
+                    "name": skill.name,
+                    "status": skill.status,
+                    "is_required": is_required,
+                }
+            )
+        else:
+            matched[matched_index]["is_required"] = (
+                matched[matched_index]["is_required"] or is_required
+            )
+
+    parsed["required_skills"] = [item["id"] for item in matched]
+    parsed["resolved_skills"] = matched
+    parsed["unmatched_skills"] = unmatched
+    return dict(JobDescriptionParseResultSerializer(parsed).data)
 
 
 def _enqueue_embedding(job: JobPost) -> None:

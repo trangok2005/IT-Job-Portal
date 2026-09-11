@@ -119,7 +119,7 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "common.exceptions.api_exception_handler",
 }
 
-# Lưu ý: KHÔNG đặt DEFAULT_THROTTLE_CLASSES — throttle chỉ áp dụng có chủ đích
+
 # qua get_throttles() của từng View. Class nằm ở common/throttling.py.
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
     # UC-03 E3: tìm kiếm việc làm
@@ -130,7 +130,7 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
     "upload_parse_daily": "10/day",
 }
 
-# Cache defaults to process-local storage. Production overrides this explicitly.
+# Cache mặc định dùng bộ nhớ cục bộ của process. Production ghi đè rõ ràng cấu hình này.
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -175,7 +175,7 @@ EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "IT Job Portal <no-reply@example.com>")
 
-# CORS is configured per environment.
+# CORS được cấu hình theo từng môi trường.
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
@@ -215,8 +215,15 @@ R2_STORAGE_OPTIONS = {
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_PARSER_MODEL = os.getenv("GEMINI_PARSER_MODEL", "gemini-3.6-flash")
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
-EMBEDDING_TIMEOUT_MS = int(os.getenv("EMBEDDING_TIMEOUT_MS", "10000"))
+GEMINI_TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", "10000"))
 TASK_PROCESSING_LEASE_SECONDS = int(os.getenv("TASK_PROCESSING_LEASE_SECONDS", "60"))
+
+BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL", "").rstrip("/")
+QSTASH_DEV = env_bool("QSTASH_DEV")
+QSTASH_URL = os.getenv("QSTASH_URL", "http://127.0.0.1:8080").rstrip("/")
+QSTASH_TOKEN = os.getenv("QSTASH_TOKEN", "")
+QSTASH_CURRENT_SIGNING_KEY = os.getenv("QSTASH_CURRENT_SIGNING_KEY", "")
+QSTASH_NEXT_SIGNING_KEY = os.getenv("QSTASH_NEXT_SIGNING_KEY", "")
 
 LANGUAGE_CODE = "vi"
 TIME_ZONE = os.getenv("TIME_ZONE", "Asia/Ho_Chi_Minh")

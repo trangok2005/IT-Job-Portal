@@ -6,8 +6,8 @@ pip install -r requirements/production.txt
 python manage.py collectstatic --noinput
 python manage.py migrate --noinput
 
-# One-time demo bootstrap for free Render deployments. Remove/disable the
-# environment flag after the first successful deploy so later builds skip it.
+# Khởi tạo demo một lần cho deployment Render miễn phí. Xóa hoặc tắt cờ môi trường
+# sau lần deploy thành công đầu tiên để các lần build sau bỏ qua bước này.
 if [ "${RUN_RENDER_SEED:-false}" = "true" ]; then
     python manage.py seed_render_demo
 fi

@@ -190,8 +190,8 @@ def _compute_application_match_score(application_id: str) -> bool:
             application.snapshot_created_at,
         )
     ):
-        # Legacy applications predate immutable scoring snapshots and cannot be
-        # reconstructed truthfully from the candidate's current profile.
+        # Hồ sơ cũ được tạo trước snapshot chấm điểm bất biến nên không thể tái tạo
+        # chính xác từ profile hiện tại của ứng viên.
         JobApplication.objects.filter(pk=application_id).update(
             match_status=JobApplication.MatchStatus.INSUFFICIENT,
             match_error="Đơn lịch sử không có snapshot tính điểm.",
@@ -374,7 +374,7 @@ def compute_application_match_score(application_id: str) -> bool:
 
 def retry_incomplete_application_matches() -> int:
     """Phát hành lại task cho hồ sơ đang chờ hoặc lỗi mà không cần ứng tuyển lại."""
-    from apps.core.qstash_client import publish_task
+    from integrations.qstash.publisher import publish_task
 
     application_ids = list(
         JobApplication.objects.filter(

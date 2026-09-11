@@ -15,7 +15,7 @@ class User(AbstractUser):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # Email is the real login identifier; username kept only for Django admin.
+    # Email là định danh đăng nhập thực tế; username chỉ được giữ cho Django admin.
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.CANDIDATE)
 
@@ -29,8 +29,8 @@ class User(AbstractUser):
         default="PASSWORD",
     )
 
-    # is_active reused by UC-04/E2 ("Ứng viên đã xóa hoặc khóa tài khoản")
-    # inherited from AbstractUser: self.is_active
+    # is_active được dùng lại cho UC-04/E2 ("Ứng viên đã xóa hoặc khóa tài khoản")
+    # và kế thừa từ AbstractUser: self.is_active
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

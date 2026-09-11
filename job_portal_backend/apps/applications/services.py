@@ -9,7 +9,7 @@ from apps.applications.models import ApplicationStatusHistory, JobApplication
 from apps.candidates.models import CandidateProfile
 from apps.core.embedding_text_builders import build_candidate_text, build_job_text
 from apps.core.matching import MatchingWeights
-from apps.core.qstash_client import publish_task
+from integrations.qstash.publisher import publish_task
 from apps.jobs import selectors as job_selectors
 from apps.jobs.models import JobPost
 from apps.notifications.services import enqueue_application_status_email

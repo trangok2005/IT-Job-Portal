@@ -12,8 +12,8 @@ import type {
 import type { operations } from "@/types/generated/api-schema";
 import { clearAuth, getAccessToken, getRefreshToken, setAccessToken } from "@/lib/auth";
 
-// Server Components inside Docker use the internal service name; browser
-// requests keep using the public host URL compiled into NEXT_PUBLIC_API_URL.
+// Server Components trong Docker dùng tên service nội bộ; request từ browser
+// tiếp tục dùng host URL công khai được build vào NEXT_PUBLIC_API_URL.
 const BASE_URL = process.env.API_URL
   ?? process.env.NEXT_PUBLIC_API_URL
   ?? "http://localhost:8000";
@@ -45,7 +45,7 @@ async function readResponse<T>(res: Response, path: string): Promise<T> {
       const body = await res.json();
       message = getErrorMessage(body) ?? message;
     } catch {
-      // Retain the HTTP fallback when the error body is not valid JSON.
+      // Giữ HTTP fallback khi body lỗi không phải JSON hợp lệ.
     }
     throw new ApiError(res.status, message);
   }

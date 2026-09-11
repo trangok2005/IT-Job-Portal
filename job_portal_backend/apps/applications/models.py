@@ -49,8 +49,8 @@ class JobApplication(UUIDModel, TimeStampedModel):
     cover_letter = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.APPLIED)
 
-    # Immutable scoring inputs captured atomically with the application. Queue
-    # payloads contain only the application ID; workers read these snapshots.
+    # Đầu vào chấm điểm bất biến được lưu atomically cùng hồ sơ. Payload trong queue
+    # chỉ chứa application ID; worker đọc các snapshot này.
     profile_snapshot = models.JSONField(null=True, blank=True, editable=False)
     job_snapshot = models.JSONField(null=True, blank=True, editable=False)
     matching_weight_snapshot = models.JSONField(null=True, blank=True, editable=False)

@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models import F
 from django.test import TestCase
 from django.utils import timezone
 
@@ -14,6 +15,7 @@ from apps.jobs.tasks import (
     generate_job_embedding,
     parse_jd_import,
 )
+from integrations.gemini.structured_output import ParsedDocumentResult
 
 
 class JDImportParseAttemptTests(TestCase):
@@ -37,7 +39,7 @@ class JDImportParseAttemptTests(TestCase):
             expires_at=timezone.now() + timedelta(hours=24),
         )
 
-    @patch("apps.jobs.jd_parser.parse_job_description")
+    @patch("apps.jobs.tasks.parse_job_description")
     def test_parse_jd_import_stops_after_max_attempts(self, parse_jd):
         parse_jd.side_effect = ValueError("Gemini unavailable")
 
@@ -56,6 +58,99 @@ class JDImportParseAttemptTests(TestCase):
         self.jd_import.refresh_from_db()
         self.assertEqual(self.jd_import.status, JDImport.Status.FAILED)
         self.assertIn("vượt quá", self.jd_import.error_message.lower())
+
+    @patch("apps.jobs.tasks.parse_job_description")
+    def test_success_is_stored_and_duplicate_is_idempotent(self, parse_jd):
+        parse_jd.return_value = ParsedDocumentResult(
+            raw_data={"title": "Backend Developer"},
+            validated_data={"title": "Backend Developer"},
+        )
+
+        self.assertTrue(parse_jd_import(str(self.jd_import.id)))
+        self.assertFalse(parse_jd_import(str(self.jd_import.id)))
+
+        parse_jd.assert_called_once()
+        self.jd_import.refresh_from_db()
+        self.assertEqual(self.jd_import.status, JDImport.Status.SUCCESS)
+        self.assertEqual(self.jd_import.parsed_data["title"], "Backend Developer")
+
+    @patch("apps.jobs.tasks.parse_job_description")
+    def test_success_on_final_attempt_is_not_reverted_by_duplicate(self, parse_jd):
+        JDImport.objects.filter(pk=self.jd_import.pk).update(
+            status=JDImport.Status.FAILED,
+            parse_attempts=MAX_PARSE_ATTEMPTS - 1,
+        )
+        parse_jd.return_value = ParsedDocumentResult(
+            raw_data={"title": "Backend Developer"},
+            validated_data={"title": "Backend Developer"},
+        )
+
+        self.assertTrue(parse_jd_import(str(self.jd_import.id)))
+        self.assertFalse(parse_jd_import(str(self.jd_import.id)))
+
+        self.jd_import.refresh_from_db()
+        self.assertEqual(self.jd_import.status, JDImport.Status.SUCCESS)
+        self.assertEqual(self.jd_import.parse_attempts, MAX_PARSE_ATTEMPTS)
+
+    @patch("apps.jobs.tasks.parse_job_description")
+    def test_processing_duplicate_does_not_parse_again(self, parse_jd):
+        JDImport.objects.filter(pk=self.jd_import.pk).update(
+            status=JDImport.Status.PROCESSING,
+            parse_attempts=1,
+            updated_at=timezone.now(),
+        )
+
+        with self.assertRaises(RuntimeError):
+            parse_jd_import(str(self.jd_import.id))
+
+        parse_jd.assert_not_called()
+
+    @patch("apps.jobs.tasks.parse_job_description")
+    def test_active_final_attempt_is_not_marked_failed(self, parse_jd):
+        JDImport.objects.filter(pk=self.jd_import.pk).update(
+            status=JDImport.Status.PROCESSING,
+            parse_attempts=MAX_PARSE_ATTEMPTS,
+            updated_at=timezone.now(),
+        )
+
+        self.assertFalse(parse_jd_import(str(self.jd_import.id)))
+
+        parse_jd.assert_not_called()
+        self.jd_import.refresh_from_db()
+        self.assertEqual(self.jd_import.status, JDImport.Status.PROCESSING)
+
+    @patch("apps.jobs.tasks.parse_job_description")
+    def test_failure_message_does_not_expose_provider_details(self, parse_jd):
+        parse_jd.side_effect = RuntimeError("provider-secret-response")
+
+        with self.assertRaises(RuntimeError):
+            parse_jd_import(str(self.jd_import.id))
+
+        self.jd_import.refresh_from_db()
+        self.assertEqual(self.jd_import.status, JDImport.Status.FAILED)
+        self.assertNotIn("provider-secret-response", self.jd_import.error_message)
+
+    @patch("apps.jobs.tasks.parse_job_description")
+    def test_expired_worker_cannot_overwrite_newer_attempt(self, parse_jd):
+        def newer_worker_claimed(**_kwargs):
+            JDImport.objects.filter(pk=self.jd_import.pk).update(
+                parse_attempts=F("parse_attempts") + 1,
+                status=JDImport.Status.PROCESSING,
+                updated_at=timezone.now() + timedelta(seconds=1),
+            )
+            return ParsedDocumentResult(
+                raw_data={"title": "Stale"},
+                validated_data={"title": "Stale"},
+            )
+
+        parse_jd.side_effect = newer_worker_claimed
+
+        self.assertFalse(parse_jd_import(str(self.jd_import.id)))
+
+        self.jd_import.refresh_from_db()
+        self.assertEqual(self.jd_import.status, JDImport.Status.PROCESSING)
+        self.assertEqual(self.jd_import.parse_attempts, 2)
+        self.assertIsNone(self.jd_import.parsed_data)
 
 
 class JobEmbeddingTaskTests(TestCase):
@@ -103,6 +198,22 @@ class JobEmbeddingTaskTests(TestCase):
 
         self.assertFalse(result)
         generate.assert_not_called()
+
+    @patch("apps.jobs.tasks.embed_document")
+    def test_version_changed_during_request_does_not_save_embedding(self, generate):
+        def change_version(_content):
+            JobPost.objects.filter(pk=self.job.pk).update(
+                content_version=F("content_version") + 1
+            )
+            return [0.2] * 768
+
+        generate.side_effect = change_version
+
+        result = generate_job_embedding(str(self.job.id), self.job.content_version)
+
+        self.assertFalse(result)
+        self.job.refresh_from_db()
+        self.assertIsNone(self.job.embedding)
 
     def test_cleanup_removes_expired_import_and_file(self):
         jd_import = JDImport.objects.create(

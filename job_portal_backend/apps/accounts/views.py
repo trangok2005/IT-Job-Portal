@@ -68,8 +68,8 @@ class AdminUserListView(ListAPIView):
         return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
-        # A missing BooleanField in a QueryDict is interpreted like an unchecked
-        # HTML checkbox (False). A plain dict preserves "filter not supplied".
+        # BooleanField bị thiếu trong QueryDict được hiểu như HTML checkbox chưa chọn
+        # (False). dict thông thường giữ nguyên ý nghĩa "không cung cấp filter".
         query = serializers.AdminUserListQuerySerializer(
             data=self.request.query_params.dict()
         )

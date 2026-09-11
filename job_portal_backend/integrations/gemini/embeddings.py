@@ -4,6 +4,8 @@ from numbers import Real
 
 from django.conf import settings
 
+from integrations.gemini.client import get_gemini_client
+
 
 EMBEDDING_MODEL = settings.GEMINI_EMBEDDING_MODEL
 EMBEDDING_DIMENSIONS = 768
@@ -11,12 +13,6 @@ EMBEDDING_CONTENT_VERSION = "matching-text-v1"
 
 
 class TaskType:
-    """Gemini task_type phân biệt vai trò văn bản, không phân biệt trường hợp sử dụng.
-
-    UC-01/UC-02 index nội dung tĩnh (document); UC-03 nhúng câu truy vấn
-    tức thời (query). Vector hai loại này không trộn lẫn được.
-    """
-
     DOCUMENT = "RETRIEVAL_DOCUMENT"
     QUERY = "RETRIEVAL_QUERY"
 
@@ -25,27 +21,8 @@ class TaskType:
         return (cls.DOCUMENT, cls.QUERY)
 
 
-_client = None
-
-
 class EmbeddingError(Exception):
     """Loại lỗi nghiệp vụ ổn định cho API, timeout, quota và vector không hợp lệ."""
-
-
-def _get_client():
-    """Khởi tạo SDK client khi cần để nhánh phi ngữ nghĩa không cần API key."""
-    global _client
-    if _client is None:
-        if not settings.GEMINI_API_KEY:
-            raise EmbeddingError("GEMINI_API_KEY chưa được cấu hình.")
-        from google import genai
-        from google.genai import types
-
-        _client = genai.Client(
-            api_key=settings.GEMINI_API_KEY,
-            http_options=types.HttpOptions(timeout=settings.EMBEDDING_TIMEOUT_MS),
-        )
-    return _client
 
 
 def current_embedding_signature(task_type: str) -> str:
@@ -72,7 +49,7 @@ def generate_embedding(text: str, *, task_type: str = TaskType.DOCUMENT) -> list
     from google.genai import types
 
     try:
-        client = _get_client()
+        client = get_gemini_client()
         response = client.models.embed_content(
             model=EMBEDDING_MODEL,
             contents=text,

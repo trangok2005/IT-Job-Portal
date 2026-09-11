@@ -1,11 +1,12 @@
-"""Create recurring QStash schedules.
+"""Tạo các QStash schedule định kỳ.
 
-Run this command once after every deploy. It must not run from the
-request-response path. Existing schedule IDs are left unchanged.
+Chạy lệnh này một lần sau mỗi lần deploy. Không được chạy từ luồng
+request-response. Các schedule ID hiện có được giữ nguyên.
 """
 from django.core.management.base import BaseCommand
 
-from apps.core.qstash_client import client, dispatcher_url
+from integrations.qstash.client import get_qstash_client
+from integrations.qstash.publisher import dispatcher_url
 
 
 SCHEDULES = (
@@ -32,6 +33,7 @@ class Command(BaseCommand):
     help = "Create missing recurring QStash schedules after deployment."
 
     def handle(self, *args, **options):
+        client = get_qstash_client()
         existing_ids = {
             schedule.schedule_id for schedule in client.schedule.list()
         }

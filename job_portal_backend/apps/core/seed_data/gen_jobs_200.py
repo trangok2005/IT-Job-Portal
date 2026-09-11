@@ -138,7 +138,7 @@ def make_salary(level, rng):
 
 
 JOB_BLUEPRINTS = {
-    # ---------------- COMMON (120) ----------------
+# ---------------- PHỔ BIẾN (120) ----------------
     "Backend Developer": {"cat": "Backend", "pop": "common", "mult": 18, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR", "MID_SENIOR", "ENTRY", "MID_SENIOR"]},
     "Java Developer": {"cat": "Backend", "pop": "common", "mult": 14, "level_weights": ["JUNIOR", "MID_SENIOR", "MID_SENIOR", "JUNIOR"]},
     "Frontend Developer": {"cat": "Frontend", "pop": "common", "mult": 16, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR", "MID_SENIOR", "ENTRY"]},
@@ -150,7 +150,7 @@ JOB_BLUEPRINTS = {
     "PHP Developer": {"cat": "Backend", "pop": "common", "mult": 6, "level_weights": ["JUNIOR", "JUNIOR", "MID_SENIOR"]},
     "Android Developer": {"cat": "Mobile", "pop": "common", "mult": 3, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR"]},
     "iOS Developer": {"cat": "Mobile", "pop": "common", "mult": 3, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR"]},
-    # ---------------- AVERAGE (60) ----------------
+# ---------------- TRUNG BÌNH (60) ----------------
     "DevOps Engineer": {"cat": "DevOps", "pop": "average", "mult": 10, "level_weights": ["MID_SENIOR", "JUNIOR", "MID_SENIOR", "LEAD"]},
     "Cloud Engineer": {"cat": "Cloud", "pop": "average", "mult": 6, "level_weights": ["MID_SENIOR", "JUNIOR", "MID_SENIOR"]},
     "Data Engineer": {"cat": "Data", "pop": "average", "mult": 6, "level_weights": ["MID_SENIOR", "JUNIOR", "MID_SENIOR"]},
@@ -161,7 +161,7 @@ JOB_BLUEPRINTS = {
     "UX/UI Designer": {"cat": "UX/UI", "pop": "average", "mult": 6, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR"]},
     "Site Reliability Engineer": {"cat": "System/SRE", "pop": "average", "mult": 4, "level_weights": ["MID_SENIOR", "LEAD"]},
     "System Administrator": {"cat": "System/SRE", "pop": "average", "mult": 4, "level_weights": ["JUNIOR", "MID_SENIOR"]},
-    # ---------------- RARE (20) ----------------
+# ---------------- HIẾM (20) ----------------
     "AI / Machine Learning Engineer": {"cat": "AI/ML", "pop": "rare", "mult": 5, "level_weights": ["MID_SENIOR", "LEAD", "MID_SENIOR"]},
     "NLP / LLM Engineer": {"cat": "AI/ML", "pop": "rare", "mult": 3, "level_weights": ["MID_SENIOR", "LEAD"]},
     "Data Scientist (Deep Learning)": {"cat": "AI/ML", "pop": "rare", "mult": 2, "level_weights": ["MID_SENIOR"]},
@@ -379,7 +379,7 @@ def build():
     out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print("Wrote", out, "with", len(records), "jobs")
     print("popularity:", data["meta"]["popularity"])
-    # enum coverage report
+# Báo cáo độ bao phủ enum
     from collections import Counter
     for field in ["workplace_type", "job_type", "experience_level", "location", "status"]:
         counts = dict(Counter(r[field] for r in records))

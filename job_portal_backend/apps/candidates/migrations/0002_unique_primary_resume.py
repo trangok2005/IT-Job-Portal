@@ -3,7 +3,7 @@ from django.db.models import Q
 
 
 def normalize_primary_resumes(apps, schema_editor):
-    """Keep the newest primary resume before adding the unique constraint."""
+    """Giữ CV chính mới nhất trước khi thêm unique constraint."""
     Resume = apps.get_model("candidates", "Resume")
     duplicate_candidate_ids = (
         Resume.objects.filter(is_primary=True)
