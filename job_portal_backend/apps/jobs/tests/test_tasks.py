@@ -51,7 +51,7 @@ class JDImportParseAttemptTests(TestCase):
         self.jd_import.refresh_from_db()
         self.assertEqual(self.jd_import.parse_attempts, MAX_PARSE_ATTEMPTS)
 
-        # Lượt gọi thứ N + 1: không parse nữa, giữ FAILED với thông báo cạn lượt.
+        # Lượt giao tiếp theo phải dừng trước khi parse lại.
         self.assertFalse(parse_jd_import(str(self.jd_import.id)))
 
         self.assertEqual(parse_jd.call_count, MAX_PARSE_ATTEMPTS)

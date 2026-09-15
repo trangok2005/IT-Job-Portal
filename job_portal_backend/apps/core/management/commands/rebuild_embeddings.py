@@ -1,4 +1,4 @@
-"""Đưa tác vụ tái tạo vào queue sau khi đổi embedding model hoặc text pipeline."""
+"""Queue lại embedding sau khi đổi model hoặc cách dựng nội dung."""
 from django.core.management.base import BaseCommand
 from django.db.models import F, Q
 

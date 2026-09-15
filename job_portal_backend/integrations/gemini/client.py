@@ -9,12 +9,11 @@ class GeminiConfigurationError(ImproperlyConfigured):
 
 
 class GeminiRequestError(Exception):
-    """Request Gemini thất bại trước khi trả về response có thể sử dụng."""
+    """Gemini không trả về response dùng được."""
 
 
 @lru_cache(maxsize=1)
 def get_gemini_client():
-    """Trả về một Gemini client được khởi tạo lazy cho mỗi process."""
     if not settings.GEMINI_API_KEY:
         raise GeminiConfigurationError("GEMINI_API_KEY chưa được cấu hình.")
 

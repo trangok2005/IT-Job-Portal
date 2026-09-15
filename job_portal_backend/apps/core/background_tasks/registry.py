@@ -1,4 +1,3 @@
-"""Allow-list các business task được background dispatcher chấp nhận."""
 from collections.abc import Callable
 
 from apps.ai_analysis.tasks import (

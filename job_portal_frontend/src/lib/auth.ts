@@ -74,7 +74,6 @@ export function persistAuth(tokens: AuthTokens, user: UserDto) {
   setRoleCookie(user.role);
 }
 
-/** Chỉ thay access token khi auto-refresh thành công (giữ nguyên user/refresh). */
 export function setAccessToken(accessToken: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(ACCESS_KEY, accessToken);
@@ -100,7 +99,7 @@ function clearAuthCookie(name: string) {
   document.cookie = `${name}=; path=/; max-age=0; samesite=lax`;
 }
 
-/** Cookie role chỉ dùng cho UX cũ; Proxy xác minh role qua backend. */
+// Proxy xác minh role qua backend; cookie chỉ hỗ trợ UX cũ.
 export function setRoleCookie(role: UserRole) {
   setAuthCookie(ROLE_COOKIE, role);
 }

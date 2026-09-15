@@ -207,7 +207,7 @@ class ResumeParseTaskTests(TestCase):
         self.assertEqual(resume_import.parse_attempts, MAX_PARSE_ATTEMPTS)
         self.assertNotIn("Gemini unavailable", resume_import.parse_error_message)
 
-        # Lượt gọi thứ N + 1: không đụng Gemini nữa, chốt FAILED vĩnh viễn.
+        # Lượt giao tiếp theo phải dừng trước khi gọi lại Gemini.
         result = parse_resume_import(str(resume_import.id))
 
         self.assertEqual(result, {})

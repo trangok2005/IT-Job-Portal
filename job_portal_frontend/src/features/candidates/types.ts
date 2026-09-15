@@ -9,8 +9,7 @@ export type CandidateSkillDto = components["schemas"]["CandidateSkill"];
 export type ResumeDto = components["schemas"]["Resume"];
 export type PrivateFileURLDto = components["schemas"]["PrivateFileURL"];
 export type CandidateProfileDto = components["schemas"]["CandidateProfileRead"];
-export type ProfileUpdatePayload =
-  components["schemas"]["PatchedCandidateProfileUpdateRequest"];
+export type ProfileUpdatePayload = components["schemas"]["PatchedCandidateProfileUpdateRequest"];
 export type ProfileSavePayload = components["schemas"]["CandidateProfileSaveRequest"];
 export type ResumeImportDto = components["schemas"]["ResumeImport"];
 export type SkillOptionDto = components["schemas"]["SkillRead"];

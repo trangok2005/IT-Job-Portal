@@ -41,9 +41,7 @@ class JobApplicationAdmin(admin.ModelAdmin):
     )
 
     def has_add_permission(self, request):
-        """Chỉ cho phép tạo hồ sơ ứng tuyển qua service nghiệp vụ."""
         return False
 
     def has_delete_permission(self, request, obj=None):
-        """Không cho phép xóa hồ sơ ứng tuyển theo đặc tả nghiệp vụ."""
         return False

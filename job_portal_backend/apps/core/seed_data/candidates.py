@@ -1,4 +1,3 @@
-"""Du lieu 10 CV mau cho seed_sample_candidates, tach khoi command."""
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
@@ -21,7 +20,6 @@ CATEGORY_MAP = {
     "Khác": ["Git", "Agile/Scrum", "REST API", "Microservices", "Figma", "Jira"],
 }
 
-# 10 CV mẫu, phủ các it_role_type xuất hiện nhiều nhất trong bộ JD.
 CANDIDATES = [
     {
         "email": "nguyen.van.an@example.com",

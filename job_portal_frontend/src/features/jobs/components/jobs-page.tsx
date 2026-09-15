@@ -285,7 +285,11 @@ export function JobsPage() {
               key={job.id}
               job={job}
               index={index}
-              showMatchScore={activeTab === "recommended" || Boolean(keyword?.trim())}
+              score={activeTab === "recommended"
+                ? job.match_score
+                : keyword?.trim() && job.semantic_score !== null
+                  ? job.semantic_score * 100
+                  : null}
             />
           ))}
         </div>

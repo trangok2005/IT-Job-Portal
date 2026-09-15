@@ -1,4 +1,3 @@
-"""Chuẩn bị nội dung tài liệu được hỗ trợ cho Gemini parser."""
 import mimetypes
 import zipfile
 import xml.etree.ElementTree as ET
@@ -8,7 +7,7 @@ from common.document_extraction import extract_docx_text
 
 
 class DocumentInputError(ValueError):
-    """Tài liệu được cung cấp rỗng hoặc không được hỗ trợ."""
+    """Tài liệu được cung cấp rỗng hoặc không được hỗ trợ"""
 
 
 SUPPORTED_DOCUMENT_MIME_TYPES = {
@@ -23,7 +22,6 @@ def prepare_document_input(
     mime_type: str | None,
     file_data: bytes,
 ):
-    """Chuyển PDF/DOC/DOCX được hỗ trợ thành nội dung request Gemini."""
     if not file_data:
         raise DocumentInputError("Tài liệu không có nội dung.")
 

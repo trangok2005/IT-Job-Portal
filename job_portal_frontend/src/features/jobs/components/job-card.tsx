@@ -17,10 +17,10 @@ const LOGO_COLORS = [
 type JobCardProps = {
   job: JobDto;
   index?: number;
-  showMatchScore?: boolean;
+  score?: number | null;
 };
 
-export function JobCard({ job, index = 0, showMatchScore = false }: JobCardProps) {
+export function JobCard({ job, index = 0, score }: JobCardProps) {
   const color = LOGO_COLORS[index % LOGO_COLORS.length];
   const skills = job.skills.slice(0, 4);
   const className = "group flex w-full flex-col rounded-xl border border-zinc-200 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md";
@@ -34,9 +34,9 @@ export function JobCard({ job, index = 0, showMatchScore = false }: JobCardProps
           <h3 className="truncate font-semibold text-zinc-900 group-hover:text-primary">{job.title}</h3>
           <p className="mt-0.5 truncate text-sm text-zinc-500">{job.company_name}</p>
         </div>
-        {showMatchScore && job.match_score !== null && (
+        {score !== undefined && score !== null && (
           <Badge className="shrink-0 gap-1 bg-primary-50 text-primary">
-            <Sparkles className="size-3" /> {Math.round(job.match_score)}%
+            <Sparkles className="size-3" /> {Math.round(score)}%
           </Badge>
         )}
       </div>

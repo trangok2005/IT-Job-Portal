@@ -3,22 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const POLL_INTERVAL_MS = 2000;
-// Giới hạn thời gian HOẠT ĐỘNG (không tính lúc tab ẩn) trước khi dừng.
+// Không tính thời gian tab bị ẩn.
 const MAX_ACTIVE_MS = 120_000;
 
 type StatusPollingOptions<T, S> = {
-  /** Bật polling khi có import đang xử lý. `importId` dùng để reset trạng thái. */
   enabled: boolean;
   importId: string | null;
-  /** Hàm gọi API lấy toàn bộ snapshot (DTO) hiện tại. */
   poll: (importId: string) => Promise<T>;
-  /** Trích xuất giá trị trạng thái từ snapshot để điều khiển vòng lặp. */
   getStatus: (snapshot: T) => S;
-  /** Kiểm tra trạng thái có còn đang xử lý hay không. */
   isProcessing: (status: S) => boolean;
-  /** Được gọi sau mỗi request thành công với snapshot mới nhất. */
   onUpdate: (snapshot: T) => void;
-  /** Được gọi khi request gặp lỗi mạng; không xóa import ID khỏi localStorage. */
   onError: (error: unknown) => void;
 };
 
@@ -28,15 +22,7 @@ type PollUiState = {
   pollError: boolean;
 };
 
-/**
- * Poll trạng thái trích xuất (CV / JD) bằng vòng `setTimeout` tuần tự:
- * - `enabled = true` → kiểm tra NGAY, không đợi 2 giây.
- * - Chỉ lên lịch request tiếp theo sau khi request hiện tại hoàn thành.
- * - Tab ẩn → tạm dừng; quay lại tab → kiểm tra ngay lập tức.
- * - Hết MAX_ACTIVE_MS → dừng, giữ import ID và trả `stalled = true`.
- * - Import ID mới → reset error / stalled / thời gian theo dõi.
- * - Lỗi mạng → dừng tạm, gọi onError để UI cung cấp nút "Thử lại".
- */
+
 export function useStatusPolling<T, S>({
   enabled,
   importId,
@@ -54,7 +40,6 @@ export function useStatusPolling<T, S>({
   });
   const activeMsRef = useRef(0);
 
-  // Điều chỉnh state trong render để request đầu tiên của import mới có đủ thời gian.
   if (importId !== uiState.importId) {
     setUiState({ importId, stalled: false, pollError: false });
   }

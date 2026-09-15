@@ -1,8 +1,4 @@
-"""Tạo các QStash schedule định kỳ.
-
-Chạy lệnh này một lần sau mỗi lần deploy. Không được chạy từ luồng
-request-response. Các schedule ID hiện có được giữ nguyên.
-"""
+"""Chạy sau mỗi deploy; giữ nguyên các schedule ID đã có."""
 from django.core.management.base import BaseCommand
 
 from integrations.qstash.client import get_qstash_client

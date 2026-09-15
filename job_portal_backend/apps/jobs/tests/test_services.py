@@ -122,7 +122,7 @@ class JobServiceTests(TestCase):
                 services.update_job(job, {"description": "Updated APIs"})
 
         self.assertEqual(job.content_version, 2)
-        # Tin DRAFT không tốn quota Gemini — chỉ ACTIVE mới sinh embedding.
+        # Tin nháp không được tốn quota Gemini.
         publish_task.assert_not_called()
 
     def test_non_draft_job_cannot_be_updated(self):

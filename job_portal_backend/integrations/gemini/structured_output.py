@@ -1,4 +1,3 @@
-"""Các hàm hỗ trợ kiểm tra response có cấu trúc từ Gemini."""
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -15,7 +14,7 @@ class ParsedDocumentResult:
 
 
 def parse_json_object_response(response: Any) -> dict:
-    """Đọc JSON object từ response Gemini, chấp nhận code fence bao ngoài"""
+    """Đọc JSON object, kể cả khi nằm trong code fence."""
     if response is None:
         raise StructuredOutputError("Gemini không trả về response.")
 

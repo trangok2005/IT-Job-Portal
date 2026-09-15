@@ -1,4 +1,3 @@
-"""Phân tích và kiểm tra JD bằng Gemini."""
 from django.conf import settings
 
 from apps.jobs.models import JobPost
@@ -73,7 +72,6 @@ def _normalize_required_flag(value) -> bool:
 
 
 def normalize_jd_data(data: dict) -> dict:
-    """Chuẩn hóa các trường JD mà không thay đổi giá trị mặc định hiện có của form."""
     normalized = dict(data)
     for field in (
         "title",
@@ -128,7 +126,6 @@ def normalize_jd_data(data: dict) -> dict:
 def parse_job_description(
     *, filename: str, mime_type: str | None, file_data: bytes
 ) -> ParsedDocumentResult:
-    """Phân tích JD và trả về dữ liệu thô cùng dữ liệu form đã được serializer kiểm tra."""
     from google.genai import types
 
     document_content = prepare_document_input(filename, mime_type, file_data)

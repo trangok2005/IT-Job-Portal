@@ -1,16 +1,9 @@
-"""Các service ghi dữ liệu và áp dụng quy tắc nghiệp vụ của công ty.
-
-UC "Quản lý hồ sơ công ty" (employer) và "Duyệt hồ sơ công ty đăng ký" (admin).
-Mọi thay đổi status hoặc nghiệp vụ phải qua đây, không gọi tùy tiện ``save()``
-trong view.
-"""
 from django.utils import timezone
 
 from apps.companies.models import Company
 
 
 def create_company_from_registration(user, name: str) -> Company:
-    """Tạo hồ sơ PENDING cùng lúc với tài khoản employer."""
     if not user.is_employer:
         raise ValueError("Chỉ tài khoản nhà tuyển dụng mới có hồ sơ công ty.")
     name = name.strip()
@@ -27,7 +20,6 @@ def update_company(company: Company, data: dict) -> Company:
 
 
 def approve_company(company: Company, user) -> Company:
-    """Admin duyệt hồ sơ công ty; UC-02 yêu cầu APPROVED trước khi đăng tin."""
     if company.status == Company.Status.APPROVED:
         return company
     if company.status != Company.Status.PENDING:
@@ -55,7 +47,6 @@ def reject_company(company: Company, user, reason: str = "") -> Company:
 
 
 def lock_company(company: Company, user) -> Company:
-    """Admin khoá công ty vi phạm; không thể đăng tin / đang đăng bị ẩn."""
     if company.status == Company.Status.LOCKED:
         return company
     company.status = Company.Status.LOCKED
@@ -66,7 +57,6 @@ def lock_company(company: Company, user) -> Company:
 
 
 def resubmit_company(company: Company) -> Company:
-    """Employer gửi lại hồ sơ đã bị từ chối để admin duyệt lại (A1)."""
     if company.status != Company.Status.REJECTED:
         raise ValueError("Chỉ hồ sơ đang bị từ chối mới gửi lại được.")
     company.status = Company.Status.PENDING

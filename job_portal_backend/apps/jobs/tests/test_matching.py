@@ -169,7 +169,7 @@ class WeightedRecommendationTests(TestCase):
         self.profile.profile_version = 2
         self.profile.save(update_fields=["profile_version"])
 
-        # Trọng số DB không ảnh hưởng chiều NTD -> candidate (cosine thuần).
+        # Chiều employer-to-candidate vẫn chỉ dùng cosine.
         self._weights(1, 0)
         results = list(get_recommended_candidates(job))
         self.assertEqual(results[0].pk, semantic_profile.pk)

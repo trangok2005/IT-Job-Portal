@@ -1,4 +1,3 @@
-"""Các selector chỉ đọc tin tuyển dụng, không thay đổi nghiệp vụ."""
 from django.db.models import Case, Count, ExpressionWrapper, F, FloatField, Q, Value, When
 from django.db.models.functions import Greatest, Least, Round
 from django.utils import timezone
@@ -19,11 +18,10 @@ from apps.jobs.models import JobPost
 from apps.skills.selectors import get_active_matching_weights
 
 
-MIN_SEMANTIC_MATCH_SCORE = 50.0
+MIN_SEMANTIC_SIMILARITY = 0.5
 
 
 def is_public_job(job: JobPost) -> bool:
-    """Kiểm tra tin có đủ điều kiện hiển thị công khai hay không."""
     return bool(
         job.status == JobPost.Status.ACTIVE
         and job.company.status == Company.Status.APPROVED
@@ -32,7 +30,6 @@ def is_public_job(job: JobPost) -> bool:
 
 
 def get_active_jobs():
-    """Chỉ trả tin ACTIVE, chưa hết hạn và thuộc công ty APPROVED."""
     return (
         JobPost.objects.filter(
             status=JobPost.Status.ACTIVE,
@@ -52,7 +49,6 @@ def filter_active_jobs(
     experience_level=None,
     salary_min=None,
 ):
-    """Áp dụng điều kiện công khai và bộ lọc cứng UC-03 trước khi tìm từ khóa."""
     qs = get_active_jobs()
     if workplace_type:
         qs = qs.filter(workplace_type=workplace_type)
@@ -75,25 +71,30 @@ def jobs_with_current_embeddings(queryset):
     )
 
 
+def _semantic_similarity(cosine_distance):
+    return Greatest(
+        Value(0.0),
+        ExpressionWrapper(
+            Value(1.0) - cosine_distance,
+            output_field=FloatField(),
+        ),
+    )
+
+
 def rank_jobs_by_query_embedding(queryset, query_embedding):
-    """Trả các vector hiện hành có điểm khớp cosine lớn hơn 50%."""
     distance = CosineDistance("embedding", query_embedding)
     return (
         jobs_with_current_embeddings(queryset)
         .annotate(_semantic_distance=distance)
         .annotate(
-            match_score=ExpressionWrapper(
-                (Value(1.0) - F("_semantic_distance")) * Value(100.0),
-                output_field=FloatField(),
-            )
+            semantic_score=_semantic_similarity(F("_semantic_distance")),
         )
-        .filter(match_score__gt=MIN_SEMANTIC_MATCH_SCORE)
-        .order_by("_semantic_distance", "-created_at", "-pk")
+        .filter(semantic_score__gt=MIN_SEMANTIC_SIMILARITY)
+        .order_by("-semantic_score", "-created_at", "-pk")
     )
 
 
 def basic_keyword_search(queryset, keyword):
-    """Tìm từ khóa fallback không phân biệt hoa thường trên tập tin đã lọc cứng."""
     for term in keyword.split():
         queryset = queryset.filter(
             Q(title__icontains=term)
@@ -107,7 +108,6 @@ def basic_keyword_search(queryset, keyword):
 
 
 def get_employer_jobs(user):
-    """Tin tuyển dụng thuộc employer (đăng hoặc qua công ty của họ)."""
     return JobPost.objects.filter(
         Q(created_by=user) | Q(company__owner=user),
     ).annotate(
@@ -116,7 +116,7 @@ def get_employer_jobs(user):
 
 
 def get_job_detail_queryset(user):
-    """Khách chỉ thấy tin mở; owner/admin vẫn xem được trạng thái nội bộ."""
+    """Chỉ owner và admin thấy trạng thái nội bộ của tin."""
     public_filter = (
         Q(status=JobPost.Status.ACTIVE)
         & Q(company__status=Company.Status.APPROVED)
@@ -138,7 +138,7 @@ def get_job_detail_queryset(user):
 
 
 def get_manageable_jobs(user):
-    """Giới hạn đối tượng quản trị theo owner; admin được truy cập toàn bộ."""
+    """Scope thao tác quản trị theo owner, trừ admin."""
     qs = JobPost.objects.all()
     if not user.is_admin_role:
         qs = qs.filter(Q(created_by=user) | Q(company__owner=user))
@@ -198,7 +198,6 @@ def _weighted_recommendations(queryset, semantic_score, semantic_available, weig
 
 
 def get_recommended_jobs(profile: CandidateProfile):
-    """Xếp hạng mọi tin đủ điều kiện theo cấu hình bốn thành phần đang hoạt động."""
     queryset = get_active_jobs()
     if profile.embedding is None or profile.embedding_is_stale:
         return queryset.annotate(
@@ -278,15 +277,11 @@ def get_recommended_jobs(profile: CandidateProfile):
         experience_score=_score_case(experience_scores),
         education_score=_score_case(education_scores),
     )
-    semantic_score = Least(
-        Value(100.0),
-        Greatest(
-            Value(0.0),
-            ExpressionWrapper(
-                (Value(1.0) - CosineDistance("embedding", profile.embedding)) * Value(100.0),
-                output_field=FloatField(),
-            ),
-        ),
+    semantic_score = ExpressionWrapper(
+        _semantic_similarity(
+            CosineDistance("embedding", profile.embedding),
+        ) * Value(100.0),
+        output_field=FloatField(),
     )
     queryset = _weighted_recommendations(
         queryset,
@@ -304,12 +299,7 @@ def get_recommended_jobs(profile: CandidateProfile):
 
 
 def get_recommended_candidates(job: JobPost):
-    """Xếp hạng hồ sơ candidate công khai đang hoạt động theo cosine thuần.
-
-    Trọng số MatchingWeightConfig chỉ áp dụng cho chiều candidate -> jobs
-    và điểm chấm hồ sơ ứng tuyển (ApplicationMatchResult); gợi ý ứng viên cho NTD
-    giữ nguyên semantic thuần.
-    """
+    """Chiều employer-to-candidate chỉ dùng cosine, không dùng trọng số."""
     queryset = CandidateProfile.objects.filter(
         is_public=True,
         user__is_active=True,
@@ -324,15 +314,11 @@ def get_recommended_candidates(job: JobPost):
         embedding_version=F("profile_version"),
         embedding_signature=current_candidate_embedding_signature(),
     )
-    semantic_score = Least(
-        Value(100.0),
-        Greatest(
-            Value(0.0),
-            ExpressionWrapper(
-                (Value(1.0) - CosineDistance("embedding", job.embedding)) * Value(100.0),
-                output_field=FloatField(),
-            ),
-        ),
+    semantic_score = ExpressionWrapper(
+        _semantic_similarity(
+            CosineDistance("embedding", job.embedding),
+        ) * Value(100.0),
+        output_field=FloatField(),
     )
     queryset = queryset.annotate(
         match_score=Case(

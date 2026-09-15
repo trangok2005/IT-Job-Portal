@@ -12,8 +12,7 @@ import type {
 import type { operations } from "@/types/generated/api-schema";
 import { clearAuth, getAccessToken, getRefreshToken, setAccessToken } from "@/lib/auth";
 
-// Server Components trong Docker dùng tên service nội bộ; request từ browser
-// tiếp tục dùng host URL công khai được build vào NEXT_PUBLIC_API_URL.
+// Server dùng URL nội bộ nếu có; browser dùng URL public.
 const BASE_URL = process.env.API_URL
   ?? process.env.NEXT_PUBLIC_API_URL
   ?? "http://localhost:8000";
@@ -45,7 +44,7 @@ async function readResponse<T>(res: Response, path: string): Promise<T> {
       const body = await res.json();
       message = getErrorMessage(body) ?? message;
     } catch {
-      // Giữ HTTP fallback khi body lỗi không phải JSON hợp lệ.
+      // Dùng thông báo HTTP khi body không phải JSON.
     }
     throw new ApiError(res.status, message);
   }
@@ -71,13 +70,11 @@ let refreshInFlight: {
   promise: Promise<string | null>;
 } | null = null;
 
-/** Dùng refresh token đổi access token mới. Trả null nếu không refresh được. */
 function requestAccessToken(): Promise<string | null> {
   const refresh = getRefreshToken();
   if (!refresh) return Promise.resolve(null);
 
-  // Gom các request cùng phiên vào một lần refresh. Phiên mới không chờ
-  // promise của phiên cũ (tránh logout/login trong lúc request đang chạy).
+  // Chỉ dùng chung request refresh trong cùng một phiên.
   if (refreshInFlight?.refresh === refresh) return refreshInFlight.promise;
 
   const promise = fetch(`${BASE_URL}/api/auth/token/refresh/`, {
@@ -90,7 +87,7 @@ function requestAccessToken(): Promise<string | null> {
       if (!res.ok) return null;
       const data = (await res.json()) as { access?: string };
       if (!data.access) return null;
-      // Không cho refresh cũ khôi phục phiên đã logout hoặc ghi đè user mới.
+      // Không để refresh cũ ghi đè phiên mới hoặc khôi phục phiên đã logout.
       if (getRefreshToken() !== refresh) return null;
       setAccessToken(data.access);
       return data.access;
@@ -107,7 +104,7 @@ function requestAccessToken(): Promise<string | null> {
 export async function authApiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   let token = getAccessToken();
   const sessionRefresh = getRefreshToken();
-  // Access hết hạn từ phiên trước nhưng refresh còn hạn -> tự phục hồi ngay.
+  // Khôi phục phiên nếu chỉ thiếu access token.
   token ??= await requestAccessToken();
   if (!token) {
     if (getRefreshToken() === sessionRefresh) clearAuth();
@@ -125,7 +122,7 @@ export async function authApiRequest<T>(path: string, init: RequestInit = {}): P
 
   let res = await sendWith(token);
   if (res.status === 401) {
-    // Một request khác có thể đã refresh trong lúc request này đang bay.
+    // Dùng token mới nếu request khác đã refresh trước.
     const current = getAccessToken();
     const refreshed = current && current !== token
       ? current

@@ -24,5 +24,5 @@ class CandidateProfileAdmin(admin.ModelAdmin):
     list_display = ("full_name", "user", "profile_version", "embedding_is_stale", "is_public")
     search_fields = ("full_name", "user__email")
     inlines = [EducationInline, ExperienceInline, ResumeInline]
-    # embedding là vector 768 chiều -> không hiển thị trực tiếp trong list/edit form
+    # Không render vector 768 chiều trong form admin.
     exclude = ("embedding",)

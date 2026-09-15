@@ -1,4 +1,3 @@
-"""Tra cứu và thực thi background task đã đăng ký, độc lập với provider."""
 import inspect
 from typing import Any
 
@@ -14,7 +13,6 @@ class InvalidTaskPayloadError(ValueError):
 
 
 def dispatch_task(task_name: str, payload: dict) -> Any:
-    """Kiểm tra task envelope và thực thi callable đã đăng ký."""
     task = TASK_REGISTRY.get(task_name) if isinstance(task_name, str) else None
     if task is None:
         raise UnknownTaskError("Unknown task.")

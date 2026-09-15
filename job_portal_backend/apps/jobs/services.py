@@ -1,4 +1,3 @@
-"""Các thao tác ghi và quy tắc nghiệp vụ đăng tin tuyển dụng của UC-02."""
 from datetime import timedelta
 from pathlib import Path
 
@@ -14,7 +13,6 @@ from integrations.qstash.publisher import publish_task
 
 
 def build_jd_parse_result(parsed_data: dict) -> dict:
-    """Phân giải tên skill đã trích xuất và tạo cấu trúc preview JD hiện có."""
     from apps.jobs.serializers import JobDescriptionParseResultSerializer
 
     parsed = dict(parsed_data)
@@ -53,7 +51,7 @@ def build_jd_parse_result(parsed_data: dict) -> dict:
 
 
 def _enqueue_embedding(job: JobPost) -> None:
-    """Đưa embedding đúng content version vào hàng đợi sau khi commit."""
+    """Enqueue đúng content version sau khi commit."""
 
     def enqueue():
         publish_task(
@@ -111,7 +109,7 @@ def cancel_jd_import(jd_import: JDImport) -> None:
 
 
 def enqueue_job_embedding_robust(job: JobPost) -> None:
-    """Cố đưa task vào hàng đợi khi đọc gợi ý nhưng không làm API thất bại."""
+    """Không làm hỏng API đọc khi queue tạm thời lỗi."""
     try:
         publish_task(
             "generate_job_embedding",
@@ -122,7 +120,7 @@ def enqueue_job_embedding_robust(job: JobPost) -> None:
 
 
 def enqueue_candidate_embedding_robust(profile) -> None:
-    """Cố đưa embedding candidate bị thiếu hoặc cũ vào hàng đợi."""
+    """Không làm hỏng API đọc khi queue tạm thời lỗi."""
     try:
         publish_task(
             "generate_candidate_embedding",
@@ -136,7 +134,6 @@ def enqueue_candidate_embedding_robust(profile) -> None:
 
 
 def _bump_content_version(job: JobPost) -> None:
-    """Tăng version nguyên tử; chỉ tin ACTIVE mới cần sinh embedding ngay."""
     JobPost.objects.filter(pk=job.pk).update(
         content_version=F("content_version") + 1,
         updated_at=timezone.now(),
@@ -147,9 +144,6 @@ def _bump_content_version(job: JobPost) -> None:
 
 
 def _replace_job_skills(job: JobPost, skill_specs: list) -> None:
-    """Thay danh sách skill trong cùng transaction tạo hoặc cập nhật.
-    Mỗi phần tử là dict ``{skill, is_required?}`` từ serializer.
-    """
     job.job_skills.all().delete()
     JobSkill.objects.bulk_create(
         JobSkill(
@@ -170,7 +164,6 @@ def create_job(
     publish_immediately: bool = False,
     jd_import_id=None,
 ) -> JobPost:
-    """Tạo DRAFT hoặc ACTIVE theo lựa chọn xác nhận trong UC-02."""
     if not user.is_employer or company.owner_id != user.pk:
         raise ValueError("Bạn không có quyền tạo tin cho công ty này.")
     if company.status != Company.Status.APPROVED:
@@ -213,9 +206,7 @@ def update_job(
     data: dict,
     required_skills: list | None = None,
 ) -> JobPost:
-    """Chỉ tin DRAFT được chỉnh sửa nội dung. ACTIVE/CLOSED/EXPIRED là
-    bản ghi bất biến: tin đang tuyển giữ nguyên ngữ nghĩa của các đơn đã
-    nộp, tin đóng/kết thúc là lịch sử — không ai sửa được."""
+    """Giữ nội dung tin đã đăng ổn định cho các hồ sơ đã nộp."""
     if job.status != JobPost.Status.DRAFT:
         raise ValueError("Chỉ tin nháp mới được chỉnh sửa nội dung.")
     if not data and required_skills is None:
@@ -232,7 +223,6 @@ def update_job(
 
 @transaction.atomic
 def publish_job(job: JobPost) -> JobPost:
-    """Chỉ chuyển DRAFT sang ACTIVE khi công ty và thời hạn còn hợp lệ."""
     if job.company.status != Company.Status.APPROVED:
         raise ValueError("Công ty chưa được duyệt, không thể đăng tin.")
     if job.status == JobPost.Status.ACTIVE:
@@ -253,7 +243,6 @@ def publish_job(job: JobPost) -> JobPost:
 
 @transaction.atomic
 def close_job(job: JobPost) -> JobPost:
-    """Đóng vĩnh viễn tin đang tuyển; không cho chuyển ngược sang ACTIVE."""
     if job.status != JobPost.Status.ACTIVE:
         raise ValueError("Chỉ có thể đóng tin đang tuyển.")
     job.status = JobPost.Status.CLOSED
@@ -262,7 +251,6 @@ def close_job(job: JobPost) -> JobPost:
 
 
 def expire_jobs() -> int:
-    """Đánh dấu EXPIRED cho các tin ACTIVE đã qua hạn; dùng bởi lịch QStash."""
     return JobPost.objects.filter(
         status=JobPost.Status.ACTIVE,
         expires_at__lte=timezone.now(),

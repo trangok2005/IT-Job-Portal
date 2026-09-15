@@ -1,4 +1,3 @@
-"""Module duy nhất trong dự án được gọi mô hình embedding của Gemini."""
 import math
 from numbers import Real
 
@@ -22,7 +21,7 @@ class TaskType:
 
 
 class EmbeddingError(Exception):
-    """Loại lỗi nghiệp vụ cho API, timeout, quota và vector không hợp lệ."""
+    pass
 
 
 def current_embedding_signature(task_type: str) -> str:
@@ -41,7 +40,6 @@ def current_job_embedding_signature() -> str:
 
 
 def generate_embedding(text: str, *, task_type: str = TaskType.DOCUMENT) -> list[float]:
-    """Tạo một vector đã kiểm tra từ văn bản đã chuẩn hóa."""
     if task_type not in TaskType.choices():
         raise EmbeddingError(f"task_type không hợp lệ: {task_type}")
     if not text or not text.strip():
@@ -79,10 +77,7 @@ def generate_embedding(text: str, *, task_type: str = TaskType.DOCUMENT) -> list
 
 
 def embed_document(text: str) -> list[float]:
-    """tạo embedding cho nội dung cv/jd sẵn"""
     return generate_embedding(text, task_type=TaskType.DOCUMENT)
 
-
 def embed_query(text: str) -> list[float]:
-    """tạo embedding cho câu truy vấn tìm kiếm tức thời"""
     return generate_embedding(text, task_type=TaskType.QUERY)

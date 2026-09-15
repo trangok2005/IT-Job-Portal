@@ -1,4 +1,3 @@
-"""Tài liệu Candidate, Job và Query ổn định cho embedder dùng chung."""
 from typing import TYPE_CHECKING
 
 from django.db.models import F
@@ -16,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def build_candidate_text(profile: "CandidateProfile") -> str:
-    """Tạo văn bản CV trọng tâm không chứa danh tính cá nhân, trường học hoặc công ty."""
+    """Loại danh tính cá nhân, tên trường và tên công ty khỏi input embedding."""
     educations = []
     for education in profile.educations.order_by(
         F("end_date").desc(nulls_first=True),
@@ -51,8 +50,7 @@ def build_candidate_text(profile: "CandidateProfile") -> str:
     skills = build_skills_line(
         link.skill.name
         for link in profile.candidate_skills.select_related("skill")
-        # PENDING vẫn vào text vector (UC-01 bước 11): pending chỉ bị loại
-        # khỏi bộ lọc SQL cứng, không chặn semantic matching.
+        # Skill PENDING tham gia semantic matching nhưng không vào bộ lọc SQL cứng.
         .filter(skill__status__in=("APPROVED", "PENDING"), skill__is_active=True)
         .order_by("skill__name", "pk")
     )
@@ -69,7 +67,6 @@ def build_candidate_text(profile: "CandidateProfile") -> str:
 
 
 def build_job_text(job: "JobPost") -> str:
-    """Tạo một tài liệu JD trọng tâm dùng chung cho tìm kiếm và đối sánh CV."""
     skills = build_skills_line(
         link.skill.name
         for link in job.job_skills.select_related("skill")
@@ -91,5 +88,4 @@ def build_job_text(job: "JobPost") -> str:
 
 
 def build_query_text(raw_query: str) -> str:
-    """Chuẩn hóa truy vấn tự do mà không xem đó là một JD đầy đủ."""
     return build_labeled_text([("Desired job", raw_query)])

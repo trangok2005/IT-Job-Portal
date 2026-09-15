@@ -1,4 +1,3 @@
-"""Các selector chỉ đọc dữ liệu skill, không thay đổi nghiệp vụ."""
 import re
 
 from django.db.models import Count, Q
@@ -12,7 +11,6 @@ from apps.skills.models import MatchingWeightConfig, Skill, SkillCategory
 
 
 def get_skills_for_review(status=None):
-    """Toàn bộ skill (admin dùng để duyệt lô), mới nhất trước."""
     qs = Skill.objects.select_related("category", "merged_into").order_by("-created_at")
     if status:
         qs = qs.filter(status=status)
@@ -20,7 +18,6 @@ def get_skills_for_review(status=None):
 
 
 def get_public_skills():
-    """Chỉ skill APPROVED + is_active — dùng cho form chọn skill, tìm kiếm."""
     return (
         Skill.objects.filter(status=Skill.Status.APPROVED, is_active=True)
         .select_related("category")
@@ -29,7 +26,6 @@ def get_public_skills():
 
 
 def get_skill_ids_mentioned_in_text(value: str) -> list:
-    """Trả các skill canonical được nêu rõ trong truy vấn tìm kiếm ngắn."""
     normalized = normalize_matching_text(value)
     if not normalized:
         return []
@@ -50,8 +46,6 @@ def get_skill_ids_mentioned_in_text(value: str) -> list:
 
 
 def get_hot_skills(limit=6):
-    """Top kỹ năng xuất hiện nhiều nhất trong các tin ACTIVE (JobSkill).
-    Dùng cho chip 'Đang tìm nhiều' ở trang index."""
     return (
         Skill.objects.filter(status=Skill.Status.APPROVED, is_active=True)
         .annotate(
@@ -74,7 +68,6 @@ def get_active_weight_config():
 
 
 def get_active_matching_weights():
-    """Trả trọng số gợi ý đang hoạt động; bên gọi tự xử lý khi thiếu cấu hình."""
     config = MatchingWeightConfig.objects.filter(is_active=True).first()
     if config is None:
         return None

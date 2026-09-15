@@ -1,7 +1,3 @@
-"""ViewSet công ty mỏng: gọi service/selector và trả response.
-
-Không chứa logic nghiệp vụ (xem apps/companies/services.py, selectors.py, perms.py).
-"""
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
@@ -22,8 +18,6 @@ class CompanyViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
-    """`list`/`retrieve` dành cho admin xét duyệt; `me` dành cho employer sở hữu."""
-
     serializer_class = serializers.CompanyReadSerializer
 
     def get_permissions(self):
@@ -41,7 +35,7 @@ class CompanyViewSet(
         if getattr(self, "swagger_fake_view", False):
             return Company.objects.none()
         if self.action == "resubmit":
-            # resubmit: employer chỉ gửi lại hồ sơ CỦA MÌNH (object-level check)
+            # Chỉ cho employer gửi lại hồ sơ công ty của mình.
             return Company.objects.filter(owner=self.request.user)
         status_filter = None
         if self.action == "list":

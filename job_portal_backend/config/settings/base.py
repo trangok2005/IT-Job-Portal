@@ -120,17 +120,14 @@ REST_FRAMEWORK = {
 }
 
 
-# qua get_throttles() của từng View. Class nằm ở common/throttling.py.
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
-    # UC-03 E3: tìm kiếm việc làm
     "job_search_anon": "5/min",
     "job_search_user": "10/min",
-    # UC-01/UC-02: upload file cho Gemini parse (mỗi user)
     "upload_parse_minute": "2/min",
     "upload_parse_daily": "10/day",
 }
 
-# Cache mặc định dùng bộ nhớ cục bộ của process. Production ghi đè rõ ràng cấu hình này.
+# Production ghi đè cache cục bộ theo process này.
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -175,7 +172,6 @@ EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "IT Job Portal <no-reply@example.com>")
 
-# CORS được cấu hình theo từng môi trường.
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")

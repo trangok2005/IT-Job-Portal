@@ -1,8 +1,3 @@
-"""Các service ghi dữ liệu và áp dụng quy tắc quản trị skill.
-
-Mọi thay đổi status, gộp skill hoặc trọng số phải qua đây; không gọi tùy tiện
-``save()`` trong view.
-"""
 from uuid import UUID
 
 from django.db import transaction
@@ -52,8 +47,6 @@ FUZZY_SKILL_MIN_LENGTH = 4
 
 
 def is_savable_skill(skill: Skill) -> bool:
-    """Skill gắn được vào hồ sơ/tin: APPROVED hoặc PENDING (chờ duyệt),
-    đang hoạt động. Một quy tắc duy nhất cho toàn hệ thống."""
     return (
         skill.status in (Skill.Status.APPROVED, Skill.Status.PENDING)
         and skill.is_active
@@ -61,12 +54,7 @@ def is_savable_skill(skill: Skill) -> bool:
 
 
 def resolve_savable_skill(value) -> Skill:
-    """Hàm phân giải duy nhất cho mọi luồng trích xuất của UC-01/UC-02.
-
-    Nhận Skill, chuỗi UUID hoặc tên thô. Tên lạ được tạo ở trạng thái PENDING
-    chờ admin duyệt. Phát sinh ValueError nếu tham chiếu không hợp lệ hoặc
-    skill không được phép lưu.
-    """
+    """Nhận Skill, UUID hoặc tên thô; tên mới được tạo ở trạng thái PENDING."""
     if isinstance(value, Skill):
         skill = value.effective_skill
     else:
@@ -90,7 +78,6 @@ def resolve_savable_skill(value) -> Skill:
 
 
 def _invalidate_linked_embeddings(candidate_ids, job_ids) -> None:
-    """Tăng version và xếp lại hàng đợi cho vector có tên skill canonical đổi."""
     from apps.candidates.models import CandidateProfile
     from apps.jobs.models import JobPost
 
@@ -129,7 +116,7 @@ def _invalidate_linked_embeddings(candidate_ids, job_ids) -> None:
 
 
 def _find_fuzzy_skill(normalized_name: str) -> Skill | None:
-    """Trả một fuzzy match rõ ràng; tên ngắn phải exact match với alias."""
+    """Tên ngắn chỉ khớp exact; kết quả fuzzy mơ hồ bị bỏ qua."""
     if len(normalized_name) < FUZZY_SKILL_MIN_LENGTH:
         return None
 
@@ -166,7 +153,6 @@ def _find_fuzzy_skill(normalized_name: str) -> Skill | None:
 
 
 def resolve_extracted_skill(name: str) -> Skill:
-    """Phân giải alias bằng exact/fuzzy match hoặc tạo skill AI chờ duyệt."""
     cleaned_name = name.strip()
     normalized = normalize_alias(cleaned_name)
     alias = SkillAlias.objects.select_related("skill__merged_into").filter(
@@ -209,7 +195,6 @@ def _mark_reviewed(skill: Skill, user, status) -> Skill:
 
 @transaction.atomic
 def approve_skill(skill: Skill, user) -> Skill:
-    """Duyệt skill PENDING; sinh lại vector cho hồ sơ/JD đang dùng skill này."""
     result = _mark_reviewed(skill, user, Skill.Status.APPROVED)
     candidate_ids = list(
         CandidateSkill.objects.filter(skill=skill).values_list(
@@ -241,7 +226,6 @@ def _create_alias(skill: Skill, alias_text: str) -> SkillAlias:
 
 
 def create_skill(user, name: str, category=None, aliases=None, is_active=True) -> Skill:
-    """Admin tạo thủ công skill APPROVED và sinh slug duy nhất."""
     if Skill.objects.filter(name__iexact=name).exists():
         raise ValueError("Skill đã tồn tại.")
     skill = Skill.objects.create(
@@ -289,11 +273,7 @@ def update_skill(skill: Skill, user, name=None, category=None, is_active=None, a
 
 @transaction.atomic
 def merge_skills(user, source_ids: list, target_id) -> Skill:
-    """Gộp các skill trùng vào một đích nhưng giữ nguồn làm audit trail.
-
-    Viết lại FK sang đích để tránh cascade mất CandidateSkill/JobSkill, rồi
-    đánh dấu nguồn là MERGED và đặt ``merged_into``.
-    """
+    """Rewrite FK trước khi giữ skill nguồn làm audit trail."""
     from apps.jobs.models import JobSkill
 
     target = Skill.objects.get(pk=target_id)
@@ -319,8 +299,7 @@ def merge_skills(user, source_ids: list, target_id) -> Skill:
     )
     now = timezone.now()
 
-    # Xoá các bản ghi nối sẽ trùng (candidate/job đã có sẵn skill đích)
-    # trước khi rewrite, tránh vi phạm UniqueConstraint.
+    # Xóa liên kết trùng trước khi rewrite FK để không vướng unique constraint.
     for source in sources:
         CandidateSkill.objects.filter(
             skill=source, candidate__candidate_skills__skill=target,
@@ -332,7 +311,6 @@ def merge_skills(user, source_ids: list, target_id) -> Skill:
     CandidateSkill.objects.filter(skill__in=sources).update(skill=target)
     JobSkill.objects.filter(skill__in=sources).update(skill=target)
 
-    # Di chuyển alias sang đích (bỏ alias trùng normalized với alias của đích).
     target_norms = set(target.aliases.values_list("normalized_text", flat=True))
     for alias in SkillAlias.objects.filter(skill__in=sources):
         if alias.normalized_text in target_norms:
@@ -389,7 +367,6 @@ def update_weight_config(config: MatchingWeightConfig, user, data: dict) -> Matc
             setattr(config, field, data[field])
     config.updated_by = user
     if config.is_active:
-        # Chỉ 1 config active tại một thời điểm.
         for other in configs:
             if other.pk != config.pk and other.is_active:
                 other.is_active = False

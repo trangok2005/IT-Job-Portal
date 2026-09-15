@@ -18,11 +18,10 @@ type CVParseStatus = ResumeImportDto["parse_status"];
 
 type CandidateResumeImportContextValue = {
   resumeImport: ResumeImportDto | null;
-  /** Poll đã tự ngắt sau 2 phút mà CV vẫn chưa xong. */
+  /** Polling dừng sau 2 phút xử lý. */
   stalled: boolean;
-  /** Request gần nhất gặp lỗi mạng / khôi phục; import ID vẫn giữ trong localStorage. */
+  /** Polling lỗi nhưng import ID vẫn được giữ. */
   pollError: boolean;
-  /** Gọi GET ngay và tiếp tục polling nếu tác vụ vẫn hoạt động. */
   retry: () => void;
   startImport: (file: File) => Promise<ResumeImportDto>;
   cancelImport: () => Promise<void>;
@@ -143,8 +142,7 @@ const NOOP_VALUE: CandidateResumeImportContextValue = {
   clearImport: () => {},
 };
 
-// Navbar dùng hook này ở mọi trang (kể cả ngoài provider) nên phải trả về
-// giá trị an toàn thay vì throw.
+// Navbar gọi hook cả ngoài provider nên cần giá trị mặc định.
 export function useCandidateResumeImport() {
   return useContext(CandidateResumeImportContext) ?? NOOP_VALUE;
 }

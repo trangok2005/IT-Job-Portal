@@ -1,4 +1,3 @@
-"""Du lieu demo accounts/company/job cho seed_demo."""
 
 ADMIN = {
     "username": "admin",

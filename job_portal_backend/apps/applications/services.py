@@ -1,4 +1,3 @@
-"""Các thao tác ghi và state machine của nghiệp vụ ứng tuyển."""
 from pathlib import Path
 
 from django.conf import settings
@@ -25,7 +24,7 @@ from integrations.gemini.embeddings import (
 
 
 def _enqueue_match_score(application: JobApplication) -> None:
-    """Chỉ đưa tác vụ tính điểm vào hàng đợi sau khi hồ sơ commit thành công."""
+    """Chỉ enqueue sau khi hồ sơ commit thành công."""
 
     def enqueue():
         try:
@@ -50,7 +49,7 @@ def apply_to_job(
     cover_letter: str = "",
     attach_current_resume: bool = False,
 ) -> JobApplication:
-    """Tạo hồ sơ ứng tuyển và đóng băng mọi input dùng để tính điểm AI."""
+    """Lưu snapshot đầu vào để kết quả điểm không đổi theo hồ sơ sau này."""
     if not user.is_candidate or not user.is_active:
         raise ValueError("Chỉ ứng viên đang hoạt động mới được ứng tuyển.")
 
@@ -224,7 +223,6 @@ def transition_application(
     candidate_message: str = "",
     expected_status: str | None = None,
 ) -> JobApplication:
-    """Chuyển trạng thái một chiều và ghi audit trail."""
     locked = (
         JobApplication.objects.select_for_update()
         .select_related("candidate__user", "job__company")

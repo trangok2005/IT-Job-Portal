@@ -1,12 +1,10 @@
 #!/usr/bin/env python
-"""Tiện ích dòng lệnh Django cho các tác vụ quản trị."""
 import os
 import sys
 
 
 def main():
-    # Console Windows mặc định cp1252 - không in được tiếng Việt có dấu
-    # trong thông báo của các lệnh quản trị (seed, shell...).
+    # Dùng UTF-8 để lệnh quản trị in tiếng Việt đúng trên Windows.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             try:
@@ -14,7 +12,7 @@ def main():
             except Exception:
                 pass
     if len(sys.argv) > 1 and sys.argv[1] == "test":
-        # Mock bị thiếu phải báo lỗi ngay thay vì tiêu tốn quota Gemini thật.
+        # Dừng ngay nếu thiếu mock để không tốn quota Gemini thật.
         os.environ["GEMINI_API_KEY"] = ""
         if not any(arg.startswith("--settings") for arg in sys.argv[2:]):
             os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings.test"

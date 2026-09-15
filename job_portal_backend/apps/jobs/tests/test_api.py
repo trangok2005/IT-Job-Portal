@@ -75,6 +75,7 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["id"], str(active.id))
         self.assertIsNone(response.data["results"][0]["match_score"])
+        self.assertIsNone(response.data["results"][0]["semantic_score"])
         self.assertEqual(response["X-Search-Mode"], "LATEST")
 
     @patch("apps.jobs.job_search_service.embed_query")
@@ -106,7 +107,8 @@ class JobApiTests(APITestCase):
             [item["id"] for item in response.data["results"]],
             [str(best.id), str(second.id)],
         )
-        self.assertAlmostEqual(response.data["results"][0]["match_score"], 100.0)
+        self.assertIsNone(response.data["results"][0]["match_score"])
+        self.assertAlmostEqual(response.data["results"][0]["semantic_score"], 1.0)
         embed_query.assert_called_once_with("Desired job: Python")
         self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
         self.assertFalse(response.data["search_fallback"])
@@ -164,7 +166,7 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["id"], str(above.id))
         self.assertAlmostEqual(
-            response.data["results"][0]["match_score"], 60.0, delta=0.001
+            response.data["results"][0]["semantic_score"], 0.6, delta=0.001
         )
         self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
         self.assertFalse(response.data["search_fallback"])
@@ -684,13 +686,11 @@ class JobApiTests(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_search_keyword_e4_validation(self):
-        # UC-03 E4: từ khóa chứa ký tự đặc biệt hoặc quá dài -> 400.
         invalid_keywords = (
             "<script>alert(1)</script>",
             "python; DROP TABLE jobs",
             "job@#$%",
             "a" * 101,
-            # Chuỗi vô nghĩa toàn ký tự kỹ thuật cũng bị loại.
             "+++",
             "---",
             "###...",
@@ -705,7 +705,7 @@ class JobApiTests(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
                 self.assertIn("keyword", response.data["errors"])
 
-        # Ký tự kỹ thuật hợp lệ của tên skill vẫn được nhận (C++, C#, .NET).
+        # Ký tự trong tên skill như C++, C# và .NET vẫn hợp lệ.
         valid_keywords = ("C++ developer", "C#", "ASP.NET", "Node.js", "HTML/CSS")
         for keyword in valid_keywords:
             cache.clear()

@@ -1,4 +1,3 @@
-"""Gửi các background-task envelope nhỏ qua QStash."""
 from typing import Any
 
 from django.conf import settings
@@ -7,7 +6,6 @@ from integrations.qstash.client import QStashConfigurationError, get_qstash_clie
 
 
 def dispatcher_url() -> str:
-    """Trả về URL công khai được QStash ký cho task callback."""
     base_url = str(getattr(settings, "BACKEND_PUBLIC_URL", "") or "").rstrip("/")
     if not base_url:
         raise QStashConfigurationError("BACKEND_PUBLIC_URL chưa được cấu hình.")
@@ -21,7 +19,6 @@ def publish_task(
     retries: int | None = 5,
     deduplication_id: str | None = None,
 ) -> Any:
-    """Gửi một task đã đăng ký tới callback endpoint dùng chung."""
     options = {
         "url": dispatcher_url(),
         "body": {"task": task_name, "payload": payload},

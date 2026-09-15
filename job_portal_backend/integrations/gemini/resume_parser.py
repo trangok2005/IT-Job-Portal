@@ -1,4 +1,3 @@
-"""Phân tích và kiểm tra CV ứng viên bằng Gemini."""
 import logging
 
 from django.conf import settings
@@ -82,7 +81,6 @@ def _normalize_boolean(value, *, default: bool = False) -> bool:
 
 
 def normalize_resume_data(data: dict) -> dict:
-    """Chuẩn hóa các trường CV đã trích xuất trước khi serializer kiểm tra."""
     normalized = dict(data)
     for field in ("full_name", "phone", "headline", "summary"):
         if normalized.get(field) is None:
@@ -122,7 +120,7 @@ def normalize_resume_data(data: dict) -> dict:
                 clean_item["is_completed"] = _normalize_boolean(
                     clean_item.get("is_completed")
                 )
-                # Học vấn do AI trích xuất phải được ứng viên xác nhận.
+                # AI-extracted education remains unconfirmed until user review.
                 clean_item["is_verified"] = False
             normalized[collection].append(clean_item)
 
@@ -137,7 +135,6 @@ def normalize_resume_data(data: dict) -> dict:
 def parse_resume_document(
     *, filename: str, mime_type: str | None, file_data: bytes
 ) -> ParsedDocumentResult:
-    """Phân tích CV và trả về dữ liệu thô cùng dữ liệu đã được serializer kiểm tra."""
     from google.genai import types
 
     document_content = prepare_document_input(filename, mime_type, file_data)

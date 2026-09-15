@@ -1,4 +1,3 @@
-"""Các task nền xử lý embedding và hết hạn tin tuyển dụng."""
 import logging
 from datetime import timedelta
 
@@ -19,13 +18,12 @@ from integrations.gemini.jd_parser import parse_job_description
 
 logger = logging.getLogger(__name__)
 
-# Số lần tối đa một JDImport được gửi Gemini parse (đồng bộ với UC-01).
+# Giới hạn broker retry để không cạn quota Gemini khi dịch vụ lỗi dài.
 MAX_PARSE_ATTEMPTS = 3
 
 
 def parse_jd_import(import_id: str) -> bool:
-    # Nhận lại cả FAILED để task bị re-present (crash recovery) có cơ hội thử
-    # lại như UC-01; giới hạn parse_attempts vẫn là ranh giới cứng chung.
+    # Lượt FAILED được retry nhưng parse_attempts vẫn là giới hạn cứng.
     jd_import = JDImport.objects.filter(pk=import_id).first()
     if jd_import is None or jd_import.status in (
         JDImport.Status.SUCCESS,
@@ -62,7 +60,6 @@ def parse_jd_import(import_id: str) -> bool:
             in (JDImport.Status.PENDING, JDImport.Status.PROCESSING, JDImport.Status.FAILED)
             and jd_import.parse_attempts >= MAX_PARSE_ATTEMPTS
         ):
-            # Cạn lượt thử: chốt FAILED vĩnh viễn, không gọi Gemini nữa.
             JDImport.objects.filter(
                 pk=import_id,
                 parse_attempts__gte=MAX_PARSE_ATTEMPTS,
@@ -79,7 +76,6 @@ def parse_jd_import(import_id: str) -> bool:
             )
         return False
     if jd_import is None:
-        # Bản ghi bị hủy khi đang PROCESSING — không còn gì để parse.
         logger.warning("JD import %s disappeared before parsing", import_id)
         return False
     try:
@@ -137,7 +133,7 @@ def generate_job_embedding(
     content_version: int,
     allow_closed: bool = False,
 ) -> bool:
-    """Sinh embedding, bỏ task cũ; cho phép tin đã đóng khi chấm hồ sơ."""
+    """Bỏ task cũ; tin đã đóng chỉ được xử lý khi chấm hồ sơ."""
     allowed_statuses = [JobPost.Status.ACTIVE]
     if allow_closed:
         allowed_statuses.extend([JobPost.Status.CLOSED, JobPost.Status.EXPIRED])
@@ -165,7 +161,6 @@ def generate_job_embedding(
 
 
 def expire_jobs() -> int:
-    """Task định kỳ gọi service để chuyển tin quá hạn sang EXPIRED."""
     from apps.jobs.services import expire_jobs as expire_jobs_service
 
     return expire_jobs_service()

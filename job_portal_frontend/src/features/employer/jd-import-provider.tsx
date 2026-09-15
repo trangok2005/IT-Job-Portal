@@ -14,11 +14,10 @@ type JDParseStatus = JDImportDto["status"];
 
 type JDImportContextValue = {
   jdImport: JDImportDto | null;
-  /** Poll đã tự ngắt sau 2 phút mà JD vẫn chưa xong. */
+  /** Polling dừng sau 2 phút xử lý. */
   stalled: boolean;
-  /** Request gần nhất gặp lỗi mạng / khôi phục; import ID vẫn giữ trong localStorage. */
+  /** Polling lỗi nhưng import ID vẫn được giữ. */
   pollError: boolean;
-  /** Gọi GET ngay và tiếp tục polling nếu tác vụ vẫn hoạt động. */
   retry: () => void;
   startImport: (file: File) => Promise<JDImportDto>;
   cancelImport: () => Promise<void>;

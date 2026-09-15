@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 
 
 def extract_docx_text(file_data: bytes) -> str:
-    """Trích xuất văn bản đoạn và bảng mà không thực thi nội dung nhúng."""
+    """Trích xuất đoạn và bảng mà không chạy nội dung nhúng."""
     with zipfile.ZipFile(io.BytesIO(file_data)) as archive:
         document = ET.fromstring(archive.read("word/document.xml"))
     namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}

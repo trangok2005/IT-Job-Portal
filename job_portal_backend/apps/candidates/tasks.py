@@ -1,4 +1,3 @@
-"""Các task nền xử lý CV và embedding hồ sơ candidate."""
 import logging
 from datetime import datetime, timedelta
 
@@ -17,13 +16,12 @@ from integrations.gemini.resume_parser import parse_resume_document
 
 logger = logging.getLogger(__name__)
 
-# Số lần tối đa một bản ghi được gửi Gemini parse; vượt quá sẽ FAILED vĩnh viễn
-# thay vì để broker re-present vô hạn (tiêu quota khi Gemini lỗi kéo dài).
+# Giới hạn broker retry để không cạn quota Gemini khi dịch vụ lỗi dài.
 MAX_PARSE_ATTEMPTS = 3
 
 
 def _claim_parse_attempt(record_id: str) -> datetime | None:
-    """Nhận đúng một lượt giao để các callback đồng thời không phân tích hai lần."""
+    """Claim một lượt xử lý để callback đồng thời không parse trùng."""
     now = timezone.now()
     lease_expired_at = now - timedelta(seconds=settings.TASK_PROCESSING_LEASE_SECONDS)
     claimed = ResumeImport.objects.filter(
@@ -50,7 +48,6 @@ def _claim_parse_attempt(record_id: str) -> datetime | None:
 
 
 def parse_resume_import(resume_import_id: str) -> dict:
-    """Gửi CV lên Gemini và lưu kết quả phân tích vào ResumeImport."""
     resume_import = (
         ResumeImport.objects.select_related("candidate")
         .filter(pk=resume_import_id)
@@ -159,7 +156,7 @@ def parse_resume_import(resume_import_id: str) -> dict:
 
 
 def generate_candidate_embedding(profile_id: str, profile_version: int) -> bool:
-    """Sinh embedding và chỉ lưu nếu hồ sơ chưa chuyển sang version mới hơn."""
+    """Bỏ kết quả nếu profile version đã đổi trong lúc chạy."""
     profile = (
         CandidateProfile.objects.filter(pk=profile_id)
         .prefetch_related(
@@ -191,11 +188,7 @@ def generate_candidate_embedding(profile_id: str, profile_version: int) -> bool:
 
 
 def cleanup_expired_resume_imports() -> int:
-    """Xóa ResumeImport không dùng trong 24 giờ cùng file để giải phóng lưu trữ.
-
-    Bản PENDING quá hạn cũng bị xóa vì là task mồ côi; hàm phân tích dùng
-    ``.first()`` nên không lỗi nếu bản ghi vừa bị xóa.
-    """
+    """Xóa cả bản PENDING quá hạn; worker chịu được record vừa bị xóa."""
     from apps.candidates import services
 
     expired = ResumeImport.objects.filter(expires_at__lt=timezone.now())

@@ -1,4 +1,3 @@
-"""Chuẩn hóa văn bản dùng chung cho mọi đầu vào embedding."""
 import html
 import re
 import unicodedata
@@ -21,7 +20,7 @@ _UUID_RE = re.compile(
 
 
 def clean_text_field(raw: str | None) -> str:
-    """Loại bỏ markup, định danh và chuẩn hóa nhất quán văn bản tương đương."""
+    """Loại markup và thông tin định danh khỏi input embedding."""
     if not raw:
         return ""
     text = unicodedata.normalize("NFKC", str(raw))
@@ -36,7 +35,6 @@ def clean_text_field(raw: str | None) -> str:
 
 
 def clean_and_limit_text(raw: str | None, max_chars: int) -> str:
-    """Làm sạch và giới hạn đoạn văn dài mà không cắt từ cuối cùng."""
     cleaned = clean_text_field(raw)
     if len(cleaned) <= max_chars:
         return cleaned
@@ -45,7 +43,6 @@ def clean_and_limit_text(raw: str | None, max_chars: int) -> str:
 
 
 def build_labeled_text(fields: Iterable[tuple[str, str | None]]) -> str:
-    """Tạo các dòng ổn định, dễ đọc và bỏ qua giá trị rỗng."""
     lines = []
     for label, value in fields:
         cleaned = clean_text_field(value)
@@ -55,6 +52,5 @@ def build_labeled_text(fields: Iterable[tuple[str, str | None]]) -> str:
 
 
 def build_skills_line(skill_names: Iterable[str]) -> str:
-    """Trả về các tên skill chuẩn không trùng lặp theo thứ tự đầu vào ổn định."""
     cleaned = (clean_text_field(skill) for skill in skill_names)
     return ", ".join(dict.fromkeys(skill for skill in cleaned if skill))

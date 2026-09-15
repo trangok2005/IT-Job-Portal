@@ -1,4 +1,3 @@
-"""Kết quả phù hợp có trọng số được lưu cho hồ sơ ứng tuyển."""
 from django.db import models
 
 from apps.core.models import UUIDModel
@@ -14,12 +13,9 @@ class ApplicationMatchResult(UUIDModel):
         JobApplication, on_delete=models.CASCADE, related_name="match_result",
     )
 
-    # Điểm tổng hợp cuối cùng (0-100) theo trọng số MatchingWeightConfig
-    # đang kích hoạt tại thời điểm tính, hiển thị cho NTD ở UC-04.
     match_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.COMPLETED)
 
-    # Các thành phần điểm con phục vụ giải thích ("Vì sao điểm này?").
     semantic_similarity_score = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
     skill_overlap_score = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
     experience_score = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
@@ -34,7 +30,7 @@ class ApplicationMatchResult(UUIDModel):
     rule_version = models.CharField(max_length=50, default="matching-v2.2.4")
     embedding_metadata = models.JSONField(default=dict, blank=True)
 
-    # Snapshot trên application giữ cấu hình trọng số và phiên bản input.
+    # Snapshot của hồ sơ giữ nguyên đầu vào chấm điểm.
     embedding_model_version = models.CharField(max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

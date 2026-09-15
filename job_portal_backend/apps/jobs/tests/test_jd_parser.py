@@ -59,8 +59,7 @@ class JobDescriptionParserTests(TestCase):
         self.assertEqual(parsed["required_education_level"], "BACHELOR")
         pending = Skill.objects.get(name="New Framework")
         self.assertEqual(pending.status, Skill.Status.PENDING)
-        # Kỹ năng lạ đã được tự tạo PENDING và nằm luôn trong matched
-        # (nhất quán với luồng CV) thay vì bị bỏ vào unmatched.
+        # Skill lạ khớp ở trạng thái PENDING, giống luồng CV.
         self.assertEqual(
             parsed["required_skills"], [str(python.id), str(pending.id)]
         )

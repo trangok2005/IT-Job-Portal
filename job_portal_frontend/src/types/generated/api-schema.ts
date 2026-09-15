@@ -1304,6 +1304,8 @@ export interface components {
             readonly embedding_is_stale: boolean;
             /** Format: double */
             readonly match_score: number | null;
+            /** Format: double */
+            readonly semantic_score: number | null;
             readonly company_name: string;
             readonly skills: components["schemas"]["JobSkill"][];
             /** Format: date-time */
@@ -1503,6 +1505,8 @@ export interface components {
             readonly embedding_is_stale: boolean;
             /** Format: double */
             readonly match_score: number | null;
+            /** Format: double */
+            readonly semantic_score: number | null;
             readonly company_name: string;
             readonly skills: components["schemas"]["JobSkill"][];
             /** Format: date-time */
@@ -1915,6 +1919,8 @@ export interface components {
             readonly embedding_is_stale: boolean;
             /** Format: double */
             readonly match_score: number | null;
+            /** Format: double */
+            readonly semantic_score: number | null;
             readonly company_name: string;
             readonly skills: components["schemas"]["JobSkill"][];
             /** Format: date-time */

@@ -1,4 +1,3 @@
-"""HTTP adapter có signature cho callback do QStash chuyển đến."""
 import json
 import logging
 
@@ -23,7 +22,7 @@ QSTASH_DO_NOT_RETRY_STATUS = 489
 @csrf_exempt
 @require_POST
 def task_dispatcher(request):
-    """Xác minh QStash callback và ánh xạ kết quả dispatch sang retry semantics."""
+    """Xác minh callback; lỗi tạm thời trả 5xx để QStash retry."""
     raw_body = request.body
     signature = request.headers.get("Upstash-Signature", "")
     try:

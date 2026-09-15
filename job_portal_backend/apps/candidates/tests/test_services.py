@@ -103,7 +103,6 @@ class ResumeServiceTests(TestCase):
         return SimpleUploadedFile(name, b"%PDF-1.4 test", content_type="application/pdf")
 
     def _parsed_import(self, name="cv.pdf"):
-        """Tạo ResumeImport đã parse SUCCESS sẵn sàng cho consume."""
         resume_import = services.create_resume_import(self.profile, self._file(name))
         return services.mark_resume_import_parsed(
             resume_import,

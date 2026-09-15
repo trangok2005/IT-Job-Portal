@@ -1,4 +1,3 @@
-"""Các serializer tài khoản, chỉ định hình input/output."""
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
@@ -23,7 +22,6 @@ class RegisterSerializer(serializers.ModelSerializer):
     role = serializers.ChoiceField(
         choices=[User.Role.CANDIDATE, User.Role.EMPLOYER], default=User.Role.CANDIDATE
     )
-    # Chỉ dành cho EMPLOYER: tạo luôn hồ sơ công ty PENDING để admin duyệt.
     company_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
@@ -77,7 +75,7 @@ class AdminUserListQuerySerializer(serializers.Serializer):
 
 
 class ActiveUserTokenRefreshSerializer(TokenRefreshSerializer):
-    """Chỉ refresh khi user của token vẫn tồn tại và đang hoạt động."""
+    """Không refresh token của tài khoản đã bị khóa hoặc xóa."""
 
     def validate(self, attrs):
         try:

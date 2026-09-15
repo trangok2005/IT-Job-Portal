@@ -1,4 +1,3 @@
-"""Các thao tác ghi và quy tắc nghiệp vụ xác thực tài khoản."""
 from django.conf import settings
 from django.db import transaction
 from django.utils.text import slugify
@@ -18,7 +17,6 @@ def _unique_username(email: str, google_sub: str) -> str:
 
 @transaction.atomic
 def create_registered_user(validated_data: dict) -> User:
-    """Tạo user mật khẩu cùng hồ sơ candidate hoặc công ty bắt buộc."""
     data = dict(validated_data)
     company_name = data.pop("company_name", "")
     role = data.pop("role", User.Role.CANDIDATE)
@@ -31,7 +29,6 @@ def create_registered_user(validated_data: dict) -> User:
 
 
 def _create_role_profile(user: User, company_name: str = "") -> None:
-    """Tạo hồ sơ bắt buộc cho role nghiệp vụ vừa đăng ký."""
     if user.is_employer:
         from apps.companies.services import create_company_from_registration
 
@@ -47,7 +44,7 @@ def _create_role_profile(user: User, company_name: str = "") -> None:
 
 
 def verify_google_token(raw_token: str) -> dict:
-    """Xác minh Google ID token và các claim định danh bắt buộc."""
+    """Xác minh Google ID token và các claim định danh."""
     if not settings.GOOGLE_CLIENT_ID:
         raise AuthenticationFailed("Google OAuth chưa được cấu hình.")
     from google.auth.exceptions import GoogleAuthError
@@ -81,7 +78,7 @@ def verify_google_token(raw_token: str) -> dict:
 
 @transaction.atomic
 def login_or_register_google(claims: dict, role: str, company_name: str = "") -> User:
-    """Đăng nhập Google subject hiện có hoặc tạo user mới trong giao dịch nguyên tử."""
+    """Tạo user OAuth và hồ sơ trong cùng transaction."""
     google_sub = claims["sub"]
     email = claims["email"].strip().lower()
     user = User.objects.select_for_update().filter(google_sub=google_sub).first()
@@ -114,7 +111,6 @@ def login_or_register_google(claims: dict, role: str, company_name: str = "") ->
 
 
 def issue_token_pair(user: User) -> dict:
-    """Cấp cặp access/refresh SimpleJWT cho user đang hoạt động."""
     if not user.is_active:
         raise AuthenticationFailed("Tài khoản đã bị khóa.")
     refresh = RefreshToken.for_user(user)
@@ -122,7 +118,6 @@ def issue_token_pair(user: User) -> dict:
 
 
 def set_user_lock(actor: User, target: User, locked: bool) -> User:
-    """Khóa hoặc mở khóa tài khoản không phải admin và bảo vệ tài khoản admin."""
     if target.pk == actor.pk and locked:
         raise ValidationError({"detail": "Admin không thể tự khóa tài khoản."})
     if target.role == User.Role.ADMIN:

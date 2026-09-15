@@ -1,4 +1,3 @@
-"""ViewSet gọn cho quy trình nộp và xử lý hồ sơ ứng tuyển."""
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
@@ -19,10 +18,7 @@ class ApplicationViewSet(
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Chỉ cung cấp list/create/retrieve/status, không cho sửa hoặc xóa hồ sơ."""
-
     def get_permissions(self):
-        """Phân quyền theo thao tác và role nghiệp vụ."""
         if self.action == "create":
             return [IsAuthenticated(), common_permissions.IsCandidate()]
         if self.action == "transition":
@@ -32,7 +28,7 @@ class ApplicationViewSet(
         return [IsAuthenticated(), common_permissions.HasBusinessRole()]
 
     def get_queryset(self):
-        """Giới hạn dữ liệu theo role trước khi DRF tìm đối tượng."""
+        """Scope dữ liệu trước khi DRF tìm object."""
         if getattr(self, "swagger_fake_view", False):
             return JobApplication.objects.none()
         if self.action == "list":
@@ -49,7 +45,7 @@ class ApplicationViewSet(
         return selectors.get_application_detail_queryset(self.request.user)
 
     def get_serializer_class(self):
-        """Dùng serializer input riêng và ẩn điểm phù hợp khỏi candidate."""
+        """Ẩn điểm phù hợp khỏi candidate."""
         if self.action == "create":
             return serializers.ApplicationCreateSerializer
         if self.action == "transition":
@@ -65,7 +61,6 @@ class ApplicationViewSet(
         responses={201: serializers.CandidateApplicationReadSerializer},
     )
     def create(self, request, *args, **kwargs):
-        """Nộp hồ sơ qua service và trả snapshot CV cùng trạng thái vừa tạo."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -89,7 +84,6 @@ class ApplicationViewSet(
     )
     @action(methods=["post"], detail=True, url_path="status")
     def transition(self, request, pk=None):
-        """Chuyển trạng thái bằng state machine và trả hồ sơ đã cập nhật."""
         application = self.get_object()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -113,7 +107,6 @@ class ApplicationViewSet(
     @extend_schema(responses=serializers.EmptyApplicationMatchResultSerializer)
     @action(methods=["get"], detail=True, url_path="match-result")
     def match_result(self, request, pk=None):
-        """Trả chi tiết mức phù hợp có trọng số cho chủ tin hoặc admin."""
         application = self.get_object()
         result = match_result_selectors.get_application_match_result(application)
         if result is not None:
@@ -146,7 +139,7 @@ class ApplicationViewSet(
     @extend_schema(responses=serializers.PrivateFileURLSerializer)
     @action(methods=["get"], detail=True, url_path="resume-download-url")
     def resume_download_url(self, request, pk=None):
-        """Chỉ cấp URL của CV sau khi kiểm tra thành công phạm vi hồ sơ."""
+        """Chỉ cấp URL sau khi `get_object` đã kiểm tra phạm vi truy cập."""
         application = self.get_object()
         if application.resume is None:
             raise NotFound("Hồ sơ ứng tuyển không đính kèm CV.")
