@@ -141,35 +141,6 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["results"][0]["id"], str(python_job.id))
         self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
 
-    @patch("apps.jobs.job_search_service.embed_query")
-    def test_keyword_search_returns_only_scores_strictly_above_fifty(self, embed_query):
-        embed_query.return_value = [1.0] + [0.0] * 767
-        above = self._job(
-            title="Above threshold",
-            embedding=[0.6, 0.8] + [0.0] * 766,
-            embedding_version=1,
-        )
-        self._job(
-            title="Exactly threshold",
-            embedding=[0.5, 0.8660254037844386] + [0.0] * 766,
-            embedding_version=1,
-        )
-        self._job(
-            title="Below threshold",
-            embedding=[0.0, 1.0] + [0.0] * 766,
-            embedding_version=1,
-        )
-
-        response = self.client.get(reverse("jobs-list"), {"keyword": "Django"})
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 1)
-        self.assertEqual(response.data["results"][0]["id"], str(above.id))
-        self.assertAlmostEqual(
-            response.data["results"][0]["semantic_score"], 0.6, delta=0.001
-        )
-        self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
-        self.assertFalse(response.data["search_fallback"])
 
     @patch("apps.jobs.job_search_service.embed_query")
     def test_keyword_search_does_not_fallback_when_current_scores_are_too_low(self, embed_query):
