@@ -1,26 +1,23 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useContext } from "react";
 
 import { cancelJDImport, getJDImport, parseJobDescription } from "@/features/employer/api";
 import type { JDImportDto } from "@/features/employer/types";
-import { ApiError } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-provider";
-import { useStatusPolling } from "@/lib/use-status-polling";
-
-const STORAGE_KEY = "active-jd-import";
-
-type JDParseStatus = JDImportDto["status"];
+import { useImportController } from "@/lib/use-import-controller";
 
 type JDImportContextValue = {
   jdImport: JDImportDto | null;
-  /** Polling dừng sau 2 phút xử lý. */
+  hasImport: boolean;
+  isUploading: boolean;
+  isCancelling: boolean;
+  cancelError: string | null;
   stalled: boolean;
-  /** Polling lỗi nhưng import ID vẫn được giữ. */
   pollError: boolean;
   retry: () => void;
   startImport: (file: File) => Promise<JDImportDto>;
-  cancelImport: () => Promise<void>;
+  cancelImport: () => Promise<boolean>;
   clearImport: () => void;
 };
 
@@ -28,95 +25,25 @@ const JDImportContext = createContext<JDImportContextValue | null>(null);
 
 export function JDImportProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const [jdImport, setJDImport] = useState<JDImportDto | null>(null);
-  const [restoredId, setRestoredId] = useState<string | null>(() =>
-    typeof window === "undefined" ? null : localStorage.getItem(STORAGE_KEY),
-  );
+  const userId = user?.role === "EMPLOYER" ? user.id : null;
+  return <JDImportSession key={userId ?? "anonymous"} userId={userId}>{children}</JDImportSession>;
+}
 
-  const isProcessingJD = useCallback(
-    (status: JDParseStatus) => status === "PENDING" || status === "PROCESSING",
-    [],
-  );
-
-  const handleJDUpdate = useCallback((snapshot: JDImportDto) => {
-    setRestoredId(null);
-    if (snapshot.status === "CONSUMED") {
-      localStorage.removeItem(STORAGE_KEY);
-      setJDImport(null);
-      return;
-    }
-    setJDImport(snapshot);
-  }, []);
-
-  const handleJDError = useCallback((error: unknown) => {
-    if (error instanceof ApiError && error.status === 404) {
-      localStorage.removeItem(STORAGE_KEY);
-      setRestoredId(null);
-      setJDImport(null);
-    }
-  }, []);
-
-  const importId = jdImport?.id ?? restoredId;
-
-  const { stalled, pollError: hookPollError, retry: retryPolling } = useStatusPolling<
-    JDImportDto,
-    JDParseStatus
-  >({
-    enabled: user?.role === "EMPLOYER" && Boolean(importId) && (!jdImport || isProcessingJD(jdImport.status)),
-    importId,
+function JDImportSession({ userId, children }: { userId: string | null; children: React.ReactNode }) {
+  const { item: jdImport, ...controller } = useImportController({
+    enabled: Boolean(userId),
+    storageKey: userId ? `jd_import_id:${userId}` : null,
+    start: parseJobDescription,
     poll: getJDImport,
+    cancel: cancelJDImport,
     getStatus: (snapshot) => snapshot.status,
-    isProcessing: isProcessingJD,
-    onUpdate: handleJDUpdate,
-    onError: handleJDError,
+    isProcessing: (status) => status === "PENDING" || status === "PROCESSING",
+    rateLimitMessage:
+      "Bạn đã tải JD quá nhiều lần (tối đa 2 lượt/phút, 10 lượt/ngày). Vui lòng thử lại sau.",
   });
 
-  const retry = useCallback(() => {
-    retryPolling();
-  }, [retryPolling]);
-
-  const startImport = async (file: File) => {
-    try {
-      const result = await parseJobDescription(file);
-      localStorage.setItem(STORAGE_KEY, result.id);
-      setRestoredId(null);
-      setJDImport(result);
-      return result;
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 429) {
-        throw new Error(
-          "Bạn đã tải JD quá nhiều lần (tối đa 2 lượt/phút, 10 lượt/ngày). Vui lòng thử lại sau.",
-        );
-      }
-      throw error;
-    }
-  };
-
-  const cancelImport = async () => {
-    if (importId) await cancelJDImport(importId);
-    localStorage.removeItem(STORAGE_KEY);
-    setRestoredId(null);
-    setJDImport(null);
-  };
-
-  const clearImport = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    setRestoredId(null);
-    setJDImport(null);
-  }, []);
-
   return (
-    <JDImportContext.Provider
-      value={{
-        jdImport,
-        stalled,
-        pollError: hookPollError,
-        retry,
-        startImport,
-        cancelImport,
-        clearImport,
-      }}
-    >
+    <JDImportContext.Provider value={{ jdImport, ...controller }}>
       {children}
     </JDImportContext.Provider>
   );

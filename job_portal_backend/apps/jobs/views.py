@@ -244,7 +244,9 @@ class JobViewSet(
     )
     def jd_import(self, request, import_id=None):
         jd_import = JDImport.objects.filter(
-            pk=import_id, created_by=request.user
+            pk=import_id,
+            created_by=request.user,
+            company__owner=request.user,
         ).first()
         if jd_import is None:
             from rest_framework.exceptions import NotFound

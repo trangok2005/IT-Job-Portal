@@ -27,7 +27,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <AuthProvider><JDImportProvider><CandidateResumeImportProvider>{children}</CandidateResumeImportProvider></JDImportProvider></AuthProvider>
+        <AuthProvider>
+          <JDImportProvider>
+            <CandidateResumeImportProvider>
+              {children}
+            </CandidateResumeImportProvider>
+          </JDImportProvider>
+        </AuthProvider>
       </body>
     </html>
   );

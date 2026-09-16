@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from django.db import transaction
@@ -50,6 +50,27 @@ def build_jd_parse_result(parsed_data: dict) -> dict:
     return dict(JobDescriptionParseResultSerializer(parsed).data)
 
 
+@transaction.atomic
+def mark_jd_import_parsed(
+    import_id: str, claim_token: datetime, parsed_data: dict
+) -> bool:
+    """Chỉ tạo kỹ năng và lưu kết quả nếu lượt parse vẫn còn quyền ghi."""
+    owned_attempt = JDImport.objects.select_for_update().filter(
+        pk=import_id,
+        status=JDImport.Status.PROCESSING,
+        updated_at=claim_token,
+    )
+    if not owned_attempt.exists():
+        return False
+    owned_attempt.update(
+        status=JDImport.Status.SUCCESS,
+        parsed_data=build_jd_parse_result(parsed_data),
+        error_message="",
+        updated_at=timezone.now(),
+    )
+    return True
+
+
 def _enqueue_embedding(job: JobPost) -> None:
     """Enqueue đúng content version sau khi commit."""
 
@@ -98,9 +119,20 @@ def create_jd_import(user, company: Company, file) -> JDImport:
 
 @transaction.atomic
 def cancel_jd_import(jd_import: JDImport) -> None:
-    locked = JDImport.objects.select_for_update().get(pk=jd_import.pk)
+    locked = JDImport.objects.select_for_update().filter(pk=jd_import.pk).first()
+    if locked is None:
+        return
     if locked.status == JDImport.Status.CONSUMED:
         raise ValueError("JD import đã được dùng để tạo tin.")
+    delete_jd_import(locked)
+
+
+@transaction.atomic
+def delete_jd_import(jd_import: JDImport) -> None:
+    """JD chỉ lưu nội dung vào JobPost, file import luôn là file tạm."""
+    locked = JDImport.objects.select_for_update().filter(pk=jd_import.pk).first()
+    if locked is None:
+        return
     storage = locked.file.storage
     stored_name = locked.file.name
     locked.delete()

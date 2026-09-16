@@ -627,6 +627,7 @@ class JobApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        parse_jd.assert_not_called()
         self.assertTrue(parse_jd_import(response.data["id"]))
         status_response = self.client.get(
             reverse("jobs-jd-import", args=[response.data["id"]])
@@ -641,6 +642,69 @@ class JobApiTests(APITestCase):
             [str(self.skill.id)],
         )
         self.assertEqual(JobPost.objects.count(), 0)
+
+        created = self.client.post(
+            reverse("jobs-list"),
+            {
+                "title": "Reviewed JD", "description": "Build APIs",
+                "jd_import_id": response.data["id"],
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            JDImport.objects.get(pk=response.data["id"]).status,
+            JDImport.Status.CONSUMED,
+        )
+
+    def test_other_employer_cannot_read_cancel_or_consume_import(self):
+        self.client.force_authenticate(self.employer)
+        upload = self.client.post(
+            reverse("jobs-parse-jd"),
+            {"file": SimpleUploadedFile("job.pdf", b"%PDF-1.4")},
+            format="multipart",
+        )
+        self.assertEqual(upload.status_code, status.HTTP_202_ACCEPTED)
+        import_id = upload.data["id"]
+        JDImport.objects.filter(pk=import_id).update(status=JDImport.Status.SUCCESS)
+        other = User.objects.create_user(
+            username="other-jd-owner", email="other-jd@example.com",
+            password="password123", role=User.Role.EMPLOYER,
+        )
+        Company.objects.create(owner=other, name="Other", status=Company.Status.APPROVED)
+        self.client.force_authenticate(other)
+        detail_url = reverse("jobs-jd-import", args=[import_id])
+
+        self.assertEqual(self.client.get(detail_url).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.delete(detail_url).status_code, status.HTTP_404_NOT_FOUND)
+        response = self.client.post(
+            reverse("jobs-list"),
+            {"title": "Stolen", "description": "JD", "jd_import_id": import_id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(JobPost.objects.exists())
+        self.assertEqual(JDImport.objects.get(pk=import_id).status, JDImport.Status.SUCCESS)
+
+    def test_import_creator_must_still_own_company_to_read_or_cancel(self):
+        record = JDImport.objects.create(
+            company=self.company,
+            created_by=self.employer,
+            file="unused.pdf",
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        new_owner = User.objects.create_user(
+            username="new-company-owner", email="new-company-owner@example.com",
+            password="password123", role=User.Role.EMPLOYER,
+        )
+        self.company.owner = new_owner
+        self.company.save()
+        detail_url = reverse("jobs-jd-import", args=[record.pk])
+        for user in (self.employer, new_owner):
+            with self.subTest(user=user.username):
+                self.client.force_authenticate(user)
+                self.assertEqual(self.client.get(detail_url).status_code, status.HTTP_404_NOT_FOUND)
+                self.assertEqual(self.client.delete(detail_url).status_code, status.HTTP_404_NOT_FOUND)
 
     def test_parse_jd_rejects_invalid_file_and_candidate(self):
         self.client.force_authenticate(self.employer)

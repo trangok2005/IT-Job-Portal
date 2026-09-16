@@ -2,7 +2,7 @@ from pathlib import Path
 
 from django.core.files.base import File
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.candidates.models import CandidateProfile, Education, Experience, Resume, ResumeImport
@@ -204,11 +204,12 @@ def save_full_profile(profile: CandidateProfile, data: dict) -> CandidateProfile
     skills = data.pop("skills")
     resume_import_id = data.pop("resume_import_id", None)
     if resume_import_id is not None:
-        from apps.candidates.models import ResumeImport
         resume_import = ResumeImport.objects.select_for_update().filter(
             pk=resume_import_id,
             candidate=locked,
             parse_status=ResumeImport.ParseStatus.SUCCESS,
+        ).filter(
+            Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()),
         ).first()
         if resume_import is None:
             raise ValueError("CV preview không hợp lệ hoặc chưa phân tích xong.")
@@ -268,42 +269,12 @@ def create_resume_import(profile: CandidateProfile, file) -> ResumeImport:
 
 
 @transaction.atomic
-def mark_resume_import_parsed(
-    resume_import: ResumeImport,
-    raw_data: dict,
-    parsed_data: dict | None = None,
-) -> ResumeImport:
-    if parsed_data is None:
-        parsed_data = raw_data
-
-    resume_import.parsed_data = parsed_data
-    resume_import.parse_status = ResumeImport.ParseStatus.SUCCESS
-    resume_import.parse_error_message = ""
-    resume_import.save(
-        update_fields=[
-            "parsed_data",
-            "parse_status",
-            "parse_error_message",
-            "updated_at",
-        ]
-    )
-    return resume_import
-
-
-def mark_resume_import_failed(resume_import: ResumeImport, error_message: str) -> ResumeImport:
-    resume_import.parse_status = ResumeImport.ParseStatus.FAILED
-    resume_import.parse_error_message = error_message[:2000]
-    resume_import.save(
-        update_fields=["parse_status", "parse_error_message", "updated_at"]
-    )
-    return resume_import
-
-
-@transaction.atomic
 def consume_resume_import(resume_import: ResumeImport) -> Resume:
     """Sao chép file vì bản import sẽ bị dọn sau 24 giờ."""
     if resume_import.parse_status != ResumeImport.ParseStatus.SUCCESS:
         raise ValueError("Chỉ có thể dùng CV đã parse thành công.")
+    if resume_import.expires_at is not None and resume_import.expires_at <= timezone.now():
+        raise ValueError("CV preview đã hết hạn.")
 
     candidate = resume_import.candidate
     candidate.resumes.filter(is_primary=True).update(is_primary=False)
@@ -326,10 +297,12 @@ def consume_resume_import(resume_import: ResumeImport) -> Resume:
 
 @transaction.atomic
 def delete_resume_import(resume_import: ResumeImport) -> None:
-    """Bản đã dùng chỉ xóa record vì file đã được sao chép sang Resume."""
-    storage = resume_import.file.storage
-    stored_name = resume_import.file.name
-    consumed = resume_import.parse_status == ResumeImport.ParseStatus.CONSUMED
-    resume_import.delete()
-    if stored_name and not consumed:
+    """Chỉ xóa file tạm; Resume đã có bản sao riêng."""
+    locked = ResumeImport.objects.select_for_update().filter(pk=resume_import.pk).first()
+    if locked is None:
+        return
+    storage = locked.file.storage
+    stored_name = locked.file.name
+    locked.delete()
+    if stored_name:
         transaction.on_commit(lambda: storage.delete(stored_name))

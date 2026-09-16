@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { CandidateProfileEditor } from "@/features/candidates/components/candidate-profile-editor";
 import { ResumesSection } from "@/features/candidates/components/resumes-section";
 import type { RunProfileMutation } from "@/features/candidates/components/profile-section";
-import { cancelResumeImport } from "@/features/candidates/api";
 import { useCandidateResumeImport } from "@/features/candidates/candidate-resume-import-provider";
 import { useCandidateProfile } from "@/features/candidates/hooks";
 import type { CandidateProfileDto } from "@/features/candidates/types";
@@ -79,8 +78,20 @@ function LoadingProfile() {
 
 export function CandidateProfilePage() {
   const { profile, setProfile, isLoading, error, setError, refresh } = useCandidateProfile();
-  const { resumeImport, stalled: resumeImportStalled, pollError, retry: retryPolling, clearImport } = useCandidateResumeImport();
+  const {
+    resumeImport,
+    hasImport,
+    isUploading,
+    isCancelling,
+    cancelError,
+    stalled: resumeImportStalled,
+    pollError,
+    retry: retryPolling,
+    cancelImport,
+    clearImport,
+  } = useCandidateResumeImport();
   const [pending, setPending] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [cancelTick, setCancelTick] = useState(0);
   const [appliedImportId, setAppliedImportId] = useState<string | null>(null);
@@ -89,6 +100,13 @@ export function CandidateProfilePage() {
     appliedImportId && resumeImport?.id === appliedImportId && resumeImport.parse_status === "SUCCESS"
       ? resumeImport
       : null;
+
+  const discardImport = async () => {
+    if (!(await cancelImport())) return;
+    setAppliedImportId(null);
+    setNotice(null);
+    setError(null);
+  };
 
   const runMutation: RunProfileMutation = async (action, successMessage) => {
     setPending(true);
@@ -181,44 +199,52 @@ export function CandidateProfilePage() {
       </div>
 
       <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        {!resumeImport && pollError && (
-          <div className="mb-5 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <AlertCircle className="size-4 shrink-0" />
-            <span className="flex-1">Không thể lấy lại tác vụ trích xuất CV đang chạy. Vui lòng thử lại.</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => retryPolling()}>
-              Thử lại
+        {hasImport && !resumeImport && (
+          <div className="mb-5 flex items-center gap-3 rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
+            <span className="flex-1">
+              {pollError ? "Không thể lấy lại kết quả trích xuất CV. Vui lòng thử lại." : "Đang lấy lại kết quả trích xuất CV..."}
+            </span>
+            {pollError && <Button type="button" size="sm" variant="outline" disabled={isCancelling} onClick={retryPolling}>Thử lại</Button>}
+            <Button type="button" size="sm" variant="ghost" disabled={isCancelling} onClick={() => void discardImport()}>
+              {isCancelling ? "Đang xóa..." : "Xóa"}
             </Button>
           </div>
         )}
-        {(() => {
-          if (resumeImport?.parse_status !== "SUCCESS") return null;
-          const applied = appliedImportId === resumeImport.id;
-          return (
-            <div className="mb-5 flex flex-col gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-900 sm:flex-row sm:items-center">
-              <span className="flex items-center gap-2">
-                <FileText className="size-4 shrink-0 text-primary" />
-                <span>
-                  CV <strong>{resumeImport.original_filename}</strong> đã phân tích xong. Bấm để điền dữ liệu vào hồ sơ.
-                </span>
+        {resumeImport?.parse_status === "SUCCESS" && (
+          <div className="mb-5 flex flex-col gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-900 sm:flex-row sm:items-center">
+            <span className="flex items-center gap-2">
+              <FileText className="size-4 shrink-0 text-primary" />
+              <span>
+                CV <strong>{resumeImport.original_filename}</strong> đã phân tích xong. Bấm để điền dữ liệu vào hồ sơ.
               </span>
-              <span className="flex gap-2 sm:ml-auto">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    setAppliedImportId(resumeImport.id);
-                    setNotice("Dữ liệu CV đã được điền vào bản nháp bên dưới. Hãy kiểm tra trước khi lưu.");
-                  }}
-                >
-                  <WandSparkles />
-                  {applied ? "Đã điền vào bản nháp" : "Điền dữ liệu từ CV"}
-                </Button>
-              </span>
-            </div>
-          );
-        })()}
+            </span>
+            <span className="flex gap-2 sm:ml-auto">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={isCancelling || savingProfile}
+                onClick={() => void discardImport()}
+              >
+                {isCancelling ? "Đang xóa..." : "Bỏ kết quả"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={isCancelling || savingProfile || Boolean(appliedImport)}
+                onClick={() => {
+                  setAppliedImportId(resumeImport.id);
+                  setNotice(null);
+                }}
+              >
+                <WandSparkles />
+                {appliedImport ? "Đã điền vào bản nháp" : "Áp dụng"}
+              </Button>
+            </span>
+          </div>
+        )}
 
-        {resumeImport?.parse_status === "PENDING" && (
+        {(resumeImport?.parse_status === "PENDING" || resumeImport?.parse_status === "PROCESSING") && (
           <div className="mb-5 flex items-center gap-3 rounded-xl border border-accent-200 bg-accent-50 px-4 py-3 text-sm text-zinc-700">
             <LoaderCircle className="size-4 shrink-0 animate-spin text-accent" />
             <span className="flex-1">
@@ -231,6 +257,7 @@ export function CandidateProfilePage() {
                 type="button"
                 size="sm"
                 variant="outline"
+                disabled={isCancelling}
                 onClick={() => retryPolling()}
               >
                 Kiểm tra lại
@@ -239,9 +266,10 @@ export function CandidateProfilePage() {
                 type="button"
                 size="sm"
                 variant="ghost"
-                onClick={() => void cancelResumeImport(resumeImport.id).then(clearImport)}
+                disabled={isCancelling || savingProfile}
+                onClick={() => void discardImport()}
               >
-                Hủy
+                {isCancelling ? "Đang hủy..." : "Hủy trích xuất"}
               </Button>
             </span>
           </div>
@@ -257,12 +285,19 @@ export function CandidateProfilePage() {
                 type="button"
                 size="sm"
                 variant="ghost"
-                onClick={() => void cancelResumeImport(resumeImport.id).then(clearImport)}
+                disabled={isCancelling || isUploading}
+                onClick={() => void discardImport()}
               >
-                Hủy
+                {isCancelling ? "Đang xóa..." : "Xóa"}
               </Button>
             </span>
           </div>
+        )}
+
+        {cancelError && (
+          <p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {cancelError}
+          </p>
         )}
 
         {(error || notice) && (
@@ -301,30 +336,28 @@ export function CandidateProfilePage() {
           <div className="space-y-6">
             <ResumesSection
               items={profile.resumes}
-              pending={pending}
+              pending={pending || savingProfile}
               runMutation={runMutation}
               onLocalError={(message) => { setNotice(null); setError(message || null); }}
-              onNotice={(message) => { setError(null); setNotice(message); }}
             />
             <CandidateProfileEditor
               key={`${profile.updated_at}:${appliedImport?.id ?? "no-import"}:${cancelTick}`}
               profile={profile}
               previewImport={appliedImport}
-              onCancel={() => {
+              disabled={isCancelling}
+              onSavingChange={setSavingProfile}
+              onCancel={async () => {
                 if (appliedImport) {
-                  void cancelResumeImport(appliedImport.id).then(clearImport);
+                  await discardImport();
+                  return;
                 }
                 setCancelTick((tick) => tick + 1);
                 setAppliedImportId(null);
-                setNotice(
-                  appliedImport
-                    ? "Đã hủy bản nháp. Dữ liệu hồ sơ trở về như trước, không có gì được lưu."
-                    : "Đã hủy các thay đổi chưa được lưu.",
-                );
+                setNotice("Đã hủy các thay đổi chưa được lưu.");
               }}
               onSaved={(saved) => {
                 setProfile(saved);
-                clearImport();
+                if (appliedImport) clearImport();
                 setAppliedImportId(null);
                 setNotice("Hồ sơ đã được lưu từ bản nháp đã duyệt.");
               }}

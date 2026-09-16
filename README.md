@@ -172,22 +172,8 @@ Frontend sử dụng `NEXT_PUBLIC_API_URL`, `API_URL` và `NEXT_PUBLIC_GOOGLE_CL
 
 Local dùng `config.settings.local` và `LocMemCache`. Production dùng `config.settings.production`, yêu cầu Redis qua `rediss://` và kiểm tra chặt các biến bảo mật khi khởi động.
 
-## 10. Chạy kiểm tra
 
-Chạy từ thư mục gốc repository:
-
-```powershell
-job_portal_backend/.venv/Scripts/python.exe job_portal_backend/manage.py check --settings=config.settings.test
-job_portal_backend/.venv/Scripts/python.exe job_portal_backend/manage.py makemigrations --check --dry-run --settings=config.settings.test
-job_portal_backend/.venv/Scripts/python.exe job_portal_backend/manage.py test --settings=config.settings.test
-npm run lint --prefix job_portal_frontend
-npm run typecheck --prefix job_portal_frontend
-npm run build --prefix job_portal_frontend
-```
-
-Frontend chưa khai báo script test. CI hiện chạy backend test và frontend lint.
-
-## 11. Mô hình triển khai
+## 10. Mô hình triển khai
 
 - **Frontend:** có thể triển khai dự án Next.js trong `job_portal_frontend` lên Vercel và cấu hình ba biến frontend theo file `.env.production.example`.
 - **Backend:** repository có `deploy/render/build.sh` và `deploy/render/start.sh` để cài dependency production, collect static, migrate và chạy Gunicorn trên Render.

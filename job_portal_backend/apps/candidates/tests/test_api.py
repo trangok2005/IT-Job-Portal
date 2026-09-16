@@ -1,6 +1,7 @@
 import tempfile
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -16,7 +17,9 @@ from apps.candidates.models import (
     Resume,
     ResumeImport,
 )
+from apps.candidates.tasks import parse_resume_import
 from apps.skills.models import Skill, SkillAlias
+from integrations.gemini.structured_output import ParsedDocumentResult
 
 
 class CandidateApiTests(APITestCase):
@@ -306,6 +309,70 @@ class CandidateResumeApiTests(APITestCase):
         self.assertFalse(
             ResumeImport.objects.filter(candidate=self.profile).exists()
         )
+
+    @patch("apps.candidates.tasks.parse_resume_document")
+    def test_only_owner_can_read_and_consume_uploaded_import(self, parse_document):
+        upload = self.client.post(
+            reverse("candidate-resume-import-create"),
+            {"file": SimpleUploadedFile("cv.pdf", b"%PDF-1.4")},
+            format="multipart",
+        )
+        self.assertEqual(upload.status_code, status.HTTP_201_CREATED)
+        parse_document.assert_not_called()
+        import_id = upload.data["id"]
+        parse_document.return_value = ParsedDocumentResult(
+            raw_data={"full_name": "Reviewed"},
+            validated_data={"full_name": "Reviewed"},
+        )
+        parse_resume_import(import_id)
+        detail_url = reverse("candidate-resume-import-detail", args=[import_id])
+        payload = {
+            "full_name": "Reviewed",
+            "educations": [],
+            "experiences": [],
+            "skills": [],
+            "resume_import_id": import_id,
+        }
+        other_user = User.objects.create_user(
+            username="import-other", email="import-other@example.com",
+            password="password123", role=User.Role.CANDIDATE,
+        )
+        other_profile = CandidateProfile.objects.create(user=other_user, full_name="Other")
+        self.client.force_authenticate(other_user)
+
+        self.assertEqual(self.client.get(detail_url).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.delete(detail_url).status_code, status.HTTP_404_NOT_FOUND)
+        denied = self.client.put(reverse("candidate-me"), payload, format="json")
+        self.assertEqual(denied.status_code, status.HTTP_400_BAD_REQUEST)
+        other_profile.refresh_from_db()
+        self.assertEqual(other_profile.full_name, "Other")
+        self.assertEqual(other_profile.profile_version, 1)
+        self.assertFalse(other_profile.resumes.exists())
+        record = ResumeImport.objects.get(pk=import_id)
+        self.assertEqual(record.parse_status, ResumeImport.ParseStatus.SUCCESS)
+
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.client.get(detail_url).status_code, status.HTTP_200_OK)
+        saved = self.client.put(reverse("candidate-me"), payload, format="json")
+        self.assertEqual(saved.status_code, status.HTTP_200_OK)
+        record.refresh_from_db()
+        self.assertEqual(record.parse_status, ResumeImport.ParseStatus.CONSUMED)
+        self.assertEqual(self.profile.resumes.count(), 1)
+        repeated = self.client.put(reverse("candidate-me"), payload, format="json")
+        self.assertEqual(repeated.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_owner_can_cancel_uploaded_import(self):
+        upload = self.client.post(
+            reverse("candidate-resume-import-create"),
+            {"file": SimpleUploadedFile("cv.pdf", b"%PDF-1.4")},
+            format="multipart",
+        )
+        self.assertEqual(upload.status_code, status.HTTP_201_CREATED)
+        response = self.client.delete(
+            reverse("candidate-resume-import-detail", args=[upload.data["id"]])
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(ResumeImport.objects.filter(pk=upload.data["id"]).exists())
 
     def test_upload_resume_import_throttled_after_two_per_minute(self):
         for i in range(2):

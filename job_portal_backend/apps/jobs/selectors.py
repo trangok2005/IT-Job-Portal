@@ -18,7 +18,7 @@ from apps.jobs.models import JobPost
 from apps.skills.selectors import get_active_matching_weights
 
 
-MIN_SEMANTIC_SIMILARITY = 0.5
+MIN_SEMANTIC_SIMILARITY = 0.67
 
 
 def is_public_job(job: JobPost) -> bool:

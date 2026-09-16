@@ -1,14 +1,13 @@
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db import transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.core.embedding_text_builders import build_job_text
+from apps.jobs import services
 from apps.jobs.models import JDImport, JobPost
-from apps.jobs.services import build_jd_parse_result
 from integrations.gemini.embeddings import (
     current_job_embedding_signature,
     embed_document,
@@ -22,8 +21,49 @@ logger = logging.getLogger(__name__)
 MAX_PARSE_ATTEMPTS = 3
 
 
+def _retryable_imports(import_id: str, now: datetime):
+    """Chỉ nhận bản chưa chạy, bị lỗi hoặc đã hết lease."""
+    lease_expired_at = now - timedelta(seconds=settings.TASK_PROCESSING_LEASE_SECONDS)
+    return JDImport.objects.filter(pk=import_id).filter(
+        Q(status__in=[JDImport.Status.PENDING, JDImport.Status.FAILED])
+        | Q(status=JDImport.Status.PROCESSING, updated_at__lte=lease_expired_at)
+    )
+
+
+def _claim_parse_attempt(import_id: str) -> datetime | None:
+    """Claim bằng một UPDATE để hai worker không cùng nhận việc."""
+    now = timezone.now()
+    claimed = _retryable_imports(import_id, now).filter(
+        parse_attempts__lt=MAX_PARSE_ATTEMPTS,
+    ).update(
+        status=JDImport.Status.PROCESSING,
+        parse_attempts=F("parse_attempts") + 1,
+        error_message="",
+        updated_at=now,
+    )
+    return now if claimed else None
+
+
+def _handle_unclaimed_import(import_id: str) -> bool:
+    jd_import = JDImport.objects.filter(pk=import_id).first()
+    if jd_import is None:
+        return False
+    if jd_import.parse_attempts >= MAX_PARSE_ATTEMPTS:
+        now = timezone.now()
+        _retryable_imports(import_id, now).filter(
+            parse_attempts__gte=MAX_PARSE_ATTEMPTS,
+        ).update(
+            status=JDImport.Status.FAILED,
+            error_message=f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích JD.",
+            updated_at=now,
+        )
+        return False
+    if jd_import.status == JDImport.Status.PROCESSING:
+        raise RuntimeError("JD import is already being processed.")
+    return False
+
+
 def parse_jd_import(import_id: str) -> bool:
-    # Lượt FAILED được retry nhưng parse_attempts vẫn là giới hạn cứng.
     jd_import = JDImport.objects.filter(pk=import_id).first()
     if jd_import is None or jd_import.status in (
         JDImport.Status.SUCCESS,
@@ -31,53 +71,20 @@ def parse_jd_import(import_id: str) -> bool:
     ):
         return False
 
-    now = timezone.now()
-    lease_expired_at = now - timedelta(seconds=settings.TASK_PROCESSING_LEASE_SECONDS)
-    claimed = JDImport.objects.filter(
-        pk=import_id,
-        parse_attempts__lt=MAX_PARSE_ATTEMPTS,
-    ).filter(
-        Q(status__in=[JDImport.Status.PENDING, JDImport.Status.FAILED])
-        | Q(status=JDImport.Status.PROCESSING, updated_at__lte=lease_expired_at)
-    ).update(
-        status=JDImport.Status.PROCESSING,
-        parse_attempts=F("parse_attempts") + 1,
-        error_message="",
-        updated_at=now,
-    )
-    claim_token = now if claimed else None
-    jd_import = JDImport.objects.filter(pk=import_id).first()
+    claim_token = _claim_parse_attempt(import_id)
     if claim_token is None:
-        if (
-            jd_import is not None
-            and jd_import.status == JDImport.Status.PROCESSING
-            and jd_import.parse_attempts < MAX_PARSE_ATTEMPTS
-        ):
-            raise RuntimeError("JD import is already being processed.")
-        if (
-            jd_import is not None
-            and jd_import.status
-            in (JDImport.Status.PENDING, JDImport.Status.PROCESSING, JDImport.Status.FAILED)
-            and jd_import.parse_attempts >= MAX_PARSE_ATTEMPTS
-        ):
-            JDImport.objects.filter(
-                pk=import_id,
-                parse_attempts__gte=MAX_PARSE_ATTEMPTS,
-            ).filter(
-                Q(status__in=[JDImport.Status.PENDING, JDImport.Status.FAILED])
-                | Q(
-                    status=JDImport.Status.PROCESSING,
-                    updated_at__lte=lease_expired_at,
-                )
-            ).update(
-                status=JDImport.Status.FAILED,
-                error_message=f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích JD.",
-                updated_at=timezone.now(),
-            )
-        return False
+        return _handle_unclaimed_import(import_id)
+
+    # updated_at giữ quyền ghi của lượt này, kể cả khi worker khác đã retry.
+    owned_attempt = JDImport.objects.filter(
+        pk=import_id,
+        status=JDImport.Status.PROCESSING,
+        updated_at=claim_token,
+    )
+    jd_import = owned_attempt.first()
     if jd_import is None:
-        logger.warning("JD import %s disappeared before parsing", import_id)
         return False
+
     try:
         with jd_import.file.open("rb") as source:
             file_data = source.read()
@@ -86,29 +93,14 @@ def parse_jd_import(import_id: str) -> bool:
             mime_type=None,
             file_data=file_data,
         )
-        with transaction.atomic():
-            owned_attempt = JDImport.objects.select_for_update().filter(
-                pk=import_id,
-                status=JDImport.Status.PROCESSING,
-                updated_at=claim_token,
-            )
-            if not owned_attempt.exists():
-                return False
-            parsed_data = build_jd_parse_result(result.validated_data)
-            owned_attempt.update(
-                status=JDImport.Status.SUCCESS,
-                parsed_data=parsed_data,
-                error_message="",
-                updated_at=timezone.now(),
-            )
-        return True
+        return services.mark_jd_import_parsed(
+            import_id, claim_token, result.validated_data
+        )
     except Exception as exc:
+        if not JDImport.objects.filter(pk=import_id).exists():
+            return False
         logger.exception("JD import %s failed", import_id)
-        JDImport.objects.filter(
-            pk=import_id,
-            status=JDImport.Status.PROCESSING,
-            updated_at=claim_token,
-        ).update(
+        owned_attempt.update(
             status=JDImport.Status.FAILED,
             error_message=(
                 "Không thể đọc thông tin từ file JD. "
@@ -120,12 +112,12 @@ def parse_jd_import(import_id: str) -> bool:
 
 
 def cleanup_expired_jd_imports() -> int:
-    expired = list(JDImport.objects.filter(expires_at__lte=timezone.now()))
-    for jd_import in expired:
-        if jd_import.file.name:
-            jd_import.file.storage.delete(jd_import.file.name)
-        jd_import.delete()
-    return len(expired)
+    expired = JDImport.objects.filter(expires_at__lte=timezone.now())
+    count = 0
+    for jd_import in expired.iterator():
+        services.delete_jd_import(jd_import)
+        count += 1
+    return count
 
 
 def generate_job_embedding(
@@ -161,6 +153,4 @@ def generate_job_embedding(
 
 
 def expire_jobs() -> int:
-    from apps.jobs.services import expire_jobs as expire_jobs_service
-
-    return expire_jobs_service()
+    return services.expire_jobs()

@@ -85,6 +85,72 @@ class JobServiceTests(TestCase):
 
         self.assertFalse(JDImport.objects.filter(pk=jd_import.pk).exists())
 
+    @patch("apps.jobs.services.publish_task")
+    def test_create_import_publishes_only_after_commit(self, publish_task):
+        with self.captureOnCommitCallbacks(execute=True):
+            record = services.create_jd_import(
+                self.employer, self.company, SimpleUploadedFile("jd.pdf", b"%PDF-1.4")
+            )
+            self.assertEqual(record.status, JDImport.Status.PENDING)
+            publish_task.assert_not_called()
+        publish_task.assert_called_once_with("parse_jd_import", {"import_id": str(record.pk)})
+
+    def test_create_job_checks_import_creator_company_status_and_expiry(self):
+        other = User.objects.create_user(
+            username="other-import-owner", email="other-import@example.com",
+            password="password123", role=User.Role.EMPLOYER,
+        )
+        other_company = Company.objects.create(
+            owner=other, name="Other Company", status=Company.Status.APPROVED,
+        )
+        invalid_cases = [
+            {"created_by": other},
+            {"company": other_company},
+            {"expires_at": timezone.now() - timedelta(seconds=1)},
+            {"status": JDImport.Status.PENDING},
+            {"status": JDImport.Status.PROCESSING},
+            {"status": JDImport.Status.FAILED},
+            {"status": JDImport.Status.CONSUMED},
+        ]
+        for overrides in invalid_cases:
+            with self.subTest(overrides=overrides):
+                data = {
+                    "company": self.company,
+                    "created_by": self.employer,
+                    "file": "unused.pdf",
+                    "status": JDImport.Status.SUCCESS,
+                    "expires_at": timezone.now() + timedelta(hours=1),
+                }
+                data.update(overrides)
+                record = JDImport.objects.create(**data)
+                with self.assertRaises(ValueError):
+                    services.create_job(
+                        self.employer, self.company,
+                        {"title": "Developer", "description": "JD"},
+                        jd_import_id=record.pk,
+                    )
+                record.refresh_from_db()
+                self.assertEqual(record.status, data["status"])
+        self.assertFalse(JobPost.objects.exists())
+
+    def test_import_requires_approved_company_owned_by_employer(self):
+        other = User.objects.create_user(
+            username="unauthorized-import", email="unauthorized@example.com",
+            password="password123", role=User.Role.EMPLOYER,
+        )
+        with self.assertRaisesMessage(ValueError, "không có quyền"):
+            services.create_jd_import(other, self.company, SimpleUploadedFile("jd.pdf", b"JD"))
+        with self.assertRaisesMessage(ValueError, "không có quyền"):
+            services.create_job(other, self.company, {"title": "Invalid", "description": "JD"})
+
+        self.company.status = Company.Status.PENDING
+        self.company.save()
+        with self.assertRaisesMessage(ValueError, "chưa được duyệt"):
+            services.create_jd_import(
+                self.employer, self.company, SimpleUploadedFile("jd.pdf", b"JD")
+            )
+        self.assertFalse(JDImport.objects.exists())
+
     def test_create_job_rejects_unapproved_company(self):
         self.company.status = Company.Status.PENDING
         self.company.save()

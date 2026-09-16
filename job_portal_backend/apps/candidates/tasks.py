@@ -20,14 +20,10 @@ logger = logging.getLogger(__name__)
 MAX_PARSE_ATTEMPTS = 3
 
 
-def _claim_parse_attempt(record_id: str) -> datetime | None:
-    """Claim một lượt xử lý để callback đồng thời không parse trùng."""
-    now = timezone.now()
+def _retryable_imports(record_id: str, now: datetime):
+    """Chỉ nhận bản chưa chạy, bị lỗi hoặc đã hết lease."""
     lease_expired_at = now - timedelta(seconds=settings.TASK_PROCESSING_LEASE_SECONDS)
-    claimed = ResumeImport.objects.filter(
-        pk=record_id,
-        parse_attempts__lt=MAX_PARSE_ATTEMPTS,
-    ).filter(
+    return ResumeImport.objects.filter(pk=record_id).filter(
         Q(
             parse_status__in=[
                 ResumeImport.ParseStatus.PENDING,
@@ -38,6 +34,14 @@ def _claim_parse_attempt(record_id: str) -> datetime | None:
             parse_status=ResumeImport.ParseStatus.PROCESSING,
             updated_at__lte=lease_expired_at,
         )
+    )
+
+
+def _claim_parse_attempt(record_id: str) -> datetime | None:
+    """Claim bằng một UPDATE để hai worker không cùng nhận việc."""
+    now = timezone.now()
+    claimed = _retryable_imports(record_id, now).filter(
+        parse_attempts__lt=MAX_PARSE_ATTEMPTS,
     ).update(
         parse_status=ResumeImport.ParseStatus.PROCESSING,
         parse_attempts=F("parse_attempts") + 1,
@@ -47,12 +51,32 @@ def _claim_parse_attempt(record_id: str) -> datetime | None:
     return now if claimed else None
 
 
+def _handle_unclaimed_import(record_id: str) -> dict:
+    resume_import = ResumeImport.objects.filter(pk=record_id).first()
+    if resume_import is None:
+        return {}
+    if resume_import.parse_status in (
+        ResumeImport.ParseStatus.SUCCESS,
+        ResumeImport.ParseStatus.CONSUMED,
+    ):
+        return resume_import.parsed_data or {}
+    if resume_import.parse_attempts >= MAX_PARSE_ATTEMPTS:
+        now = timezone.now()
+        _retryable_imports(record_id, now).filter(
+            parse_attempts__gte=MAX_PARSE_ATTEMPTS,
+        ).update(
+            parse_status=ResumeImport.ParseStatus.FAILED,
+            parse_error_message=f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích CV.",
+            updated_at=now,
+        )
+        return {}
+    if resume_import.parse_status == ResumeImport.ParseStatus.PROCESSING:
+        raise RuntimeError("Resume import is already being processed.")
+    return {}
+
+
 def parse_resume_import(resume_import_id: str) -> dict:
-    resume_import = (
-        ResumeImport.objects.select_related("candidate")
-        .filter(pk=resume_import_id)
-        .first()
-    )
+    resume_import = ResumeImport.objects.filter(pk=resume_import_id).first()
     if resume_import is None:
         logger.warning(
             "ResumeImport %s disappeared before parsing (cleanup/cancel)",
@@ -67,55 +91,17 @@ def parse_resume_import(resume_import_id: str) -> dict:
 
     claim_token = _claim_parse_attempt(resume_import_id)
     if claim_token is None:
-        resume_import = ResumeImport.objects.filter(pk=resume_import_id).first()
-        if resume_import is None:
-            return {}
-        if resume_import.parse_status in (
-            ResumeImport.ParseStatus.SUCCESS,
-            ResumeImport.ParseStatus.CONSUMED,
-        ):
-            return resume_import.parsed_data or {}
-        if (
-            resume_import.parse_status == ResumeImport.ParseStatus.PROCESSING
-            and resume_import.parse_attempts < MAX_PARSE_ATTEMPTS
-        ):
-            raise RuntimeError("Resume import is already being processed.")
-        if (
-            resume_import.parse_status
-            in [
-                ResumeImport.ParseStatus.PENDING,
-                ResumeImport.ParseStatus.PROCESSING,
-                ResumeImport.ParseStatus.FAILED,
-            ]
-            and resume_import.parse_attempts >= MAX_PARSE_ATTEMPTS
-        ):
-            ResumeImport.objects.filter(
-                pk=resume_import_id,
-                parse_attempts__gte=MAX_PARSE_ATTEMPTS,
-            ).filter(
-                Q(
-                    parse_status__in=[
-                        ResumeImport.ParseStatus.PENDING,
-                        ResumeImport.ParseStatus.FAILED,
-                    ]
-                )
-                | Q(
-                    parse_status=ResumeImport.ParseStatus.PROCESSING,
-                    updated_at__lte=(
-                        timezone.now()
-                        - timedelta(seconds=settings.TASK_PROCESSING_LEASE_SECONDS)
-                    ),
-                )
-            ).update(
-                parse_status=ResumeImport.ParseStatus.FAILED,
-                parse_error_message=(
-                    f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích CV."
-                ),
-                updated_at=timezone.now(),
-            )
-        return {}
+        return _handle_unclaimed_import(resume_import_id)
 
-    resume_import.refresh_from_db()
+    # updated_at giữ quyền ghi của lượt này, kể cả khi worker khác đã retry.
+    owned_attempt = ResumeImport.objects.filter(
+        pk=resume_import_id,
+        parse_status=ResumeImport.ParseStatus.PROCESSING,
+        updated_at=claim_token,
+    )
+    resume_import = owned_attempt.first()
+    if resume_import is None:
+        return {}
 
     try:
         with resume_import.file.open("rb") as source:
@@ -125,26 +111,21 @@ def parse_resume_import(resume_import_id: str) -> dict:
             mime_type=None,
             file_data=file_data,
         )
-        ResumeImport.objects.filter(
-            pk=resume_import_id,
-            parse_status=ResumeImport.ParseStatus.PROCESSING,
-            updated_at=claim_token,
-        ).update(
-            parsed_data=result.validated_data,
+        parsed_data = result.validated_data
+        owned_attempt.update(
+            parsed_data=parsed_data,
             parse_status=ResumeImport.ParseStatus.SUCCESS,
             parse_error_message="",
             updated_at=timezone.now(),
         )
-        return result.raw_data
+        return parsed_data
     except Exception as exc:
+        if not ResumeImport.objects.filter(pk=resume_import_id).exists():
+            return {}
         logger.exception(
             "Resume import %s failed (%s)", resume_import_id, type(exc).__name__
         )
-        ResumeImport.objects.filter(
-            pk=resume_import_id,
-            parse_status=ResumeImport.ParseStatus.PROCESSING,
-            updated_at=claim_token,
-        ).update(
+        owned_attempt.update(
             parse_status=ResumeImport.ParseStatus.FAILED,
             parse_error_message=(
                 "Không thể đọc thông tin từ file CV. "
@@ -191,7 +172,7 @@ def cleanup_expired_resume_imports() -> int:
     """Xóa cả bản PENDING quá hạn; worker chịu được record vừa bị xóa."""
     from apps.candidates import services
 
-    expired = ResumeImport.objects.filter(expires_at__lt=timezone.now())
+    expired = ResumeImport.objects.filter(expires_at__lte=timezone.now())
     count = 0
     for resume_import in expired.iterator():
         services.delete_resume_import(resume_import)

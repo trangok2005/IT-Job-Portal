@@ -62,11 +62,15 @@ export function CandidateProfileEditor({
   previewImport,
   onSaved,
   onCancel,
+  disabled = false,
+  onSavingChange,
 }: {
   profile: CandidateProfileDto;
   previewImport?: ResumeImportDto | null;
   onSaved: (profile: CandidateProfileDto) => void;
   onCancel?: () => void;
+  disabled?: boolean;
+  onSavingChange?: (saving: boolean) => void;
 }) {
   const preview = previewImport?.parsed_data as ResumePreview | null;
   const previewLabel = previewImport?.original_filename;
@@ -87,6 +91,7 @@ export function CandidateProfileEditor({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const busy = pending || disabled;
 
   const updateBasicInfo = async (payload: Partial<ProfileUpdatePayload>) => {
     setDraftProfile((current) => ({ ...current, ...payload }));
@@ -95,12 +100,14 @@ export function CandidateProfileEditor({
   };
 
   const save = async () => {
+    if (busy) return;
     const rejectedSkills = skills.filter((item) => item.skill_status === "REJECTED");
     if (rejectedSkills.length > 0) {
       setError(`Hãy xóa kỹ năng đã bị từ chối trước khi lưu: ${rejectedSkills.map((item) => item.skill_name).join(", ")}.`);
       return;
     }
     setPending(true);
+    onSavingChange?.(true);
     setError(null);
     setMessage(null);
     const payload: ProfileSavePayload = {
@@ -149,6 +156,7 @@ export function CandidateProfileEditor({
       setError(err instanceof Error ? err.message : "Không thể lưu hồ sơ.");
     } finally {
       setPending(false);
+      onSavingChange?.(false);
     }
   };
 
@@ -165,14 +173,14 @@ export function CandidateProfileEditor({
       )}
       <BasicInfoSection
         profile={draftProfile as CandidateProfileDto}
-        pending={pending}
+        pending={busy}
         onSave={updateBasicInfo}
       />
-      <EducationSection items={educations} pending={pending} onChange={setEducations} />
-      <ExperienceSection items={experiences} pending={pending} onChange={setExperiences} />
+      <EducationSection items={educations} pending={busy} onChange={setEducations} />
+      <ExperienceSection items={experiences} pending={busy} onChange={setExperiences} />
       <SkillsSection
         items={skills}
-        pending={pending}
+        pending={busy}
         onChange={setSkills}
         previewSkillNames={preview?.skills}
       />
@@ -184,12 +192,12 @@ export function CandidateProfileEditor({
       )}
       <div className="sticky bottom-4 z-10 flex justify-end gap-2 rounded-2xl border border-zinc-200 bg-white/95 p-4 shadow-lg backdrop-blur">
         {onCancel && (
-          <Button type="button" size="lg" variant="outline" onClick={onCancel} disabled={pending}>
+          <Button type="button" size="lg" variant="outline" onClick={onCancel} disabled={busy}>
             <X />
-            {preview ? "Hủy bản nháp" : "Hủy"}
+            {preview ? "Bỏ kết quả" : "Hủy"}
           </Button>
         )}
-        <Button type="button" size="lg" onClick={save} disabled={pending}>
+        <Button type="button" size="lg" onClick={save} disabled={busy}>
           <Save />
           {pending ? "Đang lưu hồ sơ..." : "Xác nhận & Lưu hồ sơ"}
         </Button>

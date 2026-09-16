@@ -1,15 +1,17 @@
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from apps.accounts.models import User
-from apps.candidates.models import CandidateProfile, Education, Resume, ResumeImport
 from apps.candidates import services
-from apps.skills.models import CandidateSkill, Skill
+from apps.candidates.models import CandidateProfile, Resume, ResumeImport
+from apps.skills.models import Skill
 
 
 class CandidateServiceTests(TestCase):
@@ -104,10 +106,10 @@ class ResumeServiceTests(TestCase):
 
     def _parsed_import(self, name="cv.pdf"):
         resume_import = services.create_resume_import(self.profile, self._file(name))
-        return services.mark_resume_import_parsed(
-            resume_import,
-            {"full_name": "Parsed User", "skills": ["Python"]},
-        )
+        resume_import.parse_status = ResumeImport.ParseStatus.SUCCESS
+        resume_import.parsed_data = {"full_name": "Parsed User", "skills": ["Python"]}
+        resume_import.save()
+        return resume_import
 
     def test_create_import_enqueues_only_parser_without_bumping_profile(self):
         with patch("apps.candidates.services.publish_task") as publish_task:
@@ -115,6 +117,7 @@ class ResumeServiceTests(TestCase):
                 resume_import = services.create_resume_import(
                     self.profile, self._file()
                 )
+                publish_task.assert_not_called()
 
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.profile_version, 1)
@@ -156,33 +159,9 @@ class ResumeServiceTests(TestCase):
                 is_primary=True,
             )
 
-    def test_mark_resume_import_parsed_stores_preview_without_updating_profile(self):
-        resume_import = services.create_resume_import(self.profile, self._file())
-
-        services.mark_resume_import_parsed(
-            resume_import,
-            {"full_name": "Parsed User", "skills": ["Python"]},
-        )
-
-        self.assertEqual(resume_import.parse_status, ResumeImport.ParseStatus.SUCCESS)
-        self.assertEqual(
-            resume_import.parsed_data,
-            {"full_name": "Parsed User", "skills": ["Python"]},
-        )
-        self.profile.refresh_from_db()
-        self.assertEqual(self.profile.full_name, "Resume User")
-        self.assertFalse(CandidateSkill.objects.filter(candidate=self.profile).exists())
-        self.assertEqual(self.profile.profile_version, 1)
-
     def test_full_profile_save_replaces_snapshot_and_enqueues_once(self):
         skill = Skill.objects.create(name="Python", slug="save-python")
-        with patch("apps.candidates.services.publish_task"):
-            resume_import = services.create_resume_import(self.profile, self._file())
-        services.mark_resume_import_parsed(
-            resume_import,
-            {"headline": "Preview"},
-            {"headline": "Preview"},
-        )
+        resume_import = self._parsed_import()
 
         with patch("apps.candidates.services.publish_task") as publish_task:
             with self.captureOnCommitCallbacks(execute=True):
@@ -229,16 +208,64 @@ class ResumeServiceTests(TestCase):
             services.consume_resume_import(resume_import)
 
     def test_delete_consumed_import_keeps_primary_resume_file(self):
-        with patch("apps.candidates.services.publish_task"):
-            resume_import = services.create_resume_import(self.profile, self._file())
-        services.mark_resume_import_parsed(resume_import, {}, {})
+        resume_import = self._parsed_import()
         resume = services.consume_resume_import(resume_import)
         stored_name = resume.file.name
+        import_id = resume_import.pk
+        temporary_name = resume_import.file.name
 
-        services.delete_resume_import(resume_import)
+        with self.captureOnCommitCallbacks(execute=True):
+            services.delete_resume_import(resume_import)
+            self.assertTrue(resume_import.file.storage.exists(temporary_name))
 
-        self.assertFalse(ResumeImport.objects.filter(pk=resume_import.pk).exists())
+        self.assertFalse(ResumeImport.objects.filter(pk=import_id).exists())
         self.assertTrue(resume.file.storage.exists(stored_name))
+        self.assertFalse(resume_import.file.storage.exists(temporary_name))
+
+    def test_save_rejects_expired_import_without_changing_profile(self):
+        resume_import = self._parsed_import()
+        resume_import.expires_at = timezone.now() - timedelta(seconds=1)
+        resume_import.save()
+
+        with self.assertRaises(ValueError):
+            services.save_full_profile(self.profile, {
+                "full_name": "Changed",
+                "educations": [],
+                "experiences": [],
+                "skills": [],
+                "resume_import_id": resume_import.pk,
+            })
+
+        self.profile.refresh_from_db()
+        resume_import.refresh_from_db()
+        self.assertEqual(self.profile.full_name, "Resume User")
+        self.assertEqual(self.profile.profile_version, 1)
+        self.assertEqual(resume_import.parse_status, ResumeImport.ParseStatus.SUCCESS)
+        self.assertFalse(self.profile.resumes.exists())
+
+    def test_consume_rejects_expired_import(self):
+        resume_import = self._parsed_import()
+        resume_import.expires_at = timezone.now() - timedelta(seconds=1)
+
+        with self.assertRaisesMessage(ValueError, "hết hạn"):
+            services.consume_resume_import(resume_import)
+
+    def test_save_checks_import_status(self):
+        record = self._parsed_import()
+        for parse_status in (
+            ResumeImport.ParseStatus.PENDING,
+            ResumeImport.ParseStatus.PROCESSING,
+            ResumeImport.ParseStatus.FAILED,
+            ResumeImport.ParseStatus.CONSUMED,
+        ):
+            with self.subTest(status=parse_status):
+                ResumeImport.objects.filter(pk=record.pk).update(parse_status=parse_status)
+                with self.assertRaises(ValueError):
+                    services.save_full_profile(self.profile, {
+                        "educations": [], "experiences": [], "skills": [],
+                        "resume_import_id": record.pk,
+                    })
+        self.assertFalse(self.profile.resumes.exists())
 
     def test_cancelled_import_delete_removes_file(self):
         with patch("apps.candidates.services.publish_task"):
