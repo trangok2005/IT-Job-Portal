@@ -193,6 +193,7 @@ cython_debug/
 #   vào global gitignore hoặc gộp vào file này. Nếu muốn bỏ qua toàn bộ thư mục idea
 #   (không khuyến nghị), có thể bỏ comment dòng sau.
 # .idea/
+.idea/
 
 # Abstra
 #   Abstra là framework tự động hóa process dùng AI.

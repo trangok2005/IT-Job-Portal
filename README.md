@@ -1,10 +1,16 @@
-# IT Job Portal
+# Semantic Job Platform
 
-IT Job Portal là hệ thống tuyển dụng dành cho lĩnh vực công nghệ thông tin, kết nối ứng viên với nhà tuyển dụng và cung cấp công cụ quản trị dữ liệu tuyển dụng. Gemini được dùng để trích xuất dữ liệu từ CV/JD và sinh vector; backend tự tính Match Score theo quy tắc nghiệp vụ, không giao quyết định tuyển dụng cho AI.
+**Tên đề tài:** Nền tảng tìm việc làm theo ngữ nghĩa.
+
+**Tên repository:** `semantic-job-platform`.
+
+Semantic Job Platform là nền tảng tuyển dụng kết nối ứng viên với nhà tuyển dụng. Hệ thống sử dụng embedding để tìm kiếm việc làm theo ngữ nghĩa, gợi ý công việc và ứng viên phù hợp; đồng thời hỗ trợ quản lý hồ sơ, tin tuyển dụng và quy trình ứng tuyển.
 
 ## 1. Giới thiệu
 
-Hệ thống hỗ trợ quản lý hồ sơ, tìm kiếm và gợi ý việc làm, quản lý tuyển dụng và quản trị dữ liệu dùng chung. Match Score chỉ cung cấp thông tin tham khảo; quyết định tuyển dụng luôn thuộc về người sử dụng.
+Trọng tâm của đề tài là hỗ trợ tìm kiếm và đối chiếu hồ sơ ứng viên với yêu cầu công việc dựa trên ý nghĩa nội dung, kết hợp các tiêu chí có cấu trúc như kỹ năng, kinh nghiệm và học vấn.
+
+Gemini được dùng để trích xuất dữ liệu từ CV/JD và sinh embedding. PostgreSQL kết hợp pgvector lưu trữ và truy vấn vector; backend tính Match Score theo quy tắc nghiệp vụ và trọng số cấu hình. Điểm phù hợp là thông tin tham khảo để người dùng xem xét, không phải quyết định tuyển dụng tự động.
 
 ## 2. Nhóm người dùng
 
@@ -48,7 +54,7 @@ Gemini chỉ trích xuất dữ liệu có cấu trúc và sinh embedding. Backe
 ## 6. Cấu trúc repository
 
 ```text
-IT-Job-Portal/
+semantic-job-platform/
 |-- docker-compose.yml          # PostgreSQL 16 + pgvector cho local
 |-- run.md                      # Hướng dẫn chạy local chi tiết
 |-- job_portal_backend/
