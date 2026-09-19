@@ -5,6 +5,8 @@ __pycache__/
 
 # Phần mở rộng C
 *.so
+.idea/
+
 
 # Phân phối / đóng gói
 .Python
