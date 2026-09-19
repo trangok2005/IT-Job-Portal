@@ -22,7 +22,7 @@ CSRF_TRUSTED_ORIGINS = env_list(
     "http://localhost:3000,http://127.0.0.1:3000",
 )
 
-# Local development must not consume the production Redis quota.
+# Không để môi trường local dùng Redis production.
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",

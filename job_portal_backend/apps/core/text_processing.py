@@ -1,4 +1,3 @@
-"""Shared text normalization for every embedding input."""
 import html
 import re
 import unicodedata
@@ -21,7 +20,7 @@ _UUID_RE = re.compile(
 
 
 def clean_text_field(raw: str | None) -> str:
-    """Remove markup/identifiers and normalize equivalent text consistently."""
+    """Loại markup và thông tin định danh khỏi input embedding."""
     if not raw:
         return ""
     text = unicodedata.normalize("NFKC", str(raw))
@@ -36,7 +35,6 @@ def clean_text_field(raw: str | None) -> str:
 
 
 def clean_and_limit_text(raw: str | None, max_chars: int) -> str:
-    """Clean text and cap long sections without cutting the final word."""
     cleaned = clean_text_field(raw)
     if len(cleaned) <= max_chars:
         return cleaned
@@ -45,7 +43,6 @@ def clean_and_limit_text(raw: str | None, max_chars: int) -> str:
 
 
 def build_labeled_text(fields: Iterable[tuple[str, str | None]]) -> str:
-    """Build deterministic, readable lines while omitting empty values."""
     lines = []
     for label, value in fields:
         cleaned = clean_text_field(value)
@@ -55,6 +52,5 @@ def build_labeled_text(fields: Iterable[tuple[str, str | None]]) -> str:
 
 
 def build_skills_line(skill_names: Iterable[str]) -> str:
-    """Return unique canonical skill names in deterministic input order."""
     cleaned = (clean_text_field(skill) for skill in skill_names)
     return ", ".join(dict.fromkeys(skill for skill in cleaned if skill))

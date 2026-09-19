@@ -1,11 +1,4 @@
-"""
-Seed duy nhất cho Skill Taxonomy - đọc dữ liệu từ skill_taxonomy_seed.json
-nằm cùng thư mục. Chạy lại an toàn (idempotent):
-- Category: get_or_create theo name.
-- Skill: get_or_create theo name (slug tự sinh unique, phòng 'C#'/'C++' cùng slug).
-- SkillAlias: bỏ qua alias đã tồn tại (tránh vi phạm unique alias_text /
-  normalized_text).
-"""
+"""Seed taxonomy từ JSON; có thể chạy lại mà không tạo bản ghi trùng."""
 import json
 
 from django.conf import settings

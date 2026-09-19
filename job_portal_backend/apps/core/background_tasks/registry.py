@@ -1,4 +1,3 @@
-"""Central registry for every task accepted by the QStash dispatcher."""
 from collections.abc import Callable
 
 from apps.ai_analysis.tasks import (

@@ -13,34 +13,17 @@ import {
   login as apiLogin,
   register as apiRegister,
 } from "@/lib/api-client";
-import { clearAuth, getStoredUser, persistAuth } from "@/lib/auth";
-import type { LoginPayload, RegisterPayload, UserDto } from "@/lib/types";
-
-// Đọc đồng bộ current user khi mount với server snapshot null để an toàn cho SSR
-// và tránh setState trong effect.
-let cachedUser: UserDto | null | undefined;
-
-function getSnapshot(): UserDto | null {
-  if (cachedUser === undefined) cachedUser = getStoredUser();
-  return cachedUser;
-}
+import { clearAuth, getStoredUser, persistAuth, subscribeAuth } from "@/lib/auth";
+import type { AuthTokens, LoginPayload, RegisterPayload, UserDto } from "@/lib/types";
 
 function getServerSnapshot(): UserDto | null {
   return null;
 }
 
-const listeners = new Set<() => void>();
-
-function subscribe(onStoreChange: () => void) {
-  listeners.add(onStoreChange);
-  return () => {
-    listeners.delete(onStoreChange);
-  };
-}
-
-function emitChange() {
-  cachedUser = getStoredUser();
-  listeners.forEach((listener) => listener());
+async function finishAuth(tokens: AuthTokens): Promise<UserDto> {
+  const user = await getMe(tokens.access);
+  persistAuth(tokens, user);
+  return user;
 }
 
 interface AuthContextValue {
@@ -58,28 +41,21 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const user = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const user = useSyncExternalStore(subscribeAuth, getStoredUser, getServerSnapshot);
 
   const signIn = useCallback(async (payload: LoginPayload) => {
     const tokens = await apiLogin(payload);
-    const me = await getMe(tokens.access);
-    persistAuth(tokens, me);
-    emitChange();
-    return me;
+    return finishAuth(tokens);
   }, []);
 
   const signUp = useCallback(async (payload: RegisterPayload) => {
     await apiRegister(payload);
     const tokens = await apiLogin({ email: payload.email, password: payload.password });
-    const me = await getMe(tokens.access);
-    persistAuth(tokens, me);
-    emitChange();
-    return me;
+    return finishAuth(tokens);
   }, []);
 
   const signOut = useCallback(() => {
     clearAuth();
-    emitChange();
   }, []);
 
   const signInWithGoogle = useCallback(
@@ -94,7 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         company_name: companyName,
       });
       persistAuth({ access: result.access, refresh: result.refresh }, result.user);
-      emitChange();
       return result.user;
     },
     [],

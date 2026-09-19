@@ -1,14 +1,4 @@
-"""Seed 200 JobPosts chuẩn hóa từ jobs_200_curated.json.
-
-Dataset gồm 200 tin: 120 phổ biến (60%), 60 trung bình (30%), 20 hiếm (10%),
-bao quát đủ mọi giá trị enum trong JobPost model.
-
-Chạy lệnh này sẽ XÓA SẠCH toàn bộ JobPost/JobSkill hiện có rồi seed 200 tin mới
-(company + employer được tái sử dụng theo tên, idempotent). Tin ACTIVE được
-đưa vào QStash sinh embedding.
-
-    python manage.py seed_jobs_200 [--with-embeddings]
-"""
+"""Xóa mọi JobPost/JobSkill rồi seed 200 tin từ JSON."""
 import json
 from datetime import timedelta
 
@@ -60,7 +50,7 @@ class Command(BaseCommand):
         }
 
         with transaction.atomic():
-            # Xóa sạch dữ liệu Job cũ (cascade xóa cả JobSkill).
+            # JobSkill được xóa theo cascade.
             deleted, _ = JobPost.objects.all().delete()
             self.stdout.write(f"Đã xóa {deleted} đối tượng JobPost/JobSkill cũ.")
 

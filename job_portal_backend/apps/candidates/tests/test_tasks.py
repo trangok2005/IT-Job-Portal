@@ -1,23 +1,29 @@
-import json
 import io
+import json
 import tempfile
 import zipfile
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models import F
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.candidates import tasks
 from apps.candidates.models import CandidateProfile, Education, Resume, ResumeImport
 from apps.candidates.tasks import (
     MAX_PARSE_ATTEMPTS,
-    _normalize_parsed_data,
     cleanup_expired_resume_imports,
     generate_candidate_embedding,
     parse_resume_import,
 )
+from integrations.gemini.client import GeminiRequestError
+from integrations.gemini.resume_parser import normalize_resume_data
+from integrations.gemini.structured_output import ParsedDocumentResult
 
 
 class CandidateEmbeddingTaskTests(TestCase):
@@ -58,6 +64,24 @@ class CandidateEmbeddingTaskTests(TestCase):
         self.assertFalse(result)
         generate.assert_not_called()
 
+    @patch("apps.candidates.tasks.embed_document")
+    def test_version_changed_during_request_does_not_save_embedding(self, generate):
+        def change_version(_content):
+            CandidateProfile.objects.filter(pk=self.profile.pk).update(
+                profile_version=F("profile_version") + 1
+            )
+            return [0.1] * 768
+
+        generate.side_effect = change_version
+
+        result = generate_candidate_embedding(
+            str(self.profile.id), self.profile.profile_version
+        )
+
+        self.assertFalse(result)
+        self.profile.refresh_from_db()
+        self.assertIsNone(self.profile.embedding)
+
 
 class ResumeParseTaskTests(TestCase):
     def setUp(self):
@@ -85,7 +109,7 @@ class ResumeParseTaskTests(TestCase):
             is_primary=True,
         )
 
-    @patch("apps.candidates.tasks._get_client")
+    @patch("integrations.gemini.resume_parser.get_gemini_client")
     def test_parse_resume_import_stores_review_preview_without_mutating_profile(self, get_client):
         raw_data = {
             "full_name": "After Parse",
@@ -119,8 +143,10 @@ class ResumeParseTaskTests(TestCase):
 
         result = parse_resume_import(str(resume_import.id))
 
-        self.assertEqual(result, raw_data)
         resume_import.refresh_from_db()
+        self.assertEqual(result, resume_import.parsed_data)
+        self.assertNotEqual(result, raw_data)
+        self.assertEqual(parse_resume_import(str(resume_import.id)), result)
         self.profile.refresh_from_db()
         self.assertEqual(
             resume_import.parse_status, ResumeImport.ParseStatus.SUCCESS
@@ -132,7 +158,7 @@ class ResumeParseTaskTests(TestCase):
         self.assertEqual(self.profile.full_name, "Before Parse")
         self.assertFalse(Education.objects.filter(candidate=self.profile).exists())
 
-    @patch("apps.candidates.tasks._get_client")
+    @patch("integrations.gemini.resume_parser.get_gemini_client")
     def test_parse_docx_sends_extracted_text_to_gemini(self, get_client):
         document_xml = b'''<?xml version="1.0" encoding="UTF-8"?>
         <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -163,7 +189,7 @@ class ResumeParseTaskTests(TestCase):
         contents = models.generate_content.call_args.kwargs["contents"]
         self.assertEqual(contents[1], "Python Intern Developer")
 
-    @patch("apps.candidates.tasks._get_client")
+    @patch("integrations.gemini.resume_parser.get_gemini_client")
     def test_parse_resume_import_stops_after_max_attempts(self, get_client):
         models = Mock()
         models.generate_content.side_effect = RuntimeError("Gemini unavailable")
@@ -176,14 +202,17 @@ class ResumeParseTaskTests(TestCase):
         )
 
         for _ in range(MAX_PARSE_ATTEMPTS):
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(GeminiRequestError):
                 parse_resume_import(str(resume_import.id))
+            resume_import.refresh_from_db()
+            self.assertEqual(resume_import.parse_status, ResumeImport.ParseStatus.FAILED)
 
         self.assertEqual(models.generate_content.call_count, MAX_PARSE_ATTEMPTS)
         resume_import.refresh_from_db()
         self.assertEqual(resume_import.parse_attempts, MAX_PARSE_ATTEMPTS)
+        self.assertNotIn("Gemini unavailable", resume_import.parse_error_message)
 
-        # Lượt gọi thứ N + 1: không đụng Gemini nữa, chốt FAILED vĩnh viễn.
+        # Lượt giao tiếp theo phải dừng trước khi gọi lại Gemini.
         result = parse_resume_import(str(resume_import.id))
 
         self.assertEqual(result, {})
@@ -197,7 +226,7 @@ class ResumeParseTaskTests(TestCase):
 
         self.assertEqual(parse_resume_import(ghost_id), {})
 
-    @patch("apps.candidates.tasks._get_client")
+    @patch("integrations.gemini.resume_parser.get_gemini_client")
     def test_processing_duplicate_does_not_call_gemini(self, get_client):
         resume_import = ResumeImport.objects.create(
             candidate=self.profile,
@@ -214,11 +243,72 @@ class ResumeParseTaskTests(TestCase):
         resume_import.refresh_from_db()
         self.assertEqual(resume_import.parse_status, ResumeImport.ParseStatus.PROCESSING)
 
+    @patch("apps.candidates.tasks.parse_resume_document")
+    def test_active_final_attempt_is_not_marked_failed(self, parse_document):
+        resume_import = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile(
+                "cv.pdf", b"%PDF-1.4 test", content_type="application/pdf"
+            ),
+            original_filename="cv.pdf",
+            parse_status=ResumeImport.ParseStatus.PROCESSING,
+            parse_attempts=MAX_PARSE_ATTEMPTS,
+        )
+
+        self.assertEqual(parse_resume_import(str(resume_import.id)), {})
+
+        parse_document.assert_not_called()
+        resume_import.refresh_from_db()
+        self.assertEqual(resume_import.parse_status, ResumeImport.ParseStatus.PROCESSING)
+
+    @patch("integrations.gemini.resume_parser.get_gemini_client")
+    def test_successful_duplicate_does_not_parse_again(self, get_client):
+        resume_import = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile(
+                "cv.pdf", b"%PDF-1.4 test", content_type="application/pdf"
+            ),
+            original_filename="cv.pdf",
+            parse_status=ResumeImport.ParseStatus.SUCCESS,
+            parsed_data={"full_name": "Parsed Candidate"},
+        )
+
+        result = parse_resume_import(str(resume_import.id))
+
+        self.assertEqual(result, {"full_name": "Parsed Candidate"})
+        get_client.assert_not_called()
+
+    @patch("apps.candidates.tasks.parse_resume_document")
+    def test_expired_worker_cannot_overwrite_newer_attempt(self, parse_document):
+        resume_import = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile(
+                "cv.pdf", b"%PDF-1.4 test", content_type="application/pdf"
+            ),
+            original_filename="cv.pdf",
+        )
+
+        def newer_worker_claimed(**_kwargs):
+            ResumeImport.objects.filter(pk=resume_import.pk).update(
+                parse_attempts=F("parse_attempts") + 1,
+                parse_status=ResumeImport.ParseStatus.PROCESSING,
+                updated_at=timezone.now() + timedelta(seconds=1),
+            )
+            return ParsedDocumentResult(
+                raw_data={"full_name": "Stale"},
+                validated_data={"full_name": "Stale"},
+            )
+
+        parse_document.side_effect = newer_worker_claimed
+
+        parse_resume_import(str(resume_import.id))
+
+        resume_import.refresh_from_db()
+        self.assertEqual(resume_import.parse_status, ResumeImport.ParseStatus.PROCESSING)
+        self.assertEqual(resume_import.parse_attempts, 2)
+        self.assertIsNone(resume_import.parsed_data)
+
     def test_cleanup_removes_expired_pending_imports(self):
-        from datetime import timedelta
-
-        from django.utils import timezone
-
         expired_pending = ResumeImport.objects.create(
             candidate=self.profile,
             file=SimpleUploadedFile("old.pdf", b"%PDF-1.4", content_type="application/pdf"),
@@ -239,8 +329,32 @@ class ResumeParseTaskTests(TestCase):
         self.assertFalse(ResumeImport.objects.filter(pk=expired_pending.pk).exists())
         self.assertTrue(ResumeImport.objects.filter(pk=fresh.pk).exists())
 
+    @patch("apps.candidates.tasks.parse_resume_document")
+    def test_old_worker_failure_does_not_mark_new_attempt_failed(self, parse_document):
+        record = ResumeImport.objects.create(
+            candidate=self.profile,
+            file=SimpleUploadedFile("cv.pdf", b"%PDF-1.4"),
+            original_filename="cv.pdf",
+        )
+
+        def newer_worker_claimed(**_kwargs):
+            ResumeImport.objects.filter(pk=record.pk).update(
+                parse_attempts=2,
+                updated_at=timezone.now() + timedelta(seconds=1),
+            )
+            raise RuntimeError("Old worker failed")
+
+        parse_document.side_effect = newer_worker_claimed
+        with self.assertRaises(RuntimeError):
+            parse_resume_import(str(record.pk))
+
+        record.refresh_from_db()
+        self.assertEqual(record.parse_status, ResumeImport.ParseStatus.PROCESSING)
+        self.assertEqual(record.parse_attempts, 2)
+        self.assertEqual(record.parse_error_message, "")
+
     def test_normalize_parsed_data_converts_nullable_text_fields(self):
-        normalized = _normalize_parsed_data({
+        normalized = normalize_resume_data({
             "headline": None,
             "educations": [{"school_name": "HUST", "degree": None}],
             "experiences": [{
@@ -257,3 +371,98 @@ class ResumeParseTaskTests(TestCase):
         self.assertEqual(normalized["experiences"][0]["description"], "")
         self.assertFalse(normalized["experiences"][0]["is_current"])
         self.assertEqual(normalized["skills"], ["Python"])
+
+    @override_settings(TASK_PROCESSING_LEASE_SECONDS=60)
+    @patch("apps.candidates.tasks.parse_resume_document")
+    def test_pending_failed_and_expired_processing_can_succeed(self, parse_document):
+        for initial_status in (
+            ResumeImport.ParseStatus.PENDING,
+            ResumeImport.ParseStatus.FAILED,
+            ResumeImport.ParseStatus.PROCESSING,
+        ):
+            with self.subTest(status=initial_status):
+                record = ResumeImport.objects.create(
+                    candidate=self.profile,
+                    file=SimpleUploadedFile("cv.pdf", b"%PDF-1.4"),
+                    original_filename="cv.pdf",
+                    parse_status=initial_status,
+                    parse_attempts=1,
+                )
+                ResumeImport.objects.filter(pk=record.pk).update(
+                    updated_at=timezone.now() - timedelta(seconds=61)
+                )
+
+                def parse(**_kwargs):
+                    record.refresh_from_db()
+                    self.assertEqual(record.parse_status, ResumeImport.ParseStatus.PROCESSING)
+                    self.assertEqual(record.parse_attempts, 2)
+                    return ParsedDocumentResult(
+                        raw_data={"full_name": None},
+                        validated_data={"full_name": ""},
+                    )
+
+                parse_document.side_effect = parse
+                self.assertEqual(parse_resume_import(str(record.pk)), {"full_name": ""})
+                record.refresh_from_db()
+                self.assertEqual(record.parse_status, ResumeImport.ParseStatus.SUCCESS)
+
+    @override_settings(TASK_PROCESSING_LEASE_SECONDS=60)
+    @patch("apps.candidates.tasks.parse_resume_document")
+    def test_expired_final_attempt_is_failed_without_parsing(self, parse_document):
+        record = ResumeImport.objects.create(
+            candidate=self.profile,
+            file="unused.pdf",
+            parse_status=ResumeImport.ParseStatus.PROCESSING,
+            parse_attempts=MAX_PARSE_ATTEMPTS,
+        )
+        ResumeImport.objects.filter(pk=record.pk).update(
+            updated_at=timezone.now() - timedelta(seconds=61)
+        )
+
+        self.assertEqual(parse_resume_import(str(record.pk)), {})
+
+        record.refresh_from_db()
+        self.assertEqual(record.parse_status, ResumeImport.ParseStatus.FAILED)
+        parse_document.assert_not_called()
+
+    @patch("apps.candidates.tasks.parse_resume_document")
+    def test_cleanup_between_claim_and_read_is_safe(self, parse_document):
+        record = ResumeImport.objects.create(
+            candidate=self.profile,
+            file="unused.pdf",
+            expires_at=timezone.now() - timedelta(seconds=1),
+        )
+        record_id = str(record.pk)
+        claim = tasks._claim_parse_attempt
+
+        def claim_then_cleanup(import_id):
+            token = claim(import_id)
+            cleanup_expired_resume_imports()
+            return token
+
+        with patch("apps.candidates.tasks._claim_parse_attempt", side_effect=claim_then_cleanup):
+            self.assertEqual(parse_resume_import(record_id), {})
+        self.assertEqual(parse_resume_import(record_id), {})
+        parse_document.assert_not_called()
+
+    @patch("apps.candidates.tasks.parse_resume_document")
+    def test_cleanup_during_parse_does_not_recreate_record(self, parse_document):
+        for fails in (False, True):
+            with self.subTest(fails=fails):
+                record = ResumeImport.objects.create(
+                    candidate=self.profile,
+                    file=SimpleUploadedFile("cv.pdf", b"%PDF-1.4"),
+                    original_filename="cv.pdf",
+                    expires_at=timezone.now() - timedelta(seconds=1),
+                )
+
+                def parse_then_cleanup(**_kwargs):
+                    with self.captureOnCommitCallbacks(execute=True):
+                        cleanup_expired_resume_imports()
+                    if fails:
+                        raise RuntimeError("File removed")
+                    return ParsedDocumentResult(raw_data={}, validated_data={})
+
+                parse_document.side_effect = parse_then_cleanup
+                self.assertEqual(parse_resume_import(str(record.pk)), {})
+                self.assertFalse(ResumeImport.objects.filter(pk=record.pk).exists())

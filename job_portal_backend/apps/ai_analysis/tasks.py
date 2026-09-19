@@ -1,4 +1,3 @@
-"""Task nền tính điểm phù hợp từ snapshot bất biến của hồ sơ ứng tuyển."""
 import math
 from datetime import date
 from decimal import Decimal
@@ -16,6 +15,7 @@ from apps.core.matching import (
     experience_score,
     recognized_degree_level,
     required_degree_level,
+    semantic_similarity,
     skill_match_score,
     total_experience_years,
 )
@@ -32,7 +32,6 @@ from integrations.gemini.embeddings import (
 
 
 def _cosine_similarity(left, right) -> float:
-    """Tính độ tương đồng cosine cho vector hữu hạn, khác zero và đúng số chiều."""
     if len(left) != EMBEDDING_DIMENSIONS or len(right) != EMBEDDING_DIMENSIONS:
         raise ValueError("Embedding snapshot sai số chiều.")
     if any(not math.isfinite(value) for value in (*left, *right)):
@@ -100,7 +99,7 @@ def _job_embedding(application: JobApplication):
 
 
 def _save_legacy_snapshot_result(application, similarity) -> None:
-    """Hoàn tất snapshot trước v2 đã lưu bằng quy tắc gốc của chúng."""
+    """Giữ cách tính cũ cho snapshot tạo trước v2."""
     profile_snapshot = application.profile_snapshot
     job_snapshot = application.job_snapshot
     candidate_skill_ids = {item["id"] for item in profile_snapshot["skills"]}
@@ -190,8 +189,7 @@ def _compute_application_match_score(application_id: str) -> bool:
             application.snapshot_created_at,
         )
     ):
-        # Legacy applications predate immutable scoring snapshots and cannot be
-        # reconstructed truthfully from the candidate's current profile.
+        # Dữ liệu hiện tại không thể tái tạo điểm của hồ sơ có trước snapshot.
         JobApplication.objects.filter(pk=application_id).update(
             match_status=JobApplication.MatchStatus.INSUFFICIENT,
             match_error="Đơn lịch sử không có snapshot tính điểm.",
@@ -203,11 +201,12 @@ def _compute_application_match_score(application_id: str) -> bool:
     if candidate_embedding is None or job_embedding is None:
         raise RuntimeError("Embedding snapshot chưa sẵn sàng để tính điểm.")
 
-    similarity = max(
-        0.0,
+    cosine_similarity = max(
+        -1.0,
         min(1.0, _cosine_similarity(candidate_embedding, job_embedding)),
     )
-    semantic_score = similarity
+    semantic_score = semantic_similarity(1.0 - cosine_similarity)
+    similarity = semantic_score
 
     profile_snapshot = application.profile_snapshot
     job_snapshot = application.job_snapshot
@@ -337,7 +336,7 @@ def _compute_application_match_score(application_id: str) -> bool:
 
 
 def compute_application_match_score(application_id: str) -> bool:
-    """Tách lỗi xử lý khỏi trạng thái tuyển dụng."""
+    """Không để lỗi chấm điểm đổi trạng thái tuyển dụng."""
     claimed = JobApplication.objects.filter(pk=application_id).update(
         match_status=JobApplication.MatchStatus.PROCESSING,
         match_error="",
@@ -373,8 +372,7 @@ def compute_application_match_score(application_id: str) -> bool:
 
 
 def retry_incomplete_application_matches() -> int:
-    """Phát hành lại task cho hồ sơ đang chờ hoặc lỗi mà không cần ứng tuyển lại."""
-    from apps.core.qstash_client import publish_task
+    from integrations.qstash.publisher import publish_task
 
     application_ids = list(
         JobApplication.objects.filter(

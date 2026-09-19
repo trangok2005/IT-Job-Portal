@@ -1,12 +1,10 @@
-"""Điều phối thông báo độc lập với thay đổi trạng thái hồ sơ ứng tuyển."""
 from django.db import transaction
 
 from apps.applications.models import ApplicationStatusHistory
-from apps.core.qstash_client import publish_task
+from integrations.qstash.publisher import publish_task
 
 
 def enqueue_application_status_email(history: ApplicationStatusHistory) -> None:
-    """Đưa tác vụ delivery vào hàng đợi sau commit mà không ảnh hưởng trạng thái đã lưu."""
 
     def enqueue():
         try:

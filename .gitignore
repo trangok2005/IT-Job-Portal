@@ -1,12 +1,12 @@
-# Byte-compiled / optimized / DLL files
+# Các file bytecode / tối ưu hóa / DLL
 __pycache__/
 *.py[codz]
 *$py.class
 
-# C extensions
+# Phần mở rộng C
 *.so
 
-# Distribution / packaging
+# Phân phối / đóng gói
 .Python
 build/
 develop-eggs/
@@ -29,16 +29,16 @@ share/python-wheels/
 MANIFEST
 
 # PyInstaller
-#   Usually these files are written by a python script from a template
-#   before PyInstaller builds the exe, so as to inject date/other infos into it.
+#   Các file này thường được Python script tạo từ template trước khi PyInstaller
+#   build file exe để chèn ngày tháng và các thông tin khác.
 *.manifest
 *.spec
 
-# Installer logs
+# Log của trình cài đặt
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
+# Báo cáo unit test / coverage
 htmlcov/
 .tox/
 .nox/
@@ -53,11 +53,11 @@ coverage.xml
 .pytest_cache/
 cover/
 
-# Translations
+# Bản dịch
 *.mo
 *.pot
 
-# Django stuff:
+# Thành phần Django:
 *.log
 local_settings.py
 db.sqlite3
@@ -65,14 +65,14 @@ db.sqlite3-journal
 job_portal_backend/media/
 job_portal_backend/staticfiles/
 
-# Flask stuff:
+# Thành phần Flask:
 instance/
 .webassets-cache
 
-# Scrapy stuff:
+# Thành phần Scrapy:
 .scrapy
 
-# Sphinx documentation
+# Tài liệu Sphinx
 docs/_build/
 
 # PyBuilder
@@ -87,34 +87,33 @@ profile_default/
 ipython_config.py
 
 # pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
+#   Với library hoặc package, có thể bỏ qua các file này vì code được thiết kế để
+#   chạy trong nhiều môi trường; nếu không, hãy đưa chúng vào version control:
 # .python-version
 
 # pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
+#   Theo pypa/pipenv#598, nên đưa Pipfile.lock vào version control.
+#   Tuy nhiên khi cộng tác, nếu có dependency riêng cho từng nền tảng hoặc không hỗ trợ
+#   đa nền tảng, pipenv có thể cài dependency không hoạt động hoặc không cài đủ dependency.
 # Pipfile.lock
 
 # UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
+#   Tương tự Pipfile.lock, nhìn chung nên đưa uv.lock vào version control.
+#   Điều này đặc biệt hữu ích với binary package để bảo đảm khả năng tái lập, còn library
+#   thường bỏ qua file này hơn.
 # uv.lock
 
 # poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
+#   Tương tự Pipfile.lock, nhìn chung nên đưa poetry.lock vào version control.
+#   Điều này đặc biệt hữu ích với binary package để bảo đảm khả năng tái lập, còn library
+#   thường bỏ qua file này hơn.
 #   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
 # poetry.lock
 # poetry.toml
 
 # pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
+#   Tương tự Pipfile.lock, nhìn chung nên đưa pdm.lock vào version control.
+#   pdm khuyến nghị đưa cấu hình toàn dự án trong pdm.toml vào, nhưng loại trừ .pdm-python.
 #   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
 # pdm.lock
 # pdm.toml
@@ -122,16 +121,16 @@ ipython_config.py
 .pdm-build/
 
 # pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
+#   Tương tự Pipfile.lock, nhìn chung nên đưa pixi.lock vào version control.
 # pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
+#   Pixi tạo virtual environment trong thư mục .pixi, tương tự module venv tạo trong thư mục
+#   .venv. Không nên đưa thư mục này vào version control.
 .pixi
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+# PEP 582; được dùng bởi các công cụ như github.com/David-OConnor/pyflow và github.com/pdm-project/pdm
 __pypackages__/
 
-# Celery stuff
+# Thành phần Celery
 celerybeat-schedule
 celerybeat.pid
 
@@ -148,10 +147,10 @@ rabbitmq-data/
 # ActiveMQ
 activemq-data/
 
-# SageMath parsed files
+# File do SageMath phân tích
 *.sage.py
 
-# Environments
+# Môi trường
 .env
 .env.*
 !.env.example
@@ -164,14 +163,14 @@ ENV/
 env.bak/
 venv.bak/
 
-# Spyder project settings
+# Cấu hình dự án Spyder
 .spyderproject
 .spyproject
 
-# Rope project settings
+# Cấu hình dự án Rope
 .ropeproject
 
-# mkdocs documentation
+# Tài liệu mkdocs
 /site
 
 # mypy
@@ -179,41 +178,41 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
-# Pyre type checker
+# Công cụ kiểm tra kiểu Pyre
 .pyre/
 
-# pytype static type analyzer
+# Công cụ phân tích kiểu tĩnh pytype
 .pytype/
 
-# Cython debug symbols
+# Symbol debug của Cython
 cython_debug/
 
 # PyCharm
-#   JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#   be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#   and can be added to the global gitignore or merged into this file.  For a more nuclear
-#   option (not recommended) you can uncomment the following to ignore the entire idea folder.
+#   Template riêng cho JetBrains được duy trì trong file JetBrains.gitignore tại
+#   https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore; có thể thêm file đó
+#   vào global gitignore hoặc gộp vào file này. Nếu muốn bỏ qua toàn bộ thư mục idea
+#   (không khuyến nghị), có thể bỏ comment dòng sau.
 # .idea/
 
 # Abstra
-#   Abstra is an AI-powered process automation framework.
-#   Ignore directories containing user credentials, local state, and settings.
-#   Learn more at https://abstra.io/docs
+#   Abstra là framework tự động hóa process dùng AI.
+#   Bỏ qua các thư mục chứa thông tin xác thực người dùng, trạng thái cục bộ và cấu hình.
+#   Xem thêm tại https://abstra.io/docs
 .abstra/
 
 # Visual Studio Code
-#   Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#   that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#   and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#   you could uncomment the following to ignore the entire vscode folder
+#   Template riêng cho Visual Studio Code được duy trì trong file VisualStudioCode.gitignore
+#   tại https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore; có thể thêm
+#   file đó vào global gitignore hoặc gộp vào file này. Nếu muốn, có thể bỏ comment dòng sau
+#   để bỏ qua toàn bộ thư mục vscode.
 # .vscode/
-# Temporary file for partial code execution
+# File tạm khi chạy một phần code
 tempCodeRunnerFile.py
 
-# Ruff stuff:
+# Thành phần Ruff:
 .ruff_cache/
 
-# PyPI configuration file
+# File cấu hình PyPI
 .pypirc
 
 # Marimo

@@ -2,8 +2,8 @@ from django.urls import include, path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenVerifyView
 
 from apps.accounts.views import ActiveUserTokenRefreshView, GoogleAuthView
-from apps.core.task_dispatcher import task_dispatcher
 from apps.core.views import HealthView
+from integrations.qstash.views import task_dispatcher
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),

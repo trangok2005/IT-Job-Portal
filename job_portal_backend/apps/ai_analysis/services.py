@@ -1,4 +1,3 @@
-"""Các thao tác ghi kết quả phù hợp đã lưu của hồ sơ ứng tuyển."""
 from django.db import transaction
 from decimal import Decimal
 
@@ -25,7 +24,7 @@ def save_match_result(
     rule_version="matching-v2.2.4",
     embedding_metadata=None,
 ) -> ApplicationMatchResult:
-    """Chỉ tạo một lần; retry trả nguyên kết quả bất biến đã thành công."""
+    """Retry trả lại kết quả đã lưu thay vì tính lại snapshot."""
     application = (
         JobApplication.objects.select_for_update()
         .select_related("candidate", "job")

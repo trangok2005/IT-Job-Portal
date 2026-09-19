@@ -27,7 +27,7 @@ Hệ thống hỗ trợ quản lý hồ sơ, tìm kiếm và gợi ý việc là
 
 ## 4. Kiến trúc tổng thể
 
-Backend tổ chức thao tác ghi và quy tắc nghiệp vụ trong service, truy vấn đọc trong selector, còn view chủ yếu xử lý HTTP. Tác vụ trích xuất tài liệu, sinh embedding, tính Match Score và gửi email được QStash gọi qua dispatcher có xác thực.
+Backend tổ chức thao tác ghi và quy tắc nghiệp vụ trong service, truy vấn đọc trong selector, còn view chủ yếu xử lý HTTP. Business service phát hành message qua `integrations/qstash`; callback có chữ ký được chuyển vào dispatcher trung lập tại `apps/core/background_tasks`, rồi thực thi task trong từng domain app.
 
 Gemini chỉ trích xuất dữ liệu có cấu trúc và sinh embedding. Backend kiểm tra dữ liệu trích xuất, lưu vector bằng pgvector và tính Match Score từ semantic similarity, skill, experience, education cùng cấu hình trọng số đang hoạt động.
 
@@ -163,7 +163,7 @@ Các nhóm biến backend chính:
 | JWT và Google | `JWT_ACCESS_MINUTES`, `JWT_REFRESH_DAYS`, `GOOGLE_CLIENT_ID` |
 | QStash | `QSTASH_DEV`, `QSTASH_URL`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` |
 | Cloudflare R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT_URL`, `R2_SIGNED_URL_TTL_SECONDS` |
-| Gemini | `GEMINI_API_KEY`, `GEMINI_PARSER_MODEL`, `GEMINI_EMBEDDING_MODEL`, `EMBEDDING_TIMEOUT_MS`, `TASK_PROCESSING_LEASE_SECONDS` |
+| Gemini | `GEMINI_API_KEY`, `GEMINI_PARSER_MODEL`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_TIMEOUT_MS`, `TASK_PROCESSING_LEASE_SECONDS` |
 | Redis | `REDIS_URL` |
 | Email | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `EMAIL_TIMEOUT`, `DEFAULT_FROM_EMAIL` |
 | Upload | `MAX_RESUME_SIZE_BYTES`, `MAX_JD_SIZE_BYTES` |
@@ -172,22 +172,8 @@ Frontend sử dụng `NEXT_PUBLIC_API_URL`, `API_URL` và `NEXT_PUBLIC_GOOGLE_CL
 
 Local dùng `config.settings.local` và `LocMemCache`. Production dùng `config.settings.production`, yêu cầu Redis qua `rediss://` và kiểm tra chặt các biến bảo mật khi khởi động.
 
-## 10. Chạy kiểm tra
 
-Chạy từ thư mục gốc repository:
-
-```powershell
-job_portal_backend/.venv/Scripts/python.exe job_portal_backend/manage.py check --settings=config.settings.test
-job_portal_backend/.venv/Scripts/python.exe job_portal_backend/manage.py makemigrations --check --dry-run --settings=config.settings.test
-job_portal_backend/.venv/Scripts/python.exe job_portal_backend/manage.py test --settings=config.settings.test
-npm run lint --prefix job_portal_frontend
-npm run typecheck --prefix job_portal_frontend
-npm run build --prefix job_portal_frontend
-```
-
-Frontend chưa khai báo script test. CI hiện chạy backend test và frontend lint.
-
-## 11. Mô hình triển khai
+## 10. Mô hình triển khai
 
 - **Frontend:** có thể triển khai dự án Next.js trong `job_portal_frontend` lên Vercel và cấu hình ba biến frontend theo file `.env.production.example`.
 - **Backend:** repository có `deploy/render/build.sh` và `deploy/render/start.sh` để cài dependency production, collect static, migrate và chạy Gunicorn trên Render.
@@ -195,5 +181,3 @@ Frontend chưa khai báo script test. CI hiện chạy backend test và frontend
 - **Tác vụ nền:** production dùng Upstash QStash và các signing key để xác minh callback.
 - **Cache và throttle:** production dùng Redis qua TLS.
 - **File:** CV và JD được lưu riêng tư trên Cloudflare R2.
-
-

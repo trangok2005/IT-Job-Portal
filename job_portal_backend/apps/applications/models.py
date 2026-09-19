@@ -1,4 +1,3 @@
-"""Mô hình ứng tuyển với state machine một chiều cho candidate và employer."""
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -25,8 +24,6 @@ class JobApplication(UUIDModel, TimeStampedModel):
         REJECTED = "REJECTED", "Từ chối"
         HIRED = "HIRED", "Đã tuyển dụng"
 
-    # Bảng chuyển trạng thái hợp lệ, dùng để validate ở service layer trước
-    # khi save() (UC-04 E3: "Trạng thái không hợp lệ -> báo lỗi, giữ nguyên").
     VALID_TRANSITIONS = {
         Status.APPLIED: {Status.SHORTLISTED, Status.REJECTED},
         Status.SHORTLISTED: {Status.INTERVIEWED, Status.REJECTED},
@@ -37,8 +34,7 @@ class JobApplication(UUIDModel, TimeStampedModel):
 
     job = models.ForeignKey(JobPost, on_delete=models.CASCADE, related_name="applications")
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="applications")
-    # CV chính tại thời điểm nộp nếu candidate chọn đính kèm. RESTRICT giữ
-    # file đã nộp tồn tại dù candidate đổi CV chính sau đó.
+    # RESTRICT giữ CV đã nộp khi ứng viên đổi CV chính.
     resume = models.ForeignKey(
         Resume,
         on_delete=models.RESTRICT,
@@ -49,8 +45,7 @@ class JobApplication(UUIDModel, TimeStampedModel):
     cover_letter = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.APPLIED)
 
-    # Immutable scoring inputs captured atomically with the application. Queue
-    # payloads contain only the application ID; workers read these snapshots.
+    # Lưu đầu vào chấm điểm cùng transaction; queue chỉ mang ID.
     profile_snapshot = models.JSONField(null=True, blank=True, editable=False)
     job_snapshot = models.JSONField(null=True, blank=True, editable=False)
     matching_weight_snapshot = models.JSONField(null=True, blank=True, editable=False)
@@ -72,8 +67,6 @@ class JobApplication(UUIDModel, TimeStampedModel):
     class Meta:
         db_table = "job_applications"
         constraints = [
-            # Ngăn ứng viên nộp trùng vào cùng 1 tin (đáp ứng ràng buộc ngầm
-            # trong UC "Ứng tuyển").
             models.UniqueConstraint(fields=["job", "candidate"], name="uniq_job_candidate_application"),
         ]
         indexes = [
@@ -85,12 +78,11 @@ class JobApplication(UUIDModel, TimeStampedModel):
         return f"{self.candidate.full_name} -> {self.job.title} [{self.status}]"
 
     def can_transition_to(self, new_status: str, from_status: str | None = None) -> bool:
-        """Kiểm tra chuyển tiếp từ trạng thái chỉ định hoặc trạng thái hiện tại."""
         source_status = from_status or self.status
         return new_status in self.VALID_TRANSITIONS.get(source_status, set())
 
     def clean(self):
-        # Bảo vệ ở tầng model, ngoài validate ở serializer/service.
+        # Giữ ràng buộc chuyển trạng thái khi caller bỏ qua service.
         if self.pk:
             old_status = JobApplication.objects.get(pk=self.pk).status
             if old_status != self.status and not self.can_transition_to(
@@ -103,8 +95,6 @@ class JobApplication(UUIDModel, TimeStampedModel):
 
 
 class ApplicationStatusHistory(UUIDModel):
-    """Audit trail cho mỗi lần đổi trạng thái, dùng để theo dõi và truy vết."""
-
     application = models.ForeignKey(JobApplication, on_delete=models.CASCADE, related_name="status_history")
     from_status = models.CharField(max_length=20, choices=JobApplication.Status.choices, blank=True)
     to_status = models.CharField(max_length=20, choices=JobApplication.Status.choices)

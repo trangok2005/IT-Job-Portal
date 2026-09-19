@@ -42,7 +42,6 @@ class MatchingWeightConfigAdmin(admin.ModelAdmin):
         )
         obj.updated_by = request.user
         if obj.is_active:
-            # Chỉ 1 config được active tại một thời điểm.
             for other in configs:
                 if other.pk != obj.pk and other.is_active:
                     other.is_active = False

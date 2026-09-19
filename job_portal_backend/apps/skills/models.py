@@ -1,4 +1,3 @@
-"""Mô hình taxonomy skill, alias, trọng số phù hợp và liên kết candidate."""
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -17,8 +16,6 @@ class SkillCategory(UUIDModel):
 
 
 class Skill(BaseModel):
-    """Nút skill canonical đã chuẩn hóa trong taxonomy."""
-
     class Status(models.TextChoices):
         PENDING = "PENDING", "Chờ duyệt"
         APPROVED = "APPROVED", "Đã duyệt"
@@ -36,15 +33,8 @@ class Skill(BaseModel):
         help_text="Admin tạm ẩn 1 skill đã APPROVED (khác với status, dùng khi cần deprecate).",
     )
 
-    # Skill lạ ở trạng thái PENDING không chặn luồng lưu hồ sơ/JD.
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.APPROVED)
-    # Khi Admin thấy 2 skill thực ra là 1 (VD "ReactJS" và
-    # "React"), KHÔNG xoá skill này (sẽ cascade-xoá luôn mọi
-    # CandidateSkill/JobSkill đã trỏ vào nó, làm mất dữ liệu đã hiển thị
-    # trên hồ sơ). Thay vào đó set MERGED + merged_into, và service layer
-    # sẽ viết lại (rewrite) toàn bộ CandidateSkill/JobSkill đang trỏ vào
-    # đây sang merged_into thay vì giữ nguyên chain để tránh phải resolve
-    # merge nhiều tầng lúc query.
+    # Giữ skill đã gộp để audit; xóa sẽ cascade các liên kết.
     merged_into = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="merged_from",
     )
@@ -71,8 +61,7 @@ class Skill(BaseModel):
 
     @property
     def effective_skill(self):
-        """Nếu skill này đã bị gộp, trả về skill đích cuối cùng (phòng khi
-        service layer bỏ sót bước rewrite FK lúc merge)."""
+        """Theo chuỗi merge nếu một FK cũ chưa được rewrite."""
         node = self
         seen = {node.pk}
         while node.status == self.Status.MERGED and node.merged_into_id:
@@ -84,11 +73,7 @@ class Skill(BaseModel):
 
 
 class SkillAlias(UUIDModel):
-    """Chuỗi thô do user nhập hoặc Gemini trích xuất, ánh xạ đến Skill canonical.
-
-    Ví dụ: 'ReactJS', 'React.js', 'react' cùng ánh xạ đến Skill('React'). Đây là
-    phần cốt lõi của bước chuẩn hóa skill trong pipeline AI.
-    """
+    """Ánh xạ tên nhập hoặc trích xuất về skill canonical."""
 
     skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name="aliases")
     alias_text = models.CharField(max_length=150, unique=True)
@@ -105,16 +90,10 @@ class SkillAlias(UUIDModel):
 
 
 class MatchingWeightConfig(BaseModel):
-    """Cấu hình tiêu chí và trọng số tính mức độ phù hợp do admin quản trị.
-
-    Mỗi thời điểm chỉ có một cấu hình ``is_active=True``; bước xếp hạng dùng
-    cấu hình này để kết hợp độ tương đồng semantic với tín hiệu theo quy tắc.
-    """
 
     name = models.CharField(max_length=150)
     is_active = models.BooleanField(default=False)
 
-    # Weights should sum to 1.0 (validated at the serializer/service layer).
     weight_semantic_similarity = models.DecimalField(max_digits=4, decimal_places=3, default=0.350)
     weight_skill_overlap = models.DecimalField(max_digits=4, decimal_places=3, default=0.400)
     weight_experience_match = models.DecimalField(max_digits=4, decimal_places=3, default=0.200)
@@ -164,8 +143,6 @@ class MatchingWeightConfig(BaseModel):
 
 
 class CandidateSkill(UUIDModel, TimeStampedModel):
-    """Skill đã chuẩn hóa được chọn cho hồ sơ candidate."""
-
     candidate = models.ForeignKey(
         "candidates.CandidateProfile", on_delete=models.CASCADE, related_name="candidate_skills",
     )

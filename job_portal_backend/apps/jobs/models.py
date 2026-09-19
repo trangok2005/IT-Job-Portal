@@ -1,4 +1,3 @@
-"""Mô hình tin tuyển dụng, skill yêu cầu và embedding pgvector cho UC-02/03."""
 from django.conf import settings
 from django.db import models
 from pgvector.django import VectorField, HnswIndex
@@ -109,7 +108,6 @@ class JobPost(UUIDModel, TimeStampedModel):
 
     @property
     def embedding_is_stale(self):
-        """Cho biết embedding có còn khớp nội dung JD hiện tại hay không."""
         return (
             self.embedding is None
             or self.embedding_version != self.content_version
@@ -138,7 +136,7 @@ class JDImport(UUIDModel, TimeStampedModel):
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDING
     )
-    # Giới hạn số lần Gemini parse lại bản ghi này (chống retry vô hạn của broker).
+    # Giới hạn retry để bảo vệ quota Gemini.
     parse_attempts = models.PositiveSmallIntegerField(default=0)
     parsed_data = models.JSONField(null=True, blank=True)
     error_message = models.TextField(blank=True)
@@ -155,8 +153,6 @@ class JDImport(UUIDModel, TimeStampedModel):
 
 
 class JobSkill(UUIDModel, TimeStampedModel):
-    """Kỹ năng bắt buộc hoặc ưu tiên của một tin tuyển dụng."""
-
     job = models.ForeignKey(JobPost, on_delete=models.CASCADE, related_name="job_skills")
     skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name="job_links")
     is_required = models.BooleanField(default=True, help_text="False = 'nice to have'")

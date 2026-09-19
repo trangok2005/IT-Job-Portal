@@ -1,6 +1,6 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Xem thêm cách bỏ qua file tại https://help.github.com/articles/ignoring-files/.
 
-# dependencies
+# Phụ thuộc
 /node_modules
 /.pnp
 .pnp.*
@@ -10,27 +10,27 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
+# Kiểm thử
 /coverage
 
 # next.js
 /.next/
 /out/
 
-# production
+# Môi trường production
 /build
 
-# misc
+# Thành phần khác
 .DS_Store
 *.pem
 
-# debug
+# Gỡ lỗi
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# File môi trường (có thể chủ động commit nếu cần)
 .env*
 !.env.example
 !.env.*.example

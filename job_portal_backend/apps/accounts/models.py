@@ -1,4 +1,3 @@
-"""Mô hình user hỗ trợ ba role nghiệp vụ, mật khẩu/JWT và Google OAuth."""
 import uuid
 
 from django.contrib.auth.models import AbstractUser
@@ -6,8 +5,6 @@ from django.db import models
 
 
 class User(AbstractUser):
-    """User xác thực bằng JWT (SimpleJWT) hoặc Google OAuth."""
-
     class Role(models.TextChoices):
         CANDIDATE = "CANDIDATE", "Ứng viên"
         EMPLOYER = "EMPLOYER", "Nhà tuyển dụng"
@@ -15,7 +12,7 @@ class User(AbstractUser):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # Email is the real login identifier; username kept only for Django admin.
+    # Đăng nhập bằng email; username chỉ giữ để tương thích Django admin.
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.CANDIDATE)
 
@@ -29,8 +26,6 @@ class User(AbstractUser):
         default="PASSWORD",
     )
 
-    # is_active reused by UC-04/E2 ("Ứng viên đã xóa hoặc khóa tài khoản")
-    # inherited from AbstractUser: self.is_active
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

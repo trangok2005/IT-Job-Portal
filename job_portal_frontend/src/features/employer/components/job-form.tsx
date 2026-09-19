@@ -3,7 +3,7 @@
 import { AlertCircle, ArrowLeft, CircleCheck, FileUp, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -55,22 +55,36 @@ function toDateTimeLocal(value: string | null | undefined) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function JobForm({ jobId, importId }: { jobId?: string; importId?: string }) {
+export function JobForm({ jobId }: { jobId?: string; importId?: string }) {
   const router = useRouter();
-  const { jdImport, stalled: jdStalled, pollError, retry: retryPolling, startImport, cancelImport, clearImport } = useJDImport();
+  const {
+    jdImport,
+    hasImport,
+    isUploading,
+    isCancelling,
+    cancelError,
+    stalled: jdStalled,
+    pollError,
+    retry: retryPolling,
+    startImport,
+    cancelImport,
+    clearImport,
+  } = useJDImport();
   const [job, setJob] = useState<JobDto | null>(null);
   const [companyStatus, setCompanyStatus] = useState<CompanyStatus | null>(null);
   const [jdFile, setJdFile] = useState<File | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [skills, setSkills] = useState<SkillDto[]>([]);
   const [skillSpecs, setSkillSpecs] = useState<SkillSpec[] | null>(null);
   const [skillToAdd, setSkillToAdd] = useState("");
   const [loading, setLoading] = useState(Boolean(jobId));
-  const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submitIntent, setSubmitIntent] = useState<"draft" | "publish" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [jdApplied, setJdApplied] = useState(false);
-  const activeImport = !jobId && jdImport?.id === importId ? jdImport : null;
+  const [appliedImportId, setAppliedImportId] = useState<string | null>(null);
+  // Provider đã scope theo user; URL cũ không được quyết định import đang dùng.
+  const activeImport = !jobId ? jdImport : null;
+  const jdApplied = Boolean(activeImport && activeImport.id === appliedImportId);
   const parsed = jdApplied && activeImport?.status === "SUCCESS" ? activeImport.parsed_data : null;
   const selectedSkills = skillSpecs ?? parsed?.resolved_skills.map((skill) => ({
     skill: skill.id,
@@ -79,7 +93,15 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
   const availableSkills = skills.filter(
     (skill) => !selectedSkills.some((selectedSkill) => selectedSkill.skill === skill.id),
   );
-  const isParsing = parsing || activeImport?.status === "PENDING" || activeImport?.status === "PROCESSING";
+  const isParsing = activeImport?.status === "PENDING" || activeImport?.status === "PROCESSING";
+  const uploadDisabled = saving || isUploading || isCancelling || (hasImport && activeImport?.status !== "FAILED");
+
+  // Xóa cả kỹ năng nháp khi import đã bị bỏ hoặc hết hạn.
+  if (appliedImportId && appliedImportId !== activeImport?.id) {
+    setAppliedImportId(null);
+    setSkillSpecs(null);
+    setSkillToAdd("");
+  }
 
   useEffect(() => {
     Promise.all([
@@ -107,6 +129,7 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
   }, [jobId]);
 
   const parseJd = async () => {
+    if (uploadDisabled) return;
     if (!jdFile) {
       setError("Vui lòng chọn file JD PDF, DOC hoặc DOCX.");
       return;
@@ -115,21 +138,32 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
       setError("Dung lượng JD không được vượt quá 5 MB.");
       return;
     }
-    setParsing(true);
     setError(null);
     try {
-      setJdApplied(false);
       const result = await startImport(jdFile);
+      setJdFile(null);
+      if (fileInput.current) fileInput.current.value = "";
       router.replace(`/employer/jobs/new?import_id=${result.id}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể đọc thông tin từ file JD.");
-    } finally {
-      setParsing(false);
     }
+  };
+
+  const discardImport = async () => {
+    if (!(await cancelImport())) return;
+    if (jdApplied) {
+      setSkillSpecs(null);
+      setSkillToAdd("");
+    }
+    setAppliedImportId(null);
+    setJdFile(null);
+    if (fileInput.current) fileInput.current.value = "";
+    setError(null);
   };
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (saving || isCancelling || isUploading) return;
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const intent = submitter?.value === "publish" ? "publish" : "draft";
     const form = new FormData(event.currentTarget);
@@ -160,7 +194,11 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
       jd_import_id: jdApplied && activeImport?.status === "SUCCESS" ? activeImport.id : undefined,
     };
 
-    if (typeof payload.salary_min === "number" && typeof payload.salary_max === "number" && payload.salary_min > payload.salary_max) {
+    if (
+      typeof payload.salary_min === "number" &&
+      typeof payload.salary_max === "number" &&
+      payload.salary_min > payload.salary_max
+    ) {
       setError("Lương tối thiểu không được lớn hơn lương tối đa.");
       return;
     }
@@ -178,10 +216,14 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
         if (intent === "publish" && job?.status === "DRAFT") {
           await publishEmployerJob(jobId);
         }
-      }
-      else {
+      } else {
         await createEmployerJob(payload);
-        if (payload.jd_import_id) clearImport();
+        if (payload.jd_import_id) {
+          clearImport();
+          setAppliedImportId(null);
+          setSkillSpecs(null);
+          setSkillToAdd("");
+        }
       }
       router.push("/employer/jobs");
     } catch (reason) {
@@ -229,12 +271,14 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
       </p>
       {!jobId && (
         <section className="mt-6 rounded-xl border border-primary-100 bg-primary-50/50 p-5">
-          {!jdImport && pollError && (
-            <div className="mb-4 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              <AlertCircle className="size-4 shrink-0" />
-              <span className="flex-1">Không thể lấy lại tác vụ trích xuất JD đang chạy. Vui lòng thử lại.</span>
-              <Button type="button" size="sm" variant="outline" onClick={() => retryPolling()}>
-                Thử lại
+          {hasImport && !activeImport && (
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
+              <span className="flex-1">
+                {pollError ? "Không thể lấy lại kết quả trích xuất JD. Vui lòng thử lại." : "Đang lấy lại kết quả trích xuất JD..."}
+              </span>
+              {pollError && <Button type="button" size="sm" variant="outline" disabled={isCancelling} onClick={retryPolling}>Thử lại</Button>}
+              <Button type="button" size="sm" variant="ghost" disabled={isCancelling} onClick={() => void discardImport()}>
+                {isCancelling ? "Đang xóa..." : "Xóa"}
               </Button>
             </div>
           )}
@@ -244,18 +288,18 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
           </div>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <Input
+              ref={fileInput}
               type="file"
               accept=".pdf,.doc,.docx"
+              disabled={uploadDisabled}
               onChange={(event) => {
                 setJdFile(event.target.files?.[0] ?? null);
-                setSkillSpecs(null);
-                setSkillToAdd("");
               }}
               className="bg-white"
             />
-            <Button type="button" variant="outline" disabled={!jdFile || isParsing} onClick={() => void parseJd()}>
-              {isParsing ? <Loader2 className="animate-spin" /> : <FileUp />}
-              {isParsing ? "Đang phân tích..." : "Trích xuất JD"}
+            <Button type="button" variant="outline" disabled={!jdFile || uploadDisabled} onClick={() => void parseJd()}>
+              {isParsing || isUploading ? <Loader2 className="animate-spin" /> : <FileUp />}
+              {isUploading ? "Đang tải..." : isParsing ? "Đang phân tích..." : "Trích xuất JD"}
             </Button>
           </div>
           {activeImport && ["PENDING", "PROCESSING"].includes(activeImport.status) && (
@@ -266,38 +310,53 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
                 {jdStalled && " Tác vụ vẫn đang được xử lý. Bạn có thể kiểm tra lại."}
                 {pollError && " Lỗi kết nối. Hãy thử kiểm tra lại."}
               </span>
-              <Button type="button" size="sm" variant="outline" onClick={() => retryPolling()}>
+              <Button type="button" size="sm" variant="outline" disabled={isCancelling} onClick={retryPolling}>
                 Kiểm tra lại
+              </Button>
+              <Button type="button" size="sm" variant="ghost" disabled={isCancelling || saving} onClick={() => void discardImport()}>
+                {isCancelling ? "Đang hủy..." : "Hủy trích xuất"}
               </Button>
             </div>
           )}
           {activeImport?.status === "FAILED" && (
             <div className="mt-3 flex items-center gap-3 text-sm text-red-700">
               <AlertCircle className="size-4 shrink-0" />
-              <span className="flex-1">{activeImport.error_message}</span>
-              <Button type="button" variant="ghost" onClick={() => void cancelImport()}>Hủy</Button>
+              <span className="flex-1">{activeImport.error_message || "Không thể trích xuất JD. Vui lòng chọn file khác."}</span>
+              <Button type="button" variant="ghost" disabled={isCancelling || isUploading} onClick={() => void discardImport()}>
+                {isCancelling ? "Đang xóa..." : "Xóa"}
+              </Button>
             </div>
           )}
           {activeImport?.status === "SUCCESS" && (
             <div className="mt-3 flex items-center gap-3 text-sm text-emerald-700">
               <CircleCheck className="size-4 shrink-0" />
               <span className="flex-1">Đã trích xuất xong từ <strong>{activeImport.original_filename}</strong>.</span>
+              <Button type="button" size="sm" variant="outline" disabled={isCancelling || saving} onClick={() => void discardImport()}>
+                {isCancelling ? "Đang xóa..." : "Bỏ kết quả"}
+              </Button>
               {!jdApplied && (
-                <Button type="button" size="sm" onClick={() => {
-                  setJdApplied(true);
+                <Button type="button" size="sm" disabled={isCancelling || saving} onClick={() => {
+                  setAppliedImportId(activeImport.id);
+                  setSkillSpecs(null);
+                  setSkillToAdd("");
                 }}>
-                  <Sparkles /> Áp dụng vào biểu mẫu
+                  <Sparkles /> Áp dụng
                 </Button>
               )}
               {jdApplied && <span className="text-xs text-zinc-400">Đã áp dụng</span>}
             </div>
           )}
+          {cancelError && <p role="alert" className="mt-3 text-sm text-red-700">{cancelError}</p>}
           {parsed && parsed.unmatched_skills.length > 0 && <p className="mt-2 text-xs text-amber-800">Skill chưa có trong taxonomy: {parsed.unmatched_skills.join(", ")}. Admin cần chuẩn hóa trước khi có thể gắn vào tin.</p>}
         </section>
       )}
       {error && <p className="mt-5 rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</p>}
 
-      <form key={`${activeImport?.updated_at ?? "manual"}:${jdApplied}`} onSubmit={submit} className="mt-6 space-y-6 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
+      <form
+        key={jdApplied ? activeImport?.id : "manual"}
+        onSubmit={submit}
+        className="mt-6 space-y-6 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7"
+      >
         <label className="block text-sm font-medium text-zinc-700">
           Tiêu đề <span className="text-red-500">*</span>
           <Input name="title" defaultValue={initial?.title ?? ""} className="mt-1.5" required />
@@ -393,11 +452,11 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
               </p>
             )}
             {selectedSkills.map((skillSpec) => {
+              const parsedSkill = parsed?.resolved_skills.find((skill) => skill.id === skillSpec.skill);
               const skillName = skills.find((skill) => skill.id === skillSpec.skill)?.name
                 ?? job?.skills.find((skill) => skill.skill === skillSpec.skill)?.skill_name
-                ?? parsed?.resolved_skills.find((skill) => skill.id === skillSpec.skill)?.name
+                ?? parsedSkill?.name
                 ?? "Kỹ năng không xác định";
-              const parsedSkill = parsed?.resolved_skills.find((skill) => skill.id === skillSpec.skill);
               const checkboxId = `skill-required-${skillSpec.skill}`;
 
               return (
@@ -446,12 +505,12 @@ export function JobForm({ jobId, importId }: { jobId?: string; importId?: string
 
         <div className="flex flex-col-reverse gap-2 border-t border-zinc-100 pt-5 sm:flex-row sm:justify-end">
           <Button asChild type="button" variant="ghost" className="w-full sm:w-auto"><Link href="/employer/jobs">Hủy</Link></Button>
-          <Button type="submit" name="intent" value="draft" variant="outline" disabled={saving} className="w-full sm:w-auto">
+          <Button type="submit" name="intent" value="draft" variant="outline" disabled={saving || isCancelling || isUploading} className="w-full sm:w-auto">
             {saving && submitIntent === "draft" && <Loader2 className="animate-spin" />}
             {saving && submitIntent === "draft" ? "Đang lưu..." : jobId ? "Lưu thay đổi" : "Lưu nháp"}
           </Button>
           {companyStatus === "APPROVED" && (!jobId || job?.status === "DRAFT") && (
-            <Button type="submit" name="intent" value="publish" variant="accent" disabled={saving} className="w-full sm:w-auto">
+            <Button type="submit" name="intent" value="publish" variant="accent" disabled={saving || isCancelling || isUploading} className="w-full sm:w-auto">
               {saving && submitIntent === "publish" && <Loader2 className="animate-spin" />}
               {saving && submitIntent === "publish" ? "Đang đăng..." : "Đăng tin ngay"}
             </Button>

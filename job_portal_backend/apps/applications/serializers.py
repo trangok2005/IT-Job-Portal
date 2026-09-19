@@ -1,4 +1,3 @@
-"""Định dạng input/output của API hồ sơ ứng tuyển."""
 from django.core.exceptions import ObjectDoesNotExist
 
 from rest_framework import serializers
@@ -15,7 +14,7 @@ from apps.jobs.models import JobPost
 
 
 class ApplicationStatusHistorySerializer(serializers.ModelSerializer):
-    """Audit trail đầy đủ cho employer; ghi chú nội bộ được giữ riêng tư."""
+    """Lịch sử nội bộ dành cho employer."""
 
     changed_by_email = serializers.EmailField(source="changed_by.email", read_only=True)
 
@@ -38,7 +37,7 @@ class ApplicationStatusHistorySerializer(serializers.ModelSerializer):
 
 
 class CandidateApplicationStatusHistorySerializer(serializers.ModelSerializer):
-    """Lịch sử cho candidate, không gồm ghi chú nội bộ hay email người thao tác."""
+    """Không để lộ ghi chú nội bộ hoặc email cho candidate."""
 
     class Meta:
         model = ApplicationStatusHistory
@@ -53,7 +52,6 @@ class CandidateApplicationStatusHistorySerializer(serializers.ModelSerializer):
 
 
 class ApplicationCreateSerializer(serializers.Serializer):
-    """Input để candidate chọn tin, thư giới thiệu và tùy chọn đính kèm CV chính."""
 
     job = serializers.PrimaryKeyRelatedField(
         queryset=JobPost.objects.all(),
@@ -63,7 +61,6 @@ class ApplicationCreateSerializer(serializers.Serializer):
 
 
 class ApplicationListQuerySerializer(serializers.Serializer):
-    """Kiểm tra bộ lọc danh sách hồ sơ ứng tuyển."""
 
     job = serializers.UUIDField(required=False)
     status = serializers.ChoiceField(
@@ -78,7 +75,6 @@ class ApplicationListQuerySerializer(serializers.Serializer):
 
 
 class ApplicationTransitionSerializer(serializers.Serializer):
-    """Input chuyển trạng thái; APPLIED không phải trạng thái đích hợp lệ."""
 
     status = serializers.ChoiceField(
         choices=[
@@ -98,7 +94,6 @@ class ApplicationTransitionSerializer(serializers.Serializer):
 
 
 class CandidateApplicationReadSerializer(serializers.ModelSerializer):
-    """Output theo dõi trạng thái dành cho candidate."""
 
     job_id = serializers.UUIDField(source="job.id", read_only=True)
     job_title = serializers.CharField(source="job.title", read_only=True)
@@ -129,7 +124,6 @@ class CandidateApplicationReadSerializer(serializers.ModelSerializer):
 
 
 class EmployerApplicationReadSerializer(serializers.ModelSerializer):
-    """Output xử lý hồ sơ cho employer/admin, gồm CV và điểm phù hợp."""
 
     job_id = serializers.UUIDField(source="job.id", read_only=True)
     job_title = serializers.CharField(source="job.title", read_only=True)
@@ -179,7 +173,6 @@ class EmployerApplicationReadSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.FloatField(allow_null=True))
     def get_match_score(self, obj):
-        """Trả null khi chưa có kết quả phù hợp của hồ sơ ứng tuyển."""
         try:
             return obj.match_result.match_score
         except ObjectDoesNotExist:
@@ -228,8 +221,6 @@ class ApplicationMatchResultReadSerializer(serializers.ModelSerializer):
 
 
 class EmptyApplicationMatchResultSerializer(serializers.Serializer):
-    """Định dạng output ổn định khi chưa tính xong kết quả phù hợp."""
-
     match_score = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)
     status = serializers.CharField(allow_null=True)
     semantic_similarity_score = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)

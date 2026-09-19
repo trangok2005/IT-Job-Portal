@@ -1,4 +1,3 @@
-"""Serializer định hình input/output của tin tuyển dụng, không xử lý nghiệp vụ."""
 from pathlib import Path
 import re
 
@@ -26,11 +25,18 @@ class JobReadSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.name", read_only=True)
     skills = JobSkillSerializer(source="job_skills", many=True, read_only=True)
     match_score = serializers.SerializerMethodField()
+    semantic_score = serializers.SerializerMethodField()
     embedding_is_stale = serializers.BooleanField(read_only=True)
 
     @extend_schema_field(serializers.FloatField(allow_null=True))
     def get_match_score(self, obj):
         return getattr(obj, "match_score", None)
+
+    @extend_schema_field(
+        serializers.FloatField(min_value=0.0, max_value=1.0, allow_null=True)
+    )
+    def get_semantic_score(self, obj):
+        return getattr(obj, "semantic_score", None)
 
     class Meta:
         model = JobPost
@@ -53,6 +59,7 @@ class JobReadSerializer(serializers.ModelSerializer):
             "expires_at",
             "embedding_is_stale",
             "match_score",
+            "semantic_score",
             "company_name",
             "skills",
             "created_at",
@@ -85,13 +92,10 @@ class RecommendedCandidateSerializer(serializers.Serializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_skills(self, obj):
-        """Chỉ trả tên skill canonical an toàn từ hồ sơ đã prefetch."""
         return [link.skill.name for link in obj.candidate_skills.all()]
 
 
 class RequiredSkillSpecSerializer(serializers.Serializer):
-    """Skill đã chuẩn hóa, thuộc nhóm bắt buộc hoặc ưu tiên của tin tuyển dụng."""
-
     skill = serializers.CharField(max_length=150)
     is_required = serializers.BooleanField(required=False, default=True)
 
@@ -101,8 +105,6 @@ class RequiredSkillSpecSerializer(serializers.Serializer):
 
 
 class JobWriteSerializer(serializers.ModelSerializer):
-    """Các field do employer tạo; ``status`` được quản lý qua service."""
-
     required_skills = RequiredSkillSpecSerializer(many=True, required=False, write_only=True)
     publish_immediately = serializers.BooleanField(
         write_only=True,
@@ -133,7 +135,6 @@ class JobWriteSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        """Kiểm tra lương/ngày hết hạn bằng cả giá trị cũ khi PATCH."""
         salary_min = attrs.get("salary_min", getattr(self.instance, "salary_min", None))
         salary_max = attrs.get("salary_max", getattr(self.instance, "salary_max", None))
         if salary_min is not None and salary_max is not None and salary_min > salary_max:
@@ -264,17 +265,12 @@ class JDImportSerializer(serializers.ModelSerializer):
 
 
 class JobListQuerySerializer(serializers.Serializer):
-    """Kiểm tra tham số truy vấn trước khi truyền cho selector tìm kiếm."""
-
-    # UC-03 E4: từ khóa chỉ được chứa chữ/số (kể cả tiếng Việt có dấu),
-    # khoảng trắng và ký tự kỹ thuật xuất hiện trong tên skill
-    # (C++, C#, ASP.NET, Node.js, HTML/CSS).
+    # Giữ ký tự kỹ thuật trong tên như C++, C#, .NET và HTML/CSS.
     KEYWORD_ALLOWED_RE = re.compile(
         r"^[\w\s+\#./\-&'()]+$",
         re.UNICODE,
     )
-    # Chuỗi vô nghĩa kiểu "+++", "---", "###" bị loại: phải có ít nhất
-    # một chữ cái hoặc chữ số thực sự (underscore không tính).
+    # Từ khóa không được chỉ gồm dấu câu.
     KEYWORD_HAS_ALNUM_RE = re.compile(r"[^\W_]+", re.UNICODE)
     KEYWORD_MAX_LENGTH = 100
 
@@ -292,7 +288,6 @@ class JobListQuerySerializer(serializers.Serializer):
     salary_min = serializers.IntegerField(required=False, min_value=0)
 
     def validate_keyword(self, value: str) -> str:
-        """UC-03 E4: từ khóa sai định dạng -> 400, không gọi AI search."""
         normalized = re.sub(r"\s+", " ", value).strip()
         if not normalized:
             return ""

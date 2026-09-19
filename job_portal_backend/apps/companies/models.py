@@ -1,4 +1,3 @@
-"""Mô hình hồ sơ công ty do employer quản lý và admin xét duyệt."""
 from django.conf import settings
 from django.db import models
 

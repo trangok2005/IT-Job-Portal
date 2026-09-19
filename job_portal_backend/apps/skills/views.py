@@ -1,8 +1,3 @@
-"""ViewSet skill mỏng: gọi service/selector và trả response.
-
-Danh sách công khai chỉ trả skill APPROVED đang hoạt động; admin có role ADMIN
-được xem toàn bộ, duyệt và gộp skill.
-"""
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated

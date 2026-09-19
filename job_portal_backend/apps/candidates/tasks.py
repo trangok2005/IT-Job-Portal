@@ -1,38 +1,29 @@
-"""Các task nền xử lý CV và embedding hồ sơ candidate."""
-import json
 import logging
-import mimetypes
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
 from django.db.models import F, Q
 from django.utils import timezone
 
-from apps.candidates.models import CandidateProfile, Resume, ResumeImport
-from common.document_extraction import extract_docx_text
+from apps.candidates.models import CandidateProfile, ResumeImport
+from apps.core.embedding_text_builders import build_candidate_text
 from integrations.gemini.embeddings import (
     current_candidate_embedding_signature,
     embed_document,
 )
-from apps.core.embedding_text_builders import build_candidate_text
+from integrations.gemini.resume_parser import parse_resume_document
 
 
 logger = logging.getLogger(__name__)
 
-# Số lần tối đa một bản ghi được gửi Gemini parse; vượt quá sẽ FAILED vĩnh viễn
-# thay vì để broker re-present vô hạn (tiêu quota khi Gemini lỗi kéo dài).
+# Giới hạn broker retry để không cạn quota Gemini khi dịch vụ lỗi dài.
 MAX_PARSE_ATTEMPTS = 3
 
 
-def _claim_parse_attempt(record_id: str) -> bool:
-    """Nhận đúng một lượt giao để các callback đồng thời không phân tích hai lần."""
-    now = timezone.now()
+def _retryable_imports(record_id: str, now: datetime):
+    """Chỉ nhận bản chưa chạy, bị lỗi hoặc đã hết lease."""
     lease_expired_at = now - timedelta(seconds=settings.TASK_PROCESSING_LEASE_SECONDS)
-    claimed = ResumeImport.objects.filter(
-        pk=record_id,
-        parse_attempts__lt=MAX_PARSE_ATTEMPTS,
-    ).filter(
+    return ResumeImport.objects.filter(pk=record_id).filter(
         Q(
             parse_status__in=[
                 ResumeImport.ParseStatus.PENDING,
@@ -43,110 +34,49 @@ def _claim_parse_attempt(record_id: str) -> bool:
             parse_status=ResumeImport.ParseStatus.PROCESSING,
             updated_at__lte=lease_expired_at,
         )
+    )
+
+
+def _claim_parse_attempt(record_id: str) -> datetime | None:
+    """Claim bằng một UPDATE để hai worker không cùng nhận việc."""
+    now = timezone.now()
+    claimed = _retryable_imports(record_id, now).filter(
+        parse_attempts__lt=MAX_PARSE_ATTEMPTS,
     ).update(
         parse_status=ResumeImport.ParseStatus.PROCESSING,
         parse_attempts=F("parse_attempts") + 1,
         parse_error_message="",
         updated_at=now,
     )
-    return bool(claimed)
+    return now if claimed else None
 
 
-RESUME_PARSE_PROMPT = """
-Phân tích CV sau và trả về đúng một JSON object. Không thêm markdown.
-Các key cần có: full_name, phone, headline, summary, educations, experiences,
-skills. educations là mảng object gồm school_name, major, degree, degree_level,
-is_completed, start_date, end_date, description; degree_level chỉ là NONE,
-ASSOCIATE, BACHELOR, MASTER, PHD hoặc null. experiences là mảng object gồm company_name, position,
-start_date, end_date, is_current, description. Ngày dùng YYYY-MM-DD hoặc null.
-skills là mảng string. Không suy diễn thông tin không có trong CV; field văn bản
-dùng chuỗi rỗng, ngày dùng null và danh sách dùng mảng rỗng khi thiếu dữ liệu.
-""".strip()
-
-
-def _get_client():
-    """Khởi tạo Gemini client và báo lỗi cấu hình rõ ràng cho trình chạy task."""
-    if not settings.GEMINI_API_KEY:
-        raise ImproperlyConfigured("GEMINI_API_KEY chưa được cấu hình.")
-    from google import genai
-    from google.genai import types
-
-    return genai.Client(
-        api_key=settings.GEMINI_API_KEY,
-        http_options=types.HttpOptions(timeout=settings.EMBEDDING_TIMEOUT_MS),
-    )
-
-
-def _parse_json_response(text: str) -> dict:
-    """Loại bỏ code fence thường gặp trước khi giải mã JSON từ Gemini."""
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.removeprefix("```json").removeprefix("```")
-        cleaned = cleaned.removesuffix("```").strip()
-    data = json.loads(cleaned)
-    if not isinstance(data, dict):
-        raise ValueError("Kết quả parse CV không phải JSON object.")
-    return data
-
-
-def _normalize_parsed_data(data: dict) -> dict:
-    """Đổi null từ Gemini thành giá trị hợp lệ cho các field không nhận null.
-    Bỏ qua mục thiếu field bắt buộc: school_name hoặc company_name và position.
-    """
-    normalized = dict(data)
-    for field in ("full_name", "phone", "headline", "summary"):
-        if normalized.get(field) is None:
-            normalized[field] = ""
-
-    collections = {
-        "educations": ("school_name", "major", "degree", "description"),
-        "experiences": ("company_name", "position", "description"),
-    }
-    for collection, text_fields in collections.items():
-        items = normalized.get(collection) or []
-        normalized[collection] = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-
-            if collection == "educations" and not item.get("school_name"):
-                logger.warning("Bỏ qua education thiếu school_name: %s", item)
-                continue
-            if collection == "experiences" and not (item.get("company_name") and item.get("position")):
-                logger.warning("Bỏ qua experience thiếu company_name/position: %s", item)
-                continue
-
-            clean_item = dict(item)
-            for field in text_fields:
-                if clean_item.get(field) is None or field not in clean_item:
-                    clean_item[field] = ""
-            if collection == "experiences" and clean_item.get("is_current") is None:
-                clean_item["is_current"] = False
-            if collection == "educations":
-                clean_item["is_completed"] = bool(clean_item.get("is_completed", False))
-                # AI may suggest a level, but only the candidate can confirm it.
-                clean_item["is_verified"] = False
-            normalized[collection].append(clean_item)
-
-    normalized["skills"] = [
-        skill.strip()
-        for skill in (normalized.get("skills") or [])
-        if isinstance(skill, str) and skill.strip()
-    ]
-    return normalized
+def _handle_unclaimed_import(record_id: str) -> dict:
+    resume_import = ResumeImport.objects.filter(pk=record_id).first()
+    if resume_import is None:
+        return {}
+    if resume_import.parse_status in (
+        ResumeImport.ParseStatus.SUCCESS,
+        ResumeImport.ParseStatus.CONSUMED,
+    ):
+        return resume_import.parsed_data or {}
+    if resume_import.parse_attempts >= MAX_PARSE_ATTEMPTS:
+        now = timezone.now()
+        _retryable_imports(record_id, now).filter(
+            parse_attempts__gte=MAX_PARSE_ATTEMPTS,
+        ).update(
+            parse_status=ResumeImport.ParseStatus.FAILED,
+            parse_error_message=f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích CV.",
+            updated_at=now,
+        )
+        return {}
+    if resume_import.parse_status == ResumeImport.ParseStatus.PROCESSING:
+        raise RuntimeError("Resume import is already being processed.")
+    return {}
 
 
 def parse_resume_import(resume_import_id: str) -> dict:
-    """Gửi CV lên Gemini và lưu kết quả phân tích vào ResumeImport."""
-    from google.genai import types
-
-    from apps.candidates import serializers, services
-
-    resume_import = (
-        ResumeImport.objects.select_related("candidate")
-        .filter(pk=resume_import_id)
-        .first()
-    )
+    resume_import = ResumeImport.objects.filter(pk=resume_import_id).first()
     if resume_import is None:
         logger.warning(
             "ResumeImport %s disappeared before parsing (cleanup/cancel)",
@@ -159,79 +89,55 @@ def parse_resume_import(resume_import_id: str) -> dict:
     ]:
         return resume_import.parsed_data or {}
 
-    if not _claim_parse_attempt(resume_import_id):
-        if (
-            resume_import.parse_status == ResumeImport.ParseStatus.PROCESSING
-            and resume_import.parse_attempts < MAX_PARSE_ATTEMPTS
-        ):
-            raise RuntimeError("Resume import is already being processed.")
-        if (
-            resume_import.parse_status
-            in [
-                ResumeImport.ParseStatus.PENDING,
-                ResumeImport.ParseStatus.PROCESSING,
-                ResumeImport.ParseStatus.FAILED,
-            ]
-            and resume_import.parse_attempts >= MAX_PARSE_ATTEMPTS
-        ):
-            services.mark_resume_import_failed(
-                resume_import,
-                f"Đã vượt quá {MAX_PARSE_ATTEMPTS} lần thử phân tích CV.",
-            )
-        return {}
+    claim_token = _claim_parse_attempt(resume_import_id)
+    if claim_token is None:
+        return _handle_unclaimed_import(resume_import_id)
 
-    resume_import.refresh_from_db()
+    # updated_at giữ quyền ghi của lượt này, kể cả khi worker khác đã retry.
+    owned_attempt = ResumeImport.objects.filter(
+        pk=resume_import_id,
+        parse_status=ResumeImport.ParseStatus.PROCESSING,
+        updated_at=claim_token,
+    )
+    resume_import = owned_attempt.first()
+    if resume_import is None:
+        return {}
 
     try:
         with resume_import.file.open("rb") as source:
             file_data = source.read()
-        mime_type = (
-            mimetypes.guess_type(resume_import.original_filename)[0]
-            or "application/octet-stream"
+        result = parse_resume_document(
+            filename=resume_import.original_filename,
+            mime_type=None,
+            file_data=file_data,
         )
-        if resume_import.original_filename.lower().endswith(".docx"):
-            document_content = extract_docx_text(file_data)
-        else:
-            document_content = types.Part.from_bytes(data=file_data, mime_type=mime_type)
-        client = _get_client()
-        response = client.models.generate_content(
-            model=settings.GEMINI_PARSER_MODEL,
-            contents=[
-                RESUME_PARSE_PROMPT,
-                document_content,
-            ],
-        )
-        raw_data = _parse_json_response(response.text)
-        normalized_data = _normalize_parsed_data(raw_data)
-        serializer = serializers.ResumeParsedDataSerializer(data=normalized_data)
-        serializer.is_valid(raise_exception=True)
-        preview = serializers.ResumeParsedDataSerializer(
-            serializer.validated_data
-        ).data
-        ResumeImport.objects.filter(
-            pk=resume_import_id,
-            parse_status=ResumeImport.ParseStatus.PROCESSING,
-        ).update(
-            parsed_data=preview,
+        parsed_data = result.validated_data
+        owned_attempt.update(
+            parsed_data=parsed_data,
             parse_status=ResumeImport.ParseStatus.SUCCESS,
             parse_error_message="",
             updated_at=timezone.now(),
         )
-        return raw_data
+        return parsed_data
     except Exception as exc:
-        ResumeImport.objects.filter(
-            pk=resume_import_id,
-            parse_status=ResumeImport.ParseStatus.PROCESSING,
-        ).update(
+        if not ResumeImport.objects.filter(pk=resume_import_id).exists():
+            return {}
+        logger.exception(
+            "Resume import %s failed (%s)", resume_import_id, type(exc).__name__
+        )
+        owned_attempt.update(
             parse_status=ResumeImport.ParseStatus.FAILED,
-            parse_error_message=str(exc)[:2000],
+            parse_error_message=(
+                "Không thể đọc thông tin từ file CV. "
+                f"Mã lỗi: {type(exc).__name__}."
+            ),
             updated_at=timezone.now(),
         )
         raise
 
 
 def generate_candidate_embedding(profile_id: str, profile_version: int) -> bool:
-    """Sinh embedding và chỉ lưu nếu hồ sơ chưa chuyển sang version mới hơn."""
+    """Bỏ kết quả nếu profile version đã đổi trong lúc chạy."""
     profile = (
         CandidateProfile.objects.filter(pk=profile_id)
         .prefetch_related(
@@ -263,14 +169,10 @@ def generate_candidate_embedding(profile_id: str, profile_version: int) -> bool:
 
 
 def cleanup_expired_resume_imports() -> int:
-    """Xóa ResumeImport không dùng trong 24 giờ cùng file để giải phóng lưu trữ.
-
-    Bản PENDING quá hạn cũng bị xóa vì là task mồ côi; hàm phân tích dùng
-    ``.first()`` nên không lỗi nếu bản ghi vừa bị xóa.
-    """
+    """Xóa cả bản PENDING quá hạn; worker chịu được record vừa bị xóa."""
     from apps.candidates import services
 
-    expired = ResumeImport.objects.filter(expires_at__lt=timezone.now())
+    expired = ResumeImport.objects.filter(expires_at__lte=timezone.now())
     count = 0
     for resume_import in expired.iterator():
         services.delete_resume_import(resume_import)

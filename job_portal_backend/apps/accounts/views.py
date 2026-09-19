@@ -1,4 +1,3 @@
-"""Các view gọn cho đăng ký, OAuth và quản trị tài khoản."""
 from rest_framework import status
 from rest_framework.generics import CreateAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -42,7 +41,6 @@ class GoogleAuthView(APIView):
         responses=serializers.GoogleAuthResponseSerializer,
     )
     def post(self, request):
-        """Xác minh danh tính Google, tạo user khi cần và trả về JWT."""
         serializer = serializers.GoogleAuthSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         claims = services.verify_google_token(serializer.validated_data["id_token"])
@@ -68,8 +66,7 @@ class AdminUserListView(ListAPIView):
         return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
-        # A missing BooleanField in a QueryDict is interpreted like an unchecked
-        # HTML checkbox (False). A plain dict preserves "filter not supplied".
+        # QueryDict coi BooleanField bị thiếu là checkbox HTML chưa chọn.
         query = serializers.AdminUserListQuerySerializer(
             data=self.request.query_params.dict()
         )
@@ -83,7 +80,6 @@ class AdminUserLockView(APIView):
 
     @extend_schema(request=None, responses=serializers.UserSerializer)
     def post(self, request, user_id):
-        """Áp dụng trạng thái khóa được yêu cầu qua service tài khoản."""
         target = selectors.get_manageable_user(user_id)
         if target is None:
             from rest_framework.exceptions import NotFound

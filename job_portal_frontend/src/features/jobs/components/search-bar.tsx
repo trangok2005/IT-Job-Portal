@@ -7,10 +7,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-// Đồng bộ với JobListQuerySerializer (backend): chữ/số tiếng Việt,
-// khoảng trắng và ký tự kỹ thuật dùng trong tên skill.
+// Khớp ký tự được backend cho phép trong tên skill.
 const KEYWORD_ALLOWED_RE = /^[\p{L}\p{N}\s+#./\-&'()]+$/u;
-// Chuỗi vô nghĩa kiểu "+++", "---" bị loại: cần ít nhất một chữ/số.
+// Loại chuỗi chỉ có ký hiệu.
 const KEYWORD_HAS_ALNUM_RE = /\p{L}|\p{N}/u;
 const KEYWORD_MAX_LENGTH = 100;
 

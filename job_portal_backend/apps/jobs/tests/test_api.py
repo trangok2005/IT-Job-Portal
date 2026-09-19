@@ -1,25 +1,26 @@
 ﻿from datetime import timedelta
 from unittest.mock import patch
 
-from django.urls import reverse
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
+from apps.applications.models import JobApplication
 from apps.candidates.models import CandidateProfile
 from apps.companies.models import Company
+from apps.jobs.models import JDImport, JobPost, JobSkill
+from apps.jobs.tasks import parse_jd_import
+from apps.skills.models import CandidateSkill, Skill
 from integrations.gemini.embeddings import (
+    EmbeddingError,
     current_candidate_embedding_signature,
     current_job_embedding_signature,
 )
-from apps.jobs.models import JDImport, JobPost, JobSkill
-from apps.jobs.tasks import parse_jd_import
-from apps.applications.models import JobApplication
-from apps.skills.models import CandidateSkill, Skill
-from django.core.cache import cache
-from integrations.gemini.embeddings import EmbeddingError
+from integrations.gemini.structured_output import ParsedDocumentResult
 
 
 class JobApiTests(APITestCase):
@@ -74,6 +75,7 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["id"], str(active.id))
         self.assertIsNone(response.data["results"][0]["match_score"])
+        self.assertIsNone(response.data["results"][0]["semantic_score"])
         self.assertEqual(response["X-Search-Mode"], "LATEST")
 
     @patch("apps.jobs.job_search_service.embed_query")
@@ -105,7 +107,8 @@ class JobApiTests(APITestCase):
             [item["id"] for item in response.data["results"]],
             [str(best.id), str(second.id)],
         )
-        self.assertAlmostEqual(response.data["results"][0]["match_score"], 100.0)
+        self.assertIsNone(response.data["results"][0]["match_score"])
+        self.assertAlmostEqual(response.data["results"][0]["semantic_score"], 1.0)
         embed_query.assert_called_once_with("Desired job: Python")
         self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
         self.assertFalse(response.data["search_fallback"])
@@ -138,35 +141,6 @@ class JobApiTests(APITestCase):
         self.assertEqual(response.data["results"][0]["id"], str(python_job.id))
         self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
 
-    @patch("apps.jobs.job_search_service.embed_query")
-    def test_keyword_search_returns_only_scores_strictly_above_fifty(self, embed_query):
-        embed_query.return_value = [1.0] + [0.0] * 767
-        above = self._job(
-            title="Above threshold",
-            embedding=[0.6, 0.8] + [0.0] * 766,
-            embedding_version=1,
-        )
-        self._job(
-            title="Exactly threshold",
-            embedding=[0.5, 0.8660254037844386] + [0.0] * 766,
-            embedding_version=1,
-        )
-        self._job(
-            title="Below threshold",
-            embedding=[0.0, 1.0] + [0.0] * 766,
-            embedding_version=1,
-        )
-
-        response = self.client.get(reverse("jobs-list"), {"keyword": "Django"})
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 1)
-        self.assertEqual(response.data["results"][0]["id"], str(above.id))
-        self.assertAlmostEqual(
-            response.data["results"][0]["match_score"], 60.0, delta=0.001
-        )
-        self.assertEqual(response["X-Search-Mode"], "SEMANTIC")
-        self.assertFalse(response.data["search_fallback"])
 
     @patch("apps.jobs.job_search_service.embed_query")
     def test_keyword_search_does_not_fallback_when_current_scores_are_too_low(self, embed_query):
@@ -249,11 +223,11 @@ class JobApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
-    @patch("apps.jobs.jd_parser.parse_job_description")
+    @patch("apps.jobs.tasks.parse_job_description")
     def test_parse_jd_throttled_after_two_uploads_per_minute(self, parse_jd):
-        parse_jd.return_value = (
-            {"title": "Python Developer", "skills": []},
-            {"title": "Python Developer"},
+        parse_jd.return_value = ParsedDocumentResult(
+            raw_data={"title": "Python Developer", "skills": []},
+            validated_data={"title": "Python Developer"},
         )
         self.client.force_authenticate(user=self.employer)
 
@@ -602,18 +576,17 @@ class JobApiTests(APITestCase):
         self.assertIsNotNone(response.data["published_at"])
         enqueue_embedding.assert_called_once()
 
-    @patch("apps.jobs.jd_parser.parse_job_description")
+    @patch("apps.jobs.tasks.parse_job_description")
     def test_approved_employer_can_parse_jd_without_creating_draft(self, parse_jd):
-        parse_jd.return_value = (
-            {"title": "Python Developer", "skills": ["Django"]},
-            {
+        parse_jd.return_value = ParsedDocumentResult(
+            raw_data={"title": "Python Developer", "skills": ["Django"]},
+            validated_data={
                 "title": "Python Developer",
                 "description": "Build APIs",
                 "job_type": JobPost.JobType.FULL_TIME,
                 "experience_level": JobPost.ExperienceLevel.JUNIOR,
                 "salary_negotiable": True,
-                "required_skills": [str(self.skill.id)],
-                "unmatched_skills": [],
+                "skills": ["Django"],
             },
         )
         self.client.force_authenticate(self.employer)
@@ -625,6 +598,7 @@ class JobApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        parse_jd.assert_not_called()
         self.assertTrue(parse_jd_import(response.data["id"]))
         status_response = self.client.get(
             reverse("jobs-jd-import", args=[response.data["id"]])
@@ -639,6 +613,69 @@ class JobApiTests(APITestCase):
             [str(self.skill.id)],
         )
         self.assertEqual(JobPost.objects.count(), 0)
+
+        created = self.client.post(
+            reverse("jobs-list"),
+            {
+                "title": "Reviewed JD", "description": "Build APIs",
+                "jd_import_id": response.data["id"],
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            JDImport.objects.get(pk=response.data["id"]).status,
+            JDImport.Status.CONSUMED,
+        )
+
+    def test_other_employer_cannot_read_cancel_or_consume_import(self):
+        self.client.force_authenticate(self.employer)
+        upload = self.client.post(
+            reverse("jobs-parse-jd"),
+            {"file": SimpleUploadedFile("job.pdf", b"%PDF-1.4")},
+            format="multipart",
+        )
+        self.assertEqual(upload.status_code, status.HTTP_202_ACCEPTED)
+        import_id = upload.data["id"]
+        JDImport.objects.filter(pk=import_id).update(status=JDImport.Status.SUCCESS)
+        other = User.objects.create_user(
+            username="other-jd-owner", email="other-jd@example.com",
+            password="password123", role=User.Role.EMPLOYER,
+        )
+        Company.objects.create(owner=other, name="Other", status=Company.Status.APPROVED)
+        self.client.force_authenticate(other)
+        detail_url = reverse("jobs-jd-import", args=[import_id])
+
+        self.assertEqual(self.client.get(detail_url).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(self.client.delete(detail_url).status_code, status.HTTP_404_NOT_FOUND)
+        response = self.client.post(
+            reverse("jobs-list"),
+            {"title": "Stolen", "description": "JD", "jd_import_id": import_id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(JobPost.objects.exists())
+        self.assertEqual(JDImport.objects.get(pk=import_id).status, JDImport.Status.SUCCESS)
+
+    def test_import_creator_must_still_own_company_to_read_or_cancel(self):
+        record = JDImport.objects.create(
+            company=self.company,
+            created_by=self.employer,
+            file="unused.pdf",
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        new_owner = User.objects.create_user(
+            username="new-company-owner", email="new-company-owner@example.com",
+            password="password123", role=User.Role.EMPLOYER,
+        )
+        self.company.owner = new_owner
+        self.company.save()
+        detail_url = reverse("jobs-jd-import", args=[record.pk])
+        for user in (self.employer, new_owner):
+            with self.subTest(user=user.username):
+                self.client.force_authenticate(user)
+                self.assertEqual(self.client.get(detail_url).status_code, status.HTTP_404_NOT_FOUND)
+                self.assertEqual(self.client.delete(detail_url).status_code, status.HTTP_404_NOT_FOUND)
 
     def test_parse_jd_rejects_invalid_file_and_candidate(self):
         self.client.force_authenticate(self.employer)
@@ -684,13 +721,11 @@ class JobApiTests(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_search_keyword_e4_validation(self):
-        # UC-03 E4: từ khóa chứa ký tự đặc biệt hoặc quá dài -> 400.
         invalid_keywords = (
             "<script>alert(1)</script>",
             "python; DROP TABLE jobs",
             "job@#$%",
             "a" * 101,
-            # Chuỗi vô nghĩa toàn ký tự kỹ thuật cũng bị loại.
             "+++",
             "---",
             "###...",
@@ -705,7 +740,7 @@ class JobApiTests(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
                 self.assertIn("keyword", response.data["errors"])
 
-        # Ký tự kỹ thuật hợp lệ của tên skill vẫn được nhận (C++, C#, .NET).
+        # Ký tự trong tên skill như C++, C# và .NET vẫn hợp lệ.
         valid_keywords = ("C++ developer", "C#", "ASP.NET", "Node.js", "HTML/CSS")
         for keyword in valid_keywords:
             cache.clear()

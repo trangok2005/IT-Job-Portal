@@ -14,7 +14,7 @@ class ApplicationMatchResultAdmin(admin.ModelAdmin):
         "created_at",
     )
     search_fields = ("application__candidate__full_name", "application__job__title")
-    # Match results are immutable after the application snapshot is scored.
+    # Kết quả không đổi sau khi snapshot đã được chấm.
     readonly_fields = [
         f.name for f in ApplicationMatchResult._meta.fields if f.name not in ("id",)
     ]

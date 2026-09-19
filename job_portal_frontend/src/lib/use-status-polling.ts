@@ -1,24 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 
 const POLL_INTERVAL_MS = 2000;
-// Giới hạn thời gian HOẠT ĐỘNG (không tính lúc tab ẩn) trước khi dừng.
-const MAX_ACTIVE_MS = 120_000;
+// 60 lượt chờ × 2 giây, không tính lượt kiểm tra ngay khi mở/quay lại tab.
+const MAX_POLL_COUNT = 60;
 
 type StatusPollingOptions<T, S> = {
-  /** Bật polling khi có import đang xử lý. `importId` dùng để reset trạng thái. */
   enabled: boolean;
   importId: string | null;
-  /** Hàm gọi API lấy toàn bộ snapshot (DTO) hiện tại. */
   poll: (importId: string) => Promise<T>;
-  /** Trích xuất giá trị trạng thái từ snapshot để điều khiển vòng lặp. */
   getStatus: (snapshot: T) => S;
-  /** Kiểm tra trạng thái có còn đang xử lý hay không. */
   isProcessing: (status: S) => boolean;
-  /** Được gọi sau mỗi request thành công với snapshot mới nhất. */
   onUpdate: (snapshot: T) => void;
-  /** Được gọi khi request gặp lỗi mạng; không xóa import ID khỏi localStorage. */
   onError: (error: unknown) => void;
 };
 
@@ -28,15 +22,6 @@ type PollUiState = {
   pollError: boolean;
 };
 
-/**
- * Poll trạng thái trích xuất (CV / JD) bằng vòng `setTimeout` tuần tự:
- * - `enabled = true` → kiểm tra NGAY, không đợi 2 giây.
- * - Chỉ lên lịch request tiếp theo sau khi request hiện tại hoàn thành.
- * - Tab ẩn → tạm dừng; quay lại tab → kiểm tra ngay lập tức.
- * - Hết MAX_ACTIVE_MS → dừng, giữ import ID và trả `stalled = true`.
- * - Import ID mới → reset error / stalled / thời gian theo dõi.
- * - Lỗi mạng → dừng tạm, gọi onError để UI cung cấp nút "Thử lại".
- */
 export function useStatusPolling<T, S>({
   enabled,
   importId,
@@ -52,12 +37,9 @@ export function useStatusPolling<T, S>({
     stalled: false,
     pollError: false,
   });
-  const activeMsRef = useRef(0);
-
-  // Điều chỉnh state trong render để request đầu tiên của import mới có đủ thời gian.
-  if (importId !== uiState.importId) {
-    setUiState({ importId, stalled: false, pollError: false });
-  }
+  const pollCountRef = useRef(0);
+  const inFlight = useRef(false);
+  const stopRef = useRef<() => void>(() => {});
 
   const pollRef = useRef(poll);
   const getStatusRef = useRef(getStatus);
@@ -74,15 +56,18 @@ export function useStatusPolling<T, S>({
   });
 
   useEffect(() => {
-    activeMsRef.current = 0;
+    pollCountRef.current = 0;
+    startTransition(() => {
+      setUiState({ importId, stalled: false, pollError: false });
+    });
   }, [importId]);
 
   useEffect(() => {
     if (!enabled || !importId) return;
     let active = true;
-    let inFlight = false;
     let pendingTimer: number | undefined;
     let pausedOnError = false;
+    let stopped = false;
 
     const stopTimer = () => {
       if (pendingTimer !== undefined) {
@@ -93,22 +78,37 @@ export function useStatusPolling<T, S>({
 
     const cancel = () => !active || !enabled;
 
+    const stopPolling = () => {
+      active = false;
+      stopTimer();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+    stopRef.current = stopPolling;
+
     const tick = (fireNow: boolean) => {
-      if (cancel() || inFlight) return;
-      inFlight = true;
+      if (cancel() || stopped || document.hidden) return;
+      // Retry/đổi import vẫn phải chờ request cũ hoàn tất để không poll chồng.
+      if (inFlight.current) {
+        pendingTimer = window.setTimeout(() => tick(fireNow), POLL_INTERVAL_MS);
+        return;
+      }
+      inFlight.current = true;
       if (!fireNow) {
-        activeMsRef.current += POLL_INTERVAL_MS;
+        pollCountRef.current += 1;
       }
       void pollRef.current(importId)
         .then((snapshot) => {
           if (cancel()) return;
-          inFlight = false;
+          stopTimer();
           onUpdateRef.current(snapshot);
+          if (cancel()) return;
           setUiState((current) => ({ ...current, pollError: false }));
           if (!isProcessingRef.current(getStatusRef.current(snapshot))) {
+            stopped = true;
             return;
           }
-          if (activeMsRef.current >= MAX_ACTIVE_MS) {
+          if (pollCountRef.current >= MAX_POLL_COUNT) {
+            stopped = true;
             setUiState((current) => ({ ...current, stalled: true }));
             return;
           }
@@ -117,10 +117,13 @@ export function useStatusPolling<T, S>({
         })
         .catch((error: unknown) => {
           if (cancel()) return;
-          inFlight = false;
+          stopTimer();
           setUiState((current) => ({ ...current, pollError: true }));
           pausedOnError = true;
           onErrorRef.current(error);
+        })
+        .finally(() => {
+          inFlight.current = false;
         });
     };
 
@@ -130,24 +133,34 @@ export function useStatusPolling<T, S>({
         stopTimer();
         return;
       }
-      if (inFlight || pausedOnError) return;
+      if (pausedOnError || stopped) return;
+      stopTimer();
       tick(true);
     };
 
     if (!document.hidden) tick(true);
     document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      active = false;
-      stopTimer();
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
+    return stopPolling;
   }, [enabled, importId, retryKey]);
 
   const retry = useCallback(() => {
-    activeMsRef.current = 0;
-    setUiState((current) => ({ ...current, pollError: false, stalled: false }));
+    pollCountRef.current = 0;
+    setUiState({ importId, pollError: false, stalled: false });
     setRetryKey((key) => key + 1);
+  }, [importId]);
+
+  const stop = useCallback(() => {
+    // Chặn cả response đang bay về, không phải đợi effect cleanup.
+    stopRef.current();
+    pollCountRef.current = 0;
+    setUiState({ importId: null, stalled: false, pollError: false });
   }, []);
 
-  return { stalled: uiState.stalled, pollError: uiState.pollError, retry };
+  const isCurrentImport = uiState.importId === importId;
+  return {
+    stalled: isCurrentImport && uiState.stalled,
+    pollError: isCurrentImport && uiState.pollError,
+    retry,
+    stop,
+  };
 }

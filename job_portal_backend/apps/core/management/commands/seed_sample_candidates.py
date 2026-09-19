@@ -1,25 +1,4 @@
-"""
-seed_sample_candidates.py
-
-10 CV mẫu, đúng schema trong models.py (User -> CandidateProfile ->
-Education/Experience -> Skill/CandidateSkill), phân bố theo các nhóm role
-phổ biến (Backend, Frontend, Full-stack, QA, Mobile, Software, Game,
-AI, Business Analyst, DevOps/Data) và 2 thành phố chiếm đa số (Hà Nội, TP.HCM).
-
-Cài đặt: copy file này vào
-    <app_có_CandidateProfile>/management/commands/seed_sample_candidates.py
-(cần có __init__.py trong cả 2 thư mục management/ và management/commands/)
-
-Chạy:
-    python manage.py seed_sample_candidates
-
-Dùng get_or_create() ở mọi bước nên chạy lại nhiều lần vẫn an toàn
-(idempotent), không tạo trùng.
-
-Lưu ý: KHÔNG tự set embedding ở đây — sau khi seed xong, chạy tiếp lệnh
-rebuild_embeddings (bạn đã có sẵn) để đẩy các CandidateProfile mới vào
-QStash sinh embedding.
-"""
+"""Seed 10 hồ sơ mẫu, chạy lại an toàn và không tự tạo embedding."""
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction

@@ -1,13 +1,4 @@
-"""Sinh ra jobs_200_curated.json - 200 JobPosts chuẩn hóa.
-
-Phân loại theo mức độ phổ biến của vai trò:
-  - common (120 / 60%): Backend, Frontend, Full-stack, Mobile, QA/Testing, Software/.NET
-  - average (60 / 30%): DevOps, Cloud, Data, Database, BA, PM/Scrum, UX/UI, System/SRE, Networking
-  - rare (20 / 10%): AI/ML Research, Quant, Game, Security/Offensive, Blockchain, Robotics,
-                     Embedded/Firmware, Big Data (Spark/Kafka), Quantum/Edge
-
-Chạy: python gen_jobs_200.py  → tạo jobs_200_curated.json
-"""
+"""Sinh `jobs_200_curated.json` với random seed cố định."""
 import json
 import random
 from pathlib import Path
@@ -138,7 +129,7 @@ def make_salary(level, rng):
 
 
 JOB_BLUEPRINTS = {
-    # ---------------- COMMON (120) ----------------
+# 120 vai trò phổ biến
     "Backend Developer": {"cat": "Backend", "pop": "common", "mult": 18, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR", "MID_SENIOR", "ENTRY", "MID_SENIOR"]},
     "Java Developer": {"cat": "Backend", "pop": "common", "mult": 14, "level_weights": ["JUNIOR", "MID_SENIOR", "MID_SENIOR", "JUNIOR"]},
     "Frontend Developer": {"cat": "Frontend", "pop": "common", "mult": 16, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR", "MID_SENIOR", "ENTRY"]},
@@ -150,7 +141,7 @@ JOB_BLUEPRINTS = {
     "PHP Developer": {"cat": "Backend", "pop": "common", "mult": 6, "level_weights": ["JUNIOR", "JUNIOR", "MID_SENIOR"]},
     "Android Developer": {"cat": "Mobile", "pop": "common", "mult": 3, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR"]},
     "iOS Developer": {"cat": "Mobile", "pop": "common", "mult": 3, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR"]},
-    # ---------------- AVERAGE (60) ----------------
+# 60 vai trò trung bình
     "DevOps Engineer": {"cat": "DevOps", "pop": "average", "mult": 10, "level_weights": ["MID_SENIOR", "JUNIOR", "MID_SENIOR", "LEAD"]},
     "Cloud Engineer": {"cat": "Cloud", "pop": "average", "mult": 6, "level_weights": ["MID_SENIOR", "JUNIOR", "MID_SENIOR"]},
     "Data Engineer": {"cat": "Data", "pop": "average", "mult": 6, "level_weights": ["MID_SENIOR", "JUNIOR", "MID_SENIOR"]},
@@ -161,7 +152,7 @@ JOB_BLUEPRINTS = {
     "UX/UI Designer": {"cat": "UX/UI", "pop": "average", "mult": 6, "level_weights": ["JUNIOR", "MID_SENIOR", "JUNIOR"]},
     "Site Reliability Engineer": {"cat": "System/SRE", "pop": "average", "mult": 4, "level_weights": ["MID_SENIOR", "LEAD"]},
     "System Administrator": {"cat": "System/SRE", "pop": "average", "mult": 4, "level_weights": ["JUNIOR", "MID_SENIOR"]},
-    # ---------------- RARE (20) ----------------
+# 20 vai trò hiếm
     "AI / Machine Learning Engineer": {"cat": "AI/ML", "pop": "rare", "mult": 5, "level_weights": ["MID_SENIOR", "LEAD", "MID_SENIOR"]},
     "NLP / LLM Engineer": {"cat": "AI/ML", "pop": "rare", "mult": 3, "level_weights": ["MID_SENIOR", "LEAD"]},
     "Data Scientist (Deep Learning)": {"cat": "AI/ML", "pop": "rare", "mult": 2, "level_weights": ["MID_SENIOR"]},
@@ -267,12 +258,10 @@ WORKPLACES = ["ONSITE", "ONSITE", "HYBRID", "HYBRID", "REMOTE", "ONSITE"]
 
 
 def assign_titles_and_slots():
-    """Phân bổ số dựa trên multiplier của từng blueprint, tổng đúng 200."""
     jobs = []
     for title, cfg in JOB_BLUEPRINTS.items():
         for i in range(cfg["mult"]):
             jobs.append((title, cfg, i))
-    # đảm bảo tổng = 200
     assert len(jobs) == 200, len(jobs)
     return jobs
 
@@ -312,7 +301,6 @@ def build():
             *({"name": name, "is_required": False} for name in optional_skills),
         ]
 
-        # phân bố status: chủ yếu ACTIVE, phủ đủ DRAFT/CLOSED/EXPIRED
         if n == 3:
             status = "DRAFT"
         elif n == 7:
@@ -328,7 +316,6 @@ def build():
         else:
             status = "ACTIVE"
 
-        # PART_TIME chỉ áp dụng cho QA/Tester, Data Analyst và UX/UI (vai trò phù hợp)
         if job_type == "PART_TIME" and base_title not in ("QA / Tester", "Data Analyst", "UX/UI Designer", "Frontend Developer"):
             job_type = "FULL_TIME"
 
@@ -379,7 +366,6 @@ def build():
     out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print("Wrote", out, "with", len(records), "jobs")
     print("popularity:", data["meta"]["popularity"])
-    # enum coverage report
     from collections import Counter
     for field in ["workplace_type", "job_type", "experience_level", "location", "status"]:
         counts = dict(Counter(r[field] for r in records))

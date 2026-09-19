@@ -1,7 +1,3 @@
-"""ViewSet tin tuyển dụng mỏng: gọi service/selector và trả response.
-
-Không chứa logic nghiệp vụ (xem apps/jobs/services.py, selectors.py, perms.py).
-"""
 import logging
 
 from rest_framework import filters, mixins, status, viewsets
@@ -49,11 +45,6 @@ class JobViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Chỉ cung cấp các endpoint cần thiết theo UC, không có `destroy`.
-
-    Đặc tả không có UC xóa tin tuyển dụng; tin ngừng nhận hồ sơ dùng action
-    `close`.
-    """
     serializer_class = serializers.JobReadSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ["created_at", "salary_min", "salary_max"]
@@ -81,10 +72,6 @@ class JobViewSet(
         return [IsAuthenticated()]
 
     def get_throttles(self):
-        """Giới hạn tần suất theo action:
-        - list: tìm kiếm công khai, khách 5 lần/phút, user 10 lần/phút.
-        - parse_jd: tải JD để Gemini phân tích, 2 lần/phút, 10 lần/ngày.
-        """
         if self.action == "list":
             return [JobSearchAnonThrottle(), JobSearchUserThrottle()]
         if self.action == "parse_jd":
@@ -120,8 +107,8 @@ class JobViewSet(
         response["X-Search-Fallback"] = str(
             getattr(self, "search_fallback_used", False)
         ).lower()
+        
         if isinstance(response.data, dict):
-            # Cờ trong body để FE đọc dễ hơn header (UC-03 E2).
             response.data["search_mode"] = getattr(self, "search_mode", "LATEST")
             response.data["search_fallback"] = bool(
                 getattr(self, "search_fallback_used", False)
@@ -140,7 +127,6 @@ class JobViewSet(
         return serializers.JobReadSerializer
 
     def perform_create(self, serializer):
-        """Gọi service tạo DRAFT sau khi permission xác nhận công ty hợp lệ."""
         company = Company.objects.get(
             owner=self.request.user,
             status=Company.Status.APPROVED,
@@ -161,7 +147,6 @@ class JobViewSet(
         )
 
     def create(self, request, *args, **kwargs):
-        """Trả serializer đọc để response gồm công ty và skill vừa tạo."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -173,7 +158,6 @@ class JobViewSet(
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
-        """Chuyển toàn bộ thao tác thay đổi sang service và loại status khỏi input."""
         job = self.get_object()
         services.update_job(
             job,
@@ -185,7 +169,6 @@ class JobViewSet(
         )
 
     def update(self, request, *args, **kwargs):
-        """Cập nhật bằng serializer ghi nhưng luôn trả response đọc đầy đủ."""
         partial = kwargs.pop("partial", False)
         job = self.get_object()
         serializer = self.get_serializer(job, data=request.data, partial=partial)
@@ -203,7 +186,6 @@ class JobViewSet(
     @extend_schema(responses=serializers.EmployerJobReadSerializer(many=True))
     @action(methods=["get"], detail=False, url_path="my-jobs")
     def my_jobs(self, request):
-        """Trả danh sách phân trang các tin thuộc employer hiện tại."""
         qs = selectors.get_employer_jobs(request.user)
         page = self.paginate_queryset(qs)
         if page is not None:
@@ -222,7 +204,6 @@ class JobViewSet(
         parser_classes=[MultiPartParser],
     )
     def parse_jd(self, request):
-        """Lưu JD import tạm và đưa tác vụ phân tích Gemini vào hàng đợi."""
         upload = serializers.JobDescriptionUploadSerializer(data=request.data)
         upload.is_valid(raise_exception=True)
         try:
@@ -263,7 +244,9 @@ class JobViewSet(
     )
     def jd_import(self, request, import_id=None):
         jd_import = JDImport.objects.filter(
-            pk=import_id, created_by=request.user
+            pk=import_id,
+            created_by=request.user,
+            company__owner=request.user,
         ).first()
         if jd_import is None:
             from rest_framework.exceptions import NotFound
@@ -282,7 +265,6 @@ class JobViewSet(
     @extend_schema(responses=serializers.RecommendedJobSerializer(many=True))
     @action(methods=["get"], detail=False)
     def recommended(self, request):
-        """Xếp hạng tin phù hợp cho candidate và vẫn hoạt động khi AI gián đoạn."""
         profile = request.user.candidate_profile
         if profile.embedding is None or profile.embedding_is_stale:
             services.enqueue_candidate_embedding_robust(profile)
@@ -295,7 +277,6 @@ class JobViewSet(
     @extend_schema(responses=serializers.RecommendedCandidateSerializer(many=True))
     @action(methods=["get"], detail=True, url_path="recommended-candidates")
     def recommended_candidates(self, request, pk=None):
-        """Trả tóm tắt candidate công khai an toàn, xếp hạng cho tin sở hữu."""
         job = self.get_object()
         self.check_object_permissions(request, job)
         if job.embedding is None or job.embedding_is_stale:
@@ -309,7 +290,6 @@ class JobViewSet(
     @extend_schema(request=None, responses=serializers.JobReadSerializer)
     @action(methods=["post"], detail=True)
     def publish(self, request, pk=None):
-        """Chuyển tin DRAFT sang ACTIVE qua state rule trong service."""
         job = self.get_object()
         self.check_object_permissions(request, job)
         try:
@@ -321,7 +301,6 @@ class JobViewSet(
     @extend_schema(request=None, responses=serializers.JobReadSerializer)
     @action(methods=["post"], detail=True)
     def close(self, request, pk=None):
-        """Đóng tin ACTIVE qua state rule trong service."""
         job = self.get_object()
         self.check_object_permissions(request, job)
         try:

@@ -1,4 +1,3 @@
-"""Quyền truy cập tin tuyển dụng; quy tắc được kiểm tra tại đây thay vì view."""
 from rest_framework import permissions
 
 from apps.companies.models import Company
@@ -6,12 +5,9 @@ from apps.jobs.models import JobPost
 
 
 class IsApprovedEmployer(permissions.BasePermission):
-    """Chỉ employer có công ty APPROVED mới được đăng tin theo điều kiện UC-02."""
-
     message = "Cần có hồ sơ công ty được duyệt để đăng tin tuyển dụng."
 
     def has_permission(self, request, view):
-        """Kiểm tra role và hồ sơ công ty APPROVED trước khi tạo tin."""
         if not request.user or not request.user.is_authenticated:
             return False
         if not request.user.is_employer:
@@ -22,8 +18,6 @@ class IsApprovedEmployer(permissions.BasePermission):
 
 
 class IsJobOwnerOrAdmin(permissions.BasePermission):
-    """Chủ tin hoặc admin mới được sửa, đăng hoặc đóng tin."""
-
     def has_permission(self, request, view):
         return bool(
             request.user

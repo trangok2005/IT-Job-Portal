@@ -1,4 +1,3 @@
-"""Serializer định hình input/output của công ty, không xử lý nghiệp vụ."""
 from rest_framework import serializers
 
 from apps.companies.models import Company
@@ -19,7 +18,6 @@ class CompanyReadSerializer(serializers.ModelSerializer):
 
 
 class CompanyWriteSerializer(serializers.ModelSerializer):
-    """Các field employer được tự cập nhật; status do service/admin quản lý."""
 
     class Meta:
         model = Company

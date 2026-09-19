@@ -1,4 +1,3 @@
-"""Mô hình hồ sơ candidate, dữ liệu CV và embedding pgvector cho UC-01."""
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -52,11 +51,9 @@ class CandidateProfile(UUIDModel, TimeStampedModel):
     desired_position = models.CharField(max_length=255, blank=True)
     is_public = models.BooleanField(default=True, help_text="Cho phép NTD tìm thấy qua Gợi ý ứng viên phù hợp")
 
-    # Mỗi lần cập nhật hồ sơ đáng kể phải tăng version và
-    # đánh dấu cần tính lại embedding (đáp ứng "profile_version" trong đặc tả).
+    # Tăng version khi nội dung đổi để không dùng lại embedding cũ.
     profile_version = models.PositiveIntegerField(default=1)
 
-    # Embedding được dùng cho cả semantic search và match score.
     embedding = VectorField(dimensions=EMBEDDING_DIMENSIONS, null=True, blank=True)
     embedding_version = models.PositiveIntegerField(
         default=0, help_text="profile_version tại thời điểm embedding được tính, dùng để biết embedding có 'stale' hay không.",
@@ -89,7 +86,6 @@ class CandidateProfile(UUIDModel, TimeStampedModel):
 
     @property
     def is_complete(self):
-        """Hồ sơ đủ điều kiện ứng tuyển khi có thông tin liên hệ và ít nhất một skill."""
         required_fields = (self.full_name, self.phone, self.desired_position)
         return bool(
             all(value and value.strip() for value in required_fields)
@@ -168,11 +164,7 @@ class Experience(UUIDModel, TimeStampedModel):
 
 
 class ResumeImport(UUIDModel, TimeStampedModel):
-    """Bản ghi tạm cho luồng tải CV, AI phân tích, xem trước rồi user xác nhận.
-
-    Bản ghi tách khỏi Resume để không ghi đè hồ sơ khi chỉ xem trước, tự hết
-    hạn sau 24 giờ và cho phép user thử nhiều CV trước khi lưu.
-    """
+    """Bản tạm để xem kết quả AI mà chưa ghi đè hồ sơ."""
 
     class ParseStatus(models.TextChoices):
         PENDING = "PENDING", "Đang xử lý"
@@ -191,14 +183,13 @@ class ResumeImport(UUIDModel, TimeStampedModel):
     parse_status = models.CharField(
         max_length=20, choices=ParseStatus.choices, default=ParseStatus.PENDING
     )
-    # Giới hạn số lần Gemini parse lại bản ghi này (chống retry vô hạn của broker).
+    # Giới hạn retry để bảo vệ quota Gemini.
     parse_attempts = models.PositiveSmallIntegerField(default=0)
     parsed_data = models.JSONField(
         null=True, blank=True, help_text="Dữ liệu đã validate, dùng để điền Form preview."
     )
     parse_error_message = models.TextField(blank=True)
 
-    # Tự động hết hạn sau 24h, dọn dẹp bởi task định kỳ hoặc khi user hủy chỉnh sửa.
     expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -210,8 +201,6 @@ class ResumeImport(UUIDModel, TimeStampedModel):
 
 
 class Resume(UUIDModel, TimeStampedModel):
-    """File CV chính thức do ứng viên xác nhận từ bản xem trước."""
-
     candidate = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name="resumes")
     file = models.FileField(upload_to="resumes/%Y/%m/")
     original_filename = models.CharField(max_length=255)

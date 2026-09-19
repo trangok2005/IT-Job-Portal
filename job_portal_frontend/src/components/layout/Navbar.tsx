@@ -59,6 +59,46 @@ function isActiveLink(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+type ImportStatusLinkProps = {
+  status: string;
+  href: string;
+  processingText: string;
+  successText: string;
+  failedText: string;
+  mobile?: boolean;
+  onClick?: () => void;
+};
+
+function ImportStatusLink({
+  status,
+  href,
+  processingText,
+  successText,
+  failedText,
+  mobile = false,
+  onClick,
+}: ImportStatusLinkProps) {
+  let text = processingText;
+  if (status === "SUCCESS") text = successText;
+  if (status === "FAILED") text = failedText;
+
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={mobile
+        ? "flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2.5 text-sm font-medium text-primary"
+        : "flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 hover:border-primary-200 hover:text-primary"
+      }
+    >
+      {["PENDING", "PROCESSING"].includes(status) && <Loader2 className="size-4 animate-spin" />}
+      {status === "SUCCESS" && <CircleCheck className={cn("size-4", !mobile && "text-emerald-600")} />}
+      {status === "FAILED" && <AlertCircle className="size-4 text-red-600" />}
+      {text}
+    </Link>
+  );
+}
+
 export function Navbar() {
   const { user, signOut } = useAuth();
   const { jdImport } = useJDImport();
@@ -68,6 +108,29 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const navLinks = user ? ROLE_NAV_LINKS[user.role] : PUBLIC_NAV_LINKS;
   const homeHref = user ? ROLE_HOME[user.role] : "/";
+  let importLink: ImportStatusLinkProps | null = null;
+  if (user?.role === "EMPLOYER" && jdImport) {
+    importLink = {
+      status: jdImport.status,
+      href: jdImport.status === "SUCCESS"
+        ? `/employer/jobs/new?import_id=${jdImport.id}`
+        : "/employer/jobs/new",
+      processingText: "Đang đọc JD",
+      successText: "JD đã sẵn sàng",
+      failedText: "JD lỗi",
+    };
+  }
+  if (user?.role === "CANDIDATE" && resumeImport) {
+    importLink = {
+      status: resumeImport.parse_status,
+      href: resumeImport.parse_status === "SUCCESS"
+        ? `/candidate/profile?resume_import_id=${resumeImport.id}`
+        : "/candidate/profile",
+      processingText: "Đang phân tích CV",
+      successText: "CV đã phân tích xong",
+      failedText: "CV lỗi",
+    };
+  }
 
   const handleSignOut = () => {
     signOut();
@@ -105,7 +168,7 @@ export function Navbar() {
     </>
   ) : null;
 
-return (
+  return (
     <header className="sticky top-0 z-40 border-b border-zinc-100 bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-20 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link href={homeHref} className="flex items-center gap-2">
@@ -129,28 +192,7 @@ return (
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          {user?.role === "EMPLOYER" && jdImport && (
-            <Link
-              href={jdImport.status === "SUCCESS" ? `/employer/jobs/new?import_id=${jdImport.id}` : "/employer/jobs/new"}
-              className="flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 hover:border-primary-200 hover:text-primary"
-            >
-              {["PENDING", "PROCESSING"].includes(jdImport.status) && <Loader2 className="size-4 animate-spin" />}
-              {jdImport.status === "SUCCESS" && <CircleCheck className="size-4 text-emerald-600" />}
-              {jdImport.status === "FAILED" && <AlertCircle className="size-4 text-red-600" />}
-              {jdImport.status === "SUCCESS" ? "JD đã sẵn sàng" : jdImport.status === "FAILED" ? "JD lỗi" : "Đang đọc JD"}
-            </Link>
-          )}
-          {user?.role === "CANDIDATE" && resumeImport && (
-            <Link
-              href={resumeImport.parse_status === "SUCCESS" ? `/candidate/profile?resume_import_id=${resumeImport.id}` : "/candidate/profile"}
-              className="flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-700 hover:border-primary-200 hover:text-primary"
-            >
-              {["PENDING", "PROCESSING"].includes(resumeImport.parse_status) && <Loader2 className="size-4 animate-spin" />}
-              {resumeImport.parse_status === "SUCCESS" && <CircleCheck className="size-4 text-emerald-600" />}
-              {resumeImport.parse_status === "FAILED" && <AlertCircle className="size-4 text-red-600" />}
-              {resumeImport.parse_status === "SUCCESS" ? "CV đã phân tích xong" : resumeImport.parse_status === "FAILED" ? "CV lỗi" : "Đang phân tích CV"}
-            </Link>
-          )}
+          {importLink && <ImportStatusLink {...importLink} />}
           {!user && (
             <>
               <Button asChild variant="ghost">
@@ -219,29 +261,8 @@ return (
                 {link.label}
               </Link>
             ))}
-            {user?.role === "EMPLOYER" && jdImport && (
-              <Link
-                href={jdImport.status === "SUCCESS" ? `/employer/jobs/new?import_id=${jdImport.id}` : "/employer/jobs/new"}
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2.5 text-sm font-medium text-primary"
-              >
-                {["PENDING", "PROCESSING"].includes(jdImport.status) && <Loader2 className="size-4 animate-spin" />}
-                {jdImport.status === "SUCCESS" && <CircleCheck className="size-4" />}
-                {jdImport.status === "FAILED" && <AlertCircle className="size-4 text-red-600" />}
-                {jdImport.status === "SUCCESS" ? "JD đã sẵn sàng" : jdImport.status === "FAILED" ? "JD lỗi" : "Đang đọc JD"}
-              </Link>
-            )}
-            {user?.role === "CANDIDATE" && resumeImport && (
-              <Link
-                href={resumeImport.parse_status === "SUCCESS" ? `/candidate/profile?resume_import_id=${resumeImport.id}` : "/candidate/profile"}
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2.5 text-sm font-medium text-primary"
-              >
-                {["PENDING", "PROCESSING"].includes(resumeImport.parse_status) && <Loader2 className="size-4 animate-spin" />}
-                {resumeImport.parse_status === "SUCCESS" && <CircleCheck className="size-4" />}
-                {resumeImport.parse_status === "FAILED" && <AlertCircle className="size-4 text-red-600" />}
-                {resumeImport.parse_status === "SUCCESS" ? "CV đã phân tích xong" : resumeImport.parse_status === "FAILED" ? "CV lỗi" : "Đang phân tích CV"}
-              </Link>
+            {importLink && (
+              <ImportStatusLink {...importLink} mobile onClick={() => setOpen(false)} />
             )}
             {!user && (
               <div className="mt-3 flex flex-col gap-2 border-t border-zinc-100 pt-3">

@@ -69,6 +69,19 @@ class ProductionSettingsTests(SimpleTestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("SECRET_KEY", result.stderr)
 
+    def test_missing_qstash_configuration_fails_fast(self):
+        for variable in (
+            "BACKEND_PUBLIC_URL",
+            "QSTASH_TOKEN",
+            "QSTASH_CURRENT_SIGNING_KEY",
+            "QSTASH_NEXT_SIGNING_KEY",
+        ):
+            with self.subTest(variable=variable):
+                result = self.run_import({variable: ""})
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(variable, result.stderr)
+
     def test_non_tls_redis_url_is_rejected(self):
         result = self.run_import({"REDIS_URL": "redis://redis.example.com:6379"})
 

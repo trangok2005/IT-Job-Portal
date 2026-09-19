@@ -12,8 +12,7 @@ import type {
 import type { operations } from "@/types/generated/api-schema";
 import { clearAuth, getAccessToken, getRefreshToken, setAccessToken } from "@/lib/auth";
 
-// Server Components inside Docker use the internal service name; browser
-// requests keep using the public host URL compiled into NEXT_PUBLIC_API_URL.
+// Server dùng URL nội bộ nếu có; browser dùng URL public.
 const BASE_URL = process.env.API_URL
   ?? process.env.NEXT_PUBLIC_API_URL
   ?? "http://localhost:8000";
@@ -45,7 +44,7 @@ async function readResponse<T>(res: Response, path: string): Promise<T> {
       const body = await res.json();
       message = getErrorMessage(body) ?? message;
     } catch {
-      // Retain the HTTP fallback when the error body is not valid JSON.
+      // Dùng thông báo HTTP khi body không phải JSON.
     }
     throw new ApiError(res.status, message);
   }
@@ -53,15 +52,20 @@ async function readResponse<T>(res: Response, path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+function buildHeaders(init: RequestInit, accessToken?: string): Headers {
   const headers = new Headers(init.headers);
-  if (!(init.body instanceof FormData) && !headers.has("Content-Type")) {
+  if (typeof init.body === "string" && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  return headers;
+}
+
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     cache: "no-store",
-    headers,
+    headers: buildHeaders(init),
   });
   return readResponse<T>(res, path);
 }
@@ -71,13 +75,11 @@ let refreshInFlight: {
   promise: Promise<string | null>;
 } | null = null;
 
-/** Dùng refresh token đổi access token mới. Trả null nếu không refresh được. */
 function requestAccessToken(): Promise<string | null> {
   const refresh = getRefreshToken();
   if (!refresh) return Promise.resolve(null);
 
-  // Gom các request cùng phiên vào một lần refresh. Phiên mới không chờ
-  // promise của phiên cũ (tránh logout/login trong lúc request đang chạy).
+  // Chỉ dùng chung request refresh trong cùng một phiên.
   if (refreshInFlight?.refresh === refresh) return refreshInFlight.promise;
 
   const promise = fetch(`${BASE_URL}/api/auth/token/refresh/`, {
@@ -87,45 +89,43 @@ function requestAccessToken(): Promise<string | null> {
     cache: "no-store",
   })
     .then(async (res) => {
-      if (!res.ok) return null;
-      const data = (await res.json()) as { access?: string };
+      if (res.status === 401 || res.status === 403) return null;
+      // Backend lỗi hoặc mất mạng không có nghĩa refresh token đã hết hạn.
+      const data = await readResponse<{ access?: string }>(res, "/api/auth/token/refresh/");
       if (!data.access) return null;
-      // Không cho refresh cũ khôi phục phiên đã logout hoặc ghi đè user mới.
+      // Không để refresh cũ ghi đè phiên mới hoặc khôi phục phiên đã logout.
       if (getRefreshToken() !== refresh) return null;
       setAccessToken(data.access);
       return data.access;
-    })
-    .catch(() => null);
+    });
 
   refreshInFlight = { refresh, promise };
-  void promise.finally(() => {
+  const releaseRefresh = () => {
     if (refreshInFlight?.promise === promise) refreshInFlight = null;
-  });
+  };
+  void promise.then(releaseRefresh, releaseRefresh);
   return promise;
 }
 
 export async function authApiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   let token = getAccessToken();
   const sessionRefresh = getRefreshToken();
-  // Access hết hạn từ phiên trước nhưng refresh còn hạn -> tự phục hồi ngay.
+  // Khôi phục phiên nếu chỉ thiếu access token.
   token ??= await requestAccessToken();
   if (!token) {
     if (getRefreshToken() === sessionRefresh) clearAuth();
     throw new ApiError(401, "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
   }
 
-  const sendWith = (accessToken: string) => {
-    const headers = new Headers(init.headers);
-    headers.set("Authorization", `Bearer ${accessToken}`);
-    if (!(init.body instanceof FormData) && !headers.has("Content-Type")) {
-      headers.set("Content-Type", "application/json");
-    }
-    return fetch(`${BASE_URL}${path}`, { ...init, cache: "no-store", headers });
-  };
+  const sendWith = (accessToken: string) => fetch(`${BASE_URL}${path}`, {
+    ...init,
+    cache: "no-store",
+    headers: buildHeaders(init, accessToken),
+  });
 
   let res = await sendWith(token);
   if (res.status === 401) {
-    // Một request khác có thể đã refresh trong lúc request này đang bay.
+    // Dùng token mới nếu request khác đã refresh trước.
     const current = getAccessToken();
     const refreshed = current && current !== token
       ? current
@@ -153,8 +153,6 @@ export async function optionalAuthApiRequest<T>(path: string, init: RequestInit 
   }
 }
 
-const request = apiRequest;
-
 export type JobListParams = NonNullable<
   operations["jobs_list"]["parameters"]["query"]
 >;
@@ -176,22 +174,22 @@ export function getJobs(params: JobListParams = {}, signal?: AbortSignal): Promi
 }
 
 export function getJob(id: string) {
-  return request<JobDto>(`/api/jobs/${id}/`);
+  return apiRequest<JobDto>(`/api/jobs/${id}/`);
 }
 
 export const login = (payload: LoginPayload) =>
-  request<AuthTokens>("/api/auth/token/", { method: "POST", body: JSON.stringify(payload) });
+  apiRequest<AuthTokens>("/api/auth/token/", { method: "POST", body: JSON.stringify(payload) });
 
 export const register = (payload: RegisterPayload) =>
-  request<RegisterResponse>("/api/accounts/register/", { method: "POST", body: JSON.stringify(payload) });
+  apiRequest<RegisterResponse>("/api/accounts/register/", { method: "POST", body: JSON.stringify(payload) });
 
 export const getMe = (accessToken: string) =>
-  request<UserDto>("/api/accounts/me/", {
+  apiRequest<UserDto>("/api/accounts/me/", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
 export const googleAuth = (payload: GoogleAuthPayload) =>
-  request<GoogleAuthResponse>("/api/auth/google/", {
+  apiRequest<GoogleAuthResponse>("/api/auth/google/", {
     method: "POST",
     body: JSON.stringify(payload),
   });

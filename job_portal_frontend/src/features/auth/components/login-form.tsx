@@ -7,7 +7,7 @@ import { useState } from "react";
 import { AuthForm } from "@/features/auth/components/auth-form";
 import { GoogleSignInButton } from "@/features/auth/components/google-sign-in-button";
 import { useAuth } from "@/lib/auth-provider";
-import { getSafeRedirectPath, POST_LOGIN_HOME } from "@/lib/auth";
+import { getSafeRedirectPath, ROLE_HOME } from "@/lib/auth";
 import type { UserRole } from "@/lib/types";
 
 export function LoginForm({ redirectTo }: { redirectTo?: string }) {
@@ -18,7 +18,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
   const destinationFor = (role: UserRole) =>
-    getSafeRedirectPath(redirectTo ?? null) ?? POST_LOGIN_HOME[role];
+    getSafeRedirectPath(redirectTo ?? null) ?? ROLE_HOME[role];
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

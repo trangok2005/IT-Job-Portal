@@ -1,30 +1,16 @@
 import json
-import io
-import zipfile
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
-from apps.jobs.jd_parser import _extract_docx_text, parse_job_description
+from apps.jobs.services import build_jd_parse_result
 from apps.skills.models import Skill, SkillAlias
+from integrations.gemini.jd_parser import parse_job_description
 
 
-@override_settings(GEMINI_API_KEY="test-key")
 class JobDescriptionParserTests(TestCase):
-    def test_extract_docx_text(self):
-        document_xml = b'''<?xml version="1.0" encoding="UTF-8"?>
-        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-          <w:body><w:p><w:r><w:t>Backend Developer</w:t></w:r></w:p></w:body>
-        </w:document>'''
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w") as archive:
-            archive.writestr("word/document.xml", document_xml)
-
-        self.assertEqual(_extract_docx_text(buffer.getvalue()), "Backend Developer")
-
-    @patch("apps.jobs.jd_parser._get_client")
+    @patch("integrations.gemini.jd_parser.get_gemini_client")
     def test_parse_returns_validated_fields_and_normalized_skills(self, get_client):
         python = Skill.objects.create(name="Python", slug="python")
         SkillAlias.objects.create(
@@ -60,9 +46,12 @@ class JobDescriptionParserTests(TestCase):
         client.models.generate_content.return_value = response
         get_client.return_value = client
 
-        _, parsed = parse_job_description(
-            SimpleUploadedFile("job.pdf", b"%PDF-1.4")
+        result = parse_job_description(
+            filename="job.pdf",
+            mime_type="application/pdf",
+            file_data=b"%PDF-1.4",
         )
+        parsed = build_jd_parse_result(result.validated_data)
 
         self.assertEqual(parsed["title"], "Backend Developer")
         self.assertEqual(parsed["location"], "Hồ Chí Minh")
@@ -70,8 +59,7 @@ class JobDescriptionParserTests(TestCase):
         self.assertEqual(parsed["required_education_level"], "BACHELOR")
         pending = Skill.objects.get(name="New Framework")
         self.assertEqual(pending.status, Skill.Status.PENDING)
-        # Kỹ năng lạ đã được tự tạo PENDING và nằm luôn trong matched
-        # (nhất quán với luồng CV) thay vì bị bỏ vào unmatched.
+        # Skill lạ khớp ở trạng thái PENDING, giống luồng CV.
         self.assertEqual(
             parsed["required_skills"], [str(python.id), str(pending.id)]
         )
@@ -84,3 +72,54 @@ class JobDescriptionParserTests(TestCase):
             ],
         )
         client.models.generate_content.assert_called_once()
+        config = client.models.generate_content.call_args.kwargs["config"]
+        self.assertEqual(config.response_mime_type, "application/json")
+        self.assertIsNotNone(config.response_schema)
+
+    def test_aliases_resolving_to_same_skill_keep_required_flag(self):
+        react = Skill.objects.create(name="React", slug="react")
+        SkillAlias.objects.create(
+            skill=react,
+            alias_text="ReactJS",
+            normalized_text="reactjs",
+        )
+
+        parsed = build_jd_parse_result(
+            {
+                "skills": ["React", "ReactJS"],
+                "_skill_required_flags": {"react": False, "reactjs": True},
+            }
+        )
+
+        self.assertEqual(parsed["unmatched_skills"], [])
+        self.assertEqual(len(parsed["resolved_skills"]), 1)
+        self.assertEqual(parsed["resolved_skills"][0]["id"], str(react.id))
+        self.assertTrue(parsed["resolved_skills"][0]["is_required"])
+
+    def test_exact_skill_name_is_reused(self):
+        django = Skill.objects.create(name="Django", slug="django")
+
+        parsed = build_jd_parse_result({"skills": [" Django "]})
+
+        self.assertEqual(parsed["unmatched_skills"], [])
+        self.assertEqual(len(parsed["resolved_skills"]), 1)
+        self.assertEqual(parsed["resolved_skills"][0]["id"], str(django.id))
+        self.assertFalse(Skill.objects.filter(status=Skill.Status.PENDING).exists())
+
+    @patch("integrations.gemini.jd_parser.get_gemini_client")
+    def test_parser_does_not_create_skill_before_business_resolution(self, get_client):
+        client = Mock()
+        client.models.generate_content.return_value = SimpleNamespace(
+            text=json.dumps({"skills": [{"name": "New Tool", "is_required": True}]})
+        )
+        get_client.return_value = client
+
+        result = parse_job_description(
+            filename="job.pdf",
+            mime_type="application/pdf",
+            file_data=b"%PDF-1.4",
+        )
+
+        self.assertFalse(Skill.objects.filter(name="New Tool").exists())
+        parsed = build_jd_parse_result(result.validated_data)
+        self.assertEqual(parsed["resolved_skills"][0]["status"], Skill.Status.PENDING)

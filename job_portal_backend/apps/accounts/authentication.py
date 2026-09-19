@@ -1,4 +1,3 @@
-"""Xác thực JWT vô hiệu hóa access token sau khi tài khoản bị khóa."""
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
@@ -13,7 +12,7 @@ class ActiveUserJWTAuthenticationScheme(OpenApiAuthenticationExtension):
 
 
 class ActiveUserJWTAuthentication(JWTAuthentication):
-    """Từ chối JWT hợp lệ nếu user tương ứng trong cơ sở dữ liệu đã ngừng hoạt động."""
+    """Từ chối token còn hạn sau khi tài khoản bị khóa."""
 
     def get_user(self, validated_token):
         user = super().get_user(validated_token)

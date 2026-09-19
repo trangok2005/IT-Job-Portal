@@ -5,7 +5,6 @@ const REFRESH_KEY = "job_portal_refresh";
 const USER_KEY = "job_portal_user";
 const ACCESS_COOKIE = "jp_access";
 const REFRESH_COOKIE = "jp_refresh";
-const ROLE_COOKIE = "jp_role";
 const PENDING_APPLICATION_KEY = "job_portal_pending_application";
 const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
@@ -15,9 +14,31 @@ export const ROLE_HOME: Record<UserRole, string> = {
   ADMIN: "/admin",
 };
 
-export const POST_LOGIN_HOME: Record<UserRole, string> = {
-  ...ROLE_HOME,
-};
+let cachedUserRaw: string | null = null;
+let cachedUser: UserDto | null = null;
+const listeners = new Set<() => void>();
+
+function notifyAuthChange() {
+  listeners.forEach((listener) => listener());
+}
+
+export function subscribeAuth(listener: () => void) {
+  listeners.add(listener);
+  // Storage event chỉ chạy ở tab khác; các helper notify ngay trong tab hiện tại.
+  const handleStorage = (event: StorageEvent) => {
+    if (
+      event.storageArea === window.localStorage &&
+      (event.key === null || [ACCESS_KEY, REFRESH_KEY, USER_KEY].includes(event.key))
+    ) {
+      listener();
+    }
+  };
+  window.addEventListener("storage", handleStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", handleStorage);
+  };
+}
 
 export function getSafeRedirectPath(value: string | null): string | null {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
@@ -43,22 +64,48 @@ export function consumePendingApplication(jobId: string): boolean {
   return true;
 }
 
-export const getAccessToken = (): string | null =>
-  typeof window === "undefined" ? null : window.localStorage.getItem(ACCESS_KEY);
+export function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  const storedAccess = window.localStorage.getItem(ACCESS_KEY);
+  const cookieAccess = getAuthCookie(ACCESS_COOKIE);
+  const refresh = getRefreshToken();
+  // Proxy chỉ ghi được cookie. Nhận lại access mới trước request browser, cùng phiên refresh.
+  if (
+    refresh &&
+    cookieAccess &&
+    cookieAccess !== storedAccess &&
+    getAuthCookie(REFRESH_COOKIE) === refresh
+  ) {
+    setAccessToken(cookieAccess);
+    return cookieAccess;
+  }
+  return storedAccess;
+}
 
 export const getRefreshToken = (): string | null =>
   typeof window === "undefined" ? null : window.localStorage.getItem(REFRESH_KEY);
 
 export function hasAccessCookie(): boolean {
-  if (typeof document === "undefined") return false;
-  return document.cookie.split("; ").some((cookie) => cookie.startsWith(`${ACCESS_COOKIE}=`));
+  return getAuthCookie(ACCESS_COOKIE) !== null;
+}
+
+function getAuthCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const prefix = `${name}=`;
+  const cookie = document.cookie.split("; ").find((item) => item.startsWith(prefix));
+  return cookie ? cookie.slice(prefix.length) : null;
 }
 
 export function getStoredUser(): UserDto | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as UserDto) : null;
+    // Snapshot giữ nguyên reference để useSyncExternalStore không render lặp.
+    if (raw !== cachedUserRaw) {
+      cachedUser = raw ? (JSON.parse(raw) as UserDto) : null;
+      cachedUserRaw = raw;
+    }
+    return cachedUser;
   } catch {
     return null;
   }
@@ -71,14 +118,14 @@ export function persistAuth(tokens: AuthTokens, user: UserDto) {
   window.localStorage.setItem(USER_KEY, JSON.stringify(user));
   setAuthCookie(ACCESS_COOKIE, tokens.access);
   setAuthCookie(REFRESH_COOKIE, tokens.refresh);
-  setRoleCookie(user.role);
+  notifyAuthChange();
 }
 
-/** Chỉ thay access token khi auto-refresh thành công (giữ nguyên user/refresh). */
 export function setAccessToken(accessToken: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(ACCESS_KEY, accessToken);
   setAuthCookie(ACCESS_COOKIE, accessToken);
+  notifyAuthChange();
 }
 
 export function clearAuth() {
@@ -88,7 +135,7 @@ export function clearAuth() {
   window.localStorage.removeItem(USER_KEY);
   clearAuthCookie(ACCESS_COOKIE);
   clearAuthCookie(REFRESH_COOKIE);
-  clearRoleCookie();
+  notifyAuthChange();
 }
 
 function setAuthCookie(name: string, value: string) {
@@ -98,13 +145,4 @@ function setAuthCookie(name: string, value: string) {
 
 function clearAuthCookie(name: string) {
   document.cookie = `${name}=; path=/; max-age=0; samesite=lax`;
-}
-
-/** Cookie role chỉ dùng cho UX cũ; Proxy xác minh role qua backend. */
-export function setRoleCookie(role: UserRole) {
-  setAuthCookie(ROLE_COOKIE, role);
-}
-
-export function clearRoleCookie() {
-  clearAuthCookie(ROLE_COOKIE);
 }

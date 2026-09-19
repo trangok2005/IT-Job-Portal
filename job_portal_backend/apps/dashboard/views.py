@@ -1,4 +1,3 @@
-"""View dashboard gọn, điều phối theo role."""
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -24,7 +23,6 @@ class DashboardView(APIView):
         )
     )
     def get(self, request):
-        """Chỉ chọn và serialize dashboard thuộc role hiện tại."""
         if request.user.is_candidate:
             data = selectors.get_candidate_dashboard(request.user)
             profile = data.pop("profile")

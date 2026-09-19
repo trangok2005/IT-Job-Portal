@@ -1,11 +1,10 @@
-"""Các truy vấn chỉ đọc danh sách và chi tiết hồ sơ ứng tuyển."""
 from django.db.models import F, Q
 
 from apps.applications.models import JobApplication
 
 
 def _base_queryset():
-    """Nạp sẵn dữ liệu cần cho serializer để tránh truy vấn N+1."""
+    """Prefetch dữ liệu serializer để tránh N+1."""
     return (
         JobApplication.objects.all()
         .select_related(
@@ -27,7 +26,7 @@ def get_applications_for_user(
     status=None,
     ordering="-created_at",
 ):
-    """Candidate thấy hồ sơ của mình; employer thấy hồ sơ thuộc tin mình quản lý."""
+    """Scope hồ sơ theo candidate hoặc owner của tin."""
     qs = _base_queryset()
     if user.is_admin_role:
         pass
@@ -50,5 +49,4 @@ def get_applications_for_user(
 
 
 def get_application_detail_queryset(user):
-    """Giới hạn truy xuất chi tiết theo cùng phạm vi quyền với danh sách."""
     return get_applications_for_user(user)

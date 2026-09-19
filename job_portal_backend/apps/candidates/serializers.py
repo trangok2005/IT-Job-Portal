@@ -1,4 +1,3 @@
-"""Serializer định hình input/output của candidate, không xử lý nghiệp vụ."""
 from pathlib import Path
 
 from django.conf import settings
@@ -20,7 +19,6 @@ class EducationSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate(self, attrs):
-        """Kiểm tra khoảng thời gian bằng cả dữ liệu cũ khi PATCH."""
         start_date = attrs.get("start_date", getattr(self.instance, "start_date", None))
         end_date = attrs.get("end_date", getattr(self.instance, "end_date", None))
         if start_date and end_date and start_date > end_date:
@@ -52,7 +50,6 @@ class ExperienceSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate(self, attrs):
-        """Giữ ngày làm việc nhất quán khi tạo mới và cập nhật một phần."""
         from django.utils import timezone
 
         start_date = attrs.get("start_date", getattr(self.instance, "start_date", None))
@@ -72,7 +69,6 @@ class ExperienceSerializer(serializers.ModelSerializer):
 
 class CandidateSkillSerializer(serializers.ModelSerializer):
     skill_name = serializers.CharField(source="skill.name", read_only=True)
-    # UC-01 bước 11: FE hiển thị nhãn vàng cho skill chưa được Admin duyệt.
     skill_status = serializers.CharField(source="skill.status", read_only=True)
 
     class Meta:
@@ -96,7 +92,6 @@ class CandidateSkillSerializer(serializers.ModelSerializer):
 
 
 class ResumeParsedDataSerializer(serializers.Serializer):
-    """Dữ liệu CV đã kiểm tra để user xem lại trước khi lưu hồ sơ."""
 
     full_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
     phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
@@ -111,7 +106,6 @@ class ResumeParsedDataSerializer(serializers.Serializer):
 
 
 class ResumeImportSerializer(serializers.ModelSerializer):
-    """Serializer chỉ đọc để xem trước ResumeImport sau khi AI phân tích."""
 
     parsed_data = ResumeParsedDataSerializer(read_only=True, allow_null=True)
 
@@ -127,7 +121,6 @@ class ResumeImportSerializer(serializers.ModelSerializer):
 
 
 class ResumeImportUploadSerializer(serializers.Serializer):
-    """Serializer tải CV lên để phân tích bất đồng bộ thành ResumeImport."""
 
     file = serializers.FileField(write_only=True)
 
@@ -198,7 +191,6 @@ class CandidateProfileUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_dob(self, value):
-        """Không chấp nhận ngày sinh trong tương lai."""
         from django.utils import timezone
         if value and value > timezone.now().date():
             raise serializers.ValidationError("Ngày sinh không được ở tương lai.")
@@ -206,10 +198,6 @@ class CandidateProfileUpdateSerializer(serializers.ModelSerializer):
 
 
 class CandidateSkillSaveSerializer(serializers.Serializer):
-    """Input skill cho snapshot đã duyệt: nhận ID đã duyệt hoặc tên thô mới.
-
-    Tên thô được chuẩn hóa theo taxonomy khi lưu.
-    """
 
     skill = serializers.CharField(max_length=150)
     years_of_experience = serializers.IntegerField(
@@ -220,8 +208,6 @@ class CandidateSkillSaveSerializer(serializers.Serializer):
 
 
 class CandidateProfileSaveSerializer(CandidateProfileUpdateSerializer):
-    """Snapshot hồ sơ đầy đủ do user duyệt, được lưu nguyên tử."""
-
     educations = EducationSerializer(many=True)
     experiences = ExperienceSerializer(many=True)
     skills = CandidateSkillSaveSerializer(many=True)
