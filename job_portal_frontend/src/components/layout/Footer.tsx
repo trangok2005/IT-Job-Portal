@@ -14,7 +14,7 @@ export function Footer() {
               <BrandName />
             </div>
             <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
-              Nền tảng tuyển dụng IT — kết nối ứng viên và nhà tuyển dụng với công nghệ AI
+              Nền tảng tuyển dụng — kết nối ứng viên và nhà tuyển dụng với công nghệ AI
               match giữa CV và tin tuyển dụng.
             </p>
           </div>

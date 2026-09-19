@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "IT Job Portal",
-  description: "Nền tảng tuyển dụng IT với điểm phù hợp giữa CV và JD.",
+  title: "Semantic-Job-Platform",
+  description: "Nền tảng tuyển dụng với điểm phù hợp giữa CV và JD.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

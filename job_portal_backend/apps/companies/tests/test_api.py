@@ -34,13 +34,13 @@ class CompanyApiTests(APITestCase):
 
         response = self.client.patch(
             reverse("companies-me"),
-            {"description": "Nền tảng tuyển dụng IT"},
+            {"description": "Nền tảng tuyển dụng"},
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.company.refresh_from_db()
-        self.assertEqual(self.company.description, "Nền tảng tuyển dụng IT")
+        self.assertEqual(self.company.description, "Nền tảng tuyển dụng")
 
     def test_employer_cannot_list_companies(self):
         self.client.force_authenticate(self.employer)
