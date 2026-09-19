@@ -7,7 +7,7 @@ export function BrandLogo({ className }: { className?: string }) {
   return (
     <Image
       src={logo}
-      alt="IT Job Portal"
+      alt="Semantic-Job-Platform"
       className={cn(
         "size-16 rounded-full border-2 border-primary/15 object-cover shadow-sm",
         className,

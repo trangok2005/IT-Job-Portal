@@ -11,8 +11,9 @@ import { applyToJob } from "@/features/applications/api";
 import { getCandidateProfile } from "@/features/candidates/api";
 import { consumePendingApplication, rememberPendingApplication } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-provider";
+import { cn } from "@/lib/utils";
 
-export function ApplyButton({ jobId }: { jobId: string }) {
+export function ApplyButton({ jobId, className }: { jobId: string; className?: string }) {
   const { user } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -113,7 +114,13 @@ export function ApplyButton({ jobId }: { jobId: string }) {
 
   return (
     <>
-      <Button type="button" variant="accent" size="lg" className="w-full sm:w-auto" onClick={startApply}>
+      <Button
+        type="button"
+        variant="accent"
+        size="lg"
+        className={cn("w-full sm:w-auto", className)}
+        onClick={startApply}
+      >
         <Send />Ứng tuyển ngay
       </Button>
       {actionError && (
@@ -129,7 +136,14 @@ export function ApplyButton({ jobId }: { jobId: string }) {
                 <h2 className="text-xl font-bold text-zinc-900">Xác nhận ứng tuyển</h2>
                 <p className="mt-1 text-sm text-zinc-500">Kiểm tra thông tin trước khi gửi đơn ứng tuyển.</p>
               </div>
-              <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100"><X className="size-5" /></button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="flex size-11 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label="Đóng hộp thoại ứng tuyển"
+              >
+                <X className="size-5" />
+              </button>
             </div>
             {applicationId ? (
               <div className="mt-6 text-center">

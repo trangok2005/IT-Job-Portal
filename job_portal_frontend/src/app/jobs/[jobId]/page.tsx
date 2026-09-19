@@ -2,7 +2,6 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import { JobDetail } from "@/features/jobs/components/job-detail";
 import { ApiError, getJob } from "@/lib/api-client";
 
@@ -21,14 +20,18 @@ export default async function JobDetailPage({ params }: PageProps<"/jobs/[jobId]
   if (!job) notFound();
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
-      <Button asChild variant="ghost" size="sm" className="mb-6 -ml-3">
-        <Link href="/jobs">
-          <ArrowLeft className="h-4 w-4" /> Tìm việc làm
+    <div className="bg-slate-50">
+      <div className="mx-auto w-full max-w-[1200px] px-4 py-5 md:px-6 md:py-8">
+        <Link
+          href="/jobs"
+          className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-lg pr-3 text-sm font-medium text-slate-500 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50 md:mb-6"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Quay lại danh sách việc làm
         </Link>
-      </Button>
 
-      <JobDetail job={job} headingLevel="h1" />
+        <JobDetail job={job} headingLevel="h1" />
+      </div>
     </div>
   );
 }
